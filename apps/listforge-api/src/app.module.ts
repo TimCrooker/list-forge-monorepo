@@ -72,6 +72,11 @@ function parseRedisUrl(url: string): {
       autoLoadEntities: true,
       synchronize: process.env.NODE_ENV !== 'production',
       logging: process.env.NODE_ENV === 'development',
+      // Retry connection on failure (useful for serverless cold starts)
+      retryAttempts: 3,
+      retryDelay: 3000,
+      // Don't fail immediately if connection fails - let health endpoint handle it
+      keepConnectionAlive: true,
     }),
     BullModule.forRoot({
       connection: process.env.REDIS_URL

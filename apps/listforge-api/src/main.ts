@@ -4,8 +4,37 @@ import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
+
+  // Check for required environment variables
+  const requiredEnvVars = ['DATABASE_URL', 'REDIS_URL'];
+  const missingVars = requiredEnvVars.filter((varName) => !process.env[varName]);
+
+  if (missingVars.length > 0 && process.env.NODE_ENV === 'production') {
+    logger.warn(
+      `Missing environment variables: ${missingVars.join(', ')}. ` +
+      'The application may fail to start if database/Redis connections are not configured.'
+    );
+  }
+
+  let app;
+  try {
+    app = await NestFactory.create(AppModule);
+  } catch (error) {
+    logger.error('Failed to create NestJS application:', error);
+    // Log helpful error message
+    if (error instanceof Error) {
+      if (error.message.includes('ECONNREFUSED') || error.message.includes('connect')) {
+        logger.error(
+          'Connection error detected. Please check:\n' +
+          '1. DATABASE_URL or DB_HOST/DB_PORT/DB_USER/DB_PASSWORD are set correctly\n' +
+          '2. REDIS_URL or REDIS_HOST/REDIS_PORT are set correctly\n' +
+          '3. Database and Redis services are accessible from this environment'
+        );
+      }
+    }
+    throw error;
+  }
 
   // Enable CORS
   app.enableCors({
