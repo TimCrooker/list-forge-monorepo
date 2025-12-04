@@ -27,16 +27,18 @@ const getBaseUrl = () => {
                         window.location.hostname !== '127.0.0.1';
 
     if (isProduction) {
-      // In production without VITE_API_URL set, this is a configuration error
-      // Log a clear error message
-      console.error(
-        '❌ VITE_API_URL is not set in production!\n' +
-        'API calls will fail. Please set VITE_API_URL environment variable in your deployment platform.\n' +
-        'Example: VITE_API_URL=https://api.list-forge.ai'
-      );
-      // Still return origin as fallback, but API calls will likely fail
-      // This allows the app to load and show proper error messages
-      return window.location.origin;
+      // In production without VITE_API_URL set, use relative /api path
+      // This will be proxied by vercel.json to the API server
+      // But log a warning that VITE_API_URL should be set for better performance
+      if (!env) {
+        console.warn(
+          '⚠️ VITE_API_URL is not set in production.\n' +
+          'Using relative /api path (proxied by Vercel).\n' +
+          'For better performance, set VITE_API_URL=https://api.list-forge.ai'
+        );
+      }
+      // Use relative path - vercel.json will proxy to API server
+      return '';
     }
 
     // Development fallback
