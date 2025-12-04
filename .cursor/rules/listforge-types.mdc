@@ -1,0 +1,55 @@
+---
+globs: packages/core-types/**/*.ts,packages/api-types/**/*.ts
+alwaysApply: false
+---
+@listforge-base.mdc
+
+# Purpose
+
+- These packages define **pure TypeScript types and interfaces**.
+- They are the single source of truth for:
+  - domain models (User, Organization, roles, tenancy)
+  - external API DTOs (request/response shapes).
+
+# Package Separation
+
+- **`@listforge/core-types`**: Core domain types shared across the entire system.
+  - User, Organization entities
+  - Role types (`GlobalRole`, `OrgRole`)
+  - Status enums
+  - Multi-tenancy types
+- **`@listforge/api-types`**: External API contract types.
+  - Request DTOs (e.g., `LoginRequest`, `CreateOrgRequest`)
+  - Response DTOs (e.g., `LoginResponse`, `UserDto`, `OrgDto`)
+  - Only types that cross the API boundary
+
+# No Runtime Logic
+
+- Do **not** add runtime logic, database code, or framework-specific imports.
+- No NestJS, React, or Node-specific APIs here.
+- No class decorators, no implementations, only types/interfaces/enums.
+- Constants are allowed (e.g., enum values, string literals).
+
+# Stability
+
+- Types should be versioned thoughtfully.
+- If changing a DTO, update corresponding API routes, clients, and RTK endpoints.
+- Breaking changes require coordination across API, web app, and any clients.
+
+# Dependencies
+
+- `@listforge/api-types` may depend on `@listforge/core-types`.
+- Avoid circular dependencies.
+- Keep dependencies minimal and focused.
+
+# Type Definitions
+
+- Use TypeScript interfaces for object shapes.
+- Use type aliases for unions, primitives, and computed types.
+- Use enums sparingly (prefer string literal unions when possible).
+- Export all public types from `index.ts`.
+
+# Examples
+
+- `core-types`: `GlobalRole`, `OrgRole`, `User`, `Organization`, `Status`
+- `api-types`: `LoginRequest`, `LoginResponse`, `UserDto`, `OrgDto`, `CreateOrgRequest`

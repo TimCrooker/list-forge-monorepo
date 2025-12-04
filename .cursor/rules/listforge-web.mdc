@@ -1,0 +1,67 @@
+---
+globs: apps/listforge-web/**/*.{ts,tsx,jsx}
+alwaysApply: false
+---
+@listforge-base.mdc
+
+# Framework
+
+- Use **React functional components**, hooks, and TypeScript.
+- Use **Redux Toolkit** for global app state and **RTK Query** for all server data.
+- Use React Router v6 for routing.
+- Use Vite as the build tool.
+
+# Data Access
+
+- **Never call `fetch` directly in UI code**.
+- All API calls must go through RTK Query endpoints from `@listforge/api-rtk`.
+- Prefer RTK Query hooks like `useXxxQuery` / `useXxxMutation`.
+- Use `useQuery` for GET requests, `useMutation` for POST/PATCH/DELETE.
+- Leverage RTK Query caching and invalidation tags.
+
+# UI Library
+
+- Use components from `@listforge/ui` for layout, forms, buttons, tables, dialogs.
+- Do not import ShadCN primitives directly; always go through the wrapped components.
+- Import from `@listforge/ui` package exports, not from internal paths.
+
+# State & Structure
+
+- Keep components small and focused.
+- Pages should orchestrate:
+  - RTK Query hooks
+  - global state selectors
+  - presentational components from `@listforge/ui`.
+- Avoid colocating heavy business logic in UI – push heavy logic to backend when possible.
+- Use Redux Toolkit slices for local app state that needs to be shared across components.
+
+# Multi-Tenancy & Admin
+
+- Assume the current org comes from auth (`/auth/me` via RTK Query).
+- Do not allow user to send arbitrary `orgId` values; use current org from state or token.
+- Admin routes (`/admin/**`) must be gated by `globalRole` (`staff` or `superadmin`).
+- Check auth state before rendering admin-only UI.
+
+# Forms
+
+- Prefer controlled components with React Hook Form (if used in project) with `@listforge/ui` form primitives.
+- Ensure proper validation UX for required listing fields.
+- Use RTK Query mutations for form submissions.
+
+# Styling
+
+- Use Tailwind CSS for styling.
+- Follow Tailwind utility-first approach.
+- Use design tokens from `@listforge/ui` theme system when available.
+
+# Routing
+
+- Use React Router v6 with `useRoutes` or `<Routes>`.
+- Define routes in a central `router.tsx` file.
+- Protect routes with auth checks where needed.
+
+# Error Handling
+
+- Handle RTK Query errors in components using `isError` and `error` from query hooks.
+- Display user-friendly error messages.
+- Use toast notifications for success/error feedback when appropriate.

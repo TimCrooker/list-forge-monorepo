@@ -1,0 +1,57 @@
+---
+Description: Base rules for ListForge project (applies to all sub-rules)
+---
+
+# Product & Goals
+
+- This repo is **ListForge**, an AI-powered multi-marketplace listing tool.
+- Users upload item photos; the system:
+  - Extracts attributes via AI
+  - Researches comps on marketplaces
+  - Generates a **meta listing**
+  - Publishes to marketplaces (eBay, Amazon, etc.).
+- Key goals: **maximum automation**, **fast UI**, **simple but solid multi-tenancy**, and **minimal over-engineering**.
+
+# Architectural Principles
+
+- Monorepo managed by Turborepo.
+- Two main apps:
+  - `apps/listforge-api`: NestJS, TypeORM, Postgres, BullMQ (Redis).
+  - `apps/listforge-web`: React + Vite, Redux Toolkit, RTK Query.
+- Core shared packages:
+  - `@listforge/core-types`: global domain types, roles, tenancy.
+  - `@listforge/api-types`: ONLY external DTOs for the API.
+  - `@listforge/api-client`: Node client SDK for the API.
+  - `@listforge/api-rtk`: RTK Query API slice for React.
+  - `@listforge/ui`: ShadCN-wrapped UI components (no business logic).
+  - `@listforge/queue-types`: BullMQ queue names + payload types.
+  - `@listforge/ai-flows`: LangGraph/LangChain workflows (future).
+  - `@listforge/marketplace-adapters`: marketplace-specific clients (future).
+
+# Cross-Cutting Rules
+
+- **Always prefer existing packages**:
+  - Shared types from `@listforge/core-types` and `@listforge/api-types`.
+  - UI from `@listforge/ui`.
+  - API calls via `@listforge/api-rtk` in React or `@listforge/api-client` in Node.
+- Do not introduce alternative state managers, HTTP clients, ORMs, or UI libraries if an approved one exists.
+- Keep code simple, explicit, and **multi-tenant aware**.
+- When in doubt, prefer clarity over cleverness.
+- Reference `docs/ARCHITECTURE.md` for deeper design details when needed.
+
+# Multi-Tenancy Patterns
+
+- Every org-scoped model has `orgId`.
+- Never trust `orgId` from the request body; instead:
+  - Read `currentOrgId` from the JWT token or `RequestContext` (backend).
+  - Use current org from auth state (frontend).
+- All queries must be filtered by `orgId` unless explicitly global.
+- JWT contains: `userId`, `globalRole`, `currentOrgId`.
+
+# Authentication & Authorization
+
+- JWT includes `userId`, `globalRole`, `currentOrgId`.
+- `globalRole` values: `'user'`, `'staff'`, `'superadmin'`.
+- `OrgRole` values: `'owner'`, `'admin'`, `'member'`.
+- For `/admin/*` routes, require `globalRole` in `['staff', 'superadmin']`.
+- Admin UI must gate by `globalRole` check.

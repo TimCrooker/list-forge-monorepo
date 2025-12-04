@@ -1,0 +1,51 @@
+---
+globs: packages/api-client/**/*.ts
+alwaysApply: false
+---
+
+@listforge-base.mdc
+
+# Purpose
+
+- This package provides a **Node-safe client** for calling `listforge-api` from other services (CLI tools, background tasks, etc.).
+- It mirrors the endpoints and DTOs in `@listforge/api-types`.
+- Used for server-to-server communication, not browser code.
+
+# Constraints
+
+- Do not import React, browser-only APIs, or Node frameworks.
+- Keep it portable: use `fetch` or a small HTTP client (e.g., `node-fetch`, `undici`).
+- Keep dependencies lean and focused.
+- No DOM APIs, no browser globals.
+
+# Consistency
+
+- Each public method should:
+  - Use request/response DTOs from `@listforge/api-types`.
+  - Map 1:1 to an API route.
+- Reuse shared helper methods for:
+  - Authorization (JWT token handling)
+  - Error handling
+  - Base URL configuration
+  - Request/response serialization
+
+# API Surface
+
+- Provide typed methods for each API endpoint.
+- Methods should accept typed request DTOs and return typed response DTOs.
+- Handle HTTP errors and convert to appropriate exceptions or error types.
+- Support authentication via token injection.
+
+# Example Pattern
+
+```typescript
+async login(req: LoginRequest): Promise<LoginResponse> {
+  // Implementation using fetch/client
+}
+```
+
+# Error Handling
+
+- Convert HTTP errors to meaningful exceptions or error objects.
+- Preserve error details from API responses when available.
+- Handle network errors gracefully.

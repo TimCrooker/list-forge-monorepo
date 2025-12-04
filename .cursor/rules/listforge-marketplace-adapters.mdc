@@ -1,0 +1,60 @@
+---
+globs: packages/marketplace-adapters/**/*.ts
+alwaysApply: false
+---
+@listforge-base.mdc
+
+# Purpose
+
+- Implement a **unified `MarketplaceAdapter` interface** for all marketplaces.
+- Encapsulate marketplace-specific quirks behind a stable API:
+  - `searchComps`, `createListing`, `updateListing`, `parseWebhook`.
+- Normalize marketplace data into ListForge's canonical types.
+
+# Constraints
+
+- No React.
+- No direct NestJS imports (treat it as a pure library).
+- HTTP requests may use `fetch` or a small HTTP client.
+- Keep dependencies minimal and focused.
+
+# Interface Pattern
+
+- Define a common `MarketplaceAdapter` interface that all adapters implement.
+- Each marketplace (eBay, Amazon, etc.) has its own adapter implementation.
+- Adapters handle authentication, rate limiting, and API-specific details internally.
+
+# Core Methods
+
+- `searchComps(query: SearchQuery): Promise<CompResult[]>`
+- `createListing(listing: Listing): Promise<ListingResult>`
+- `updateListing(listingId: string, updates: Partial<Listing>): Promise<ListingResult>`
+- `parseWebhook(payload: unknown): WebhookEvent`
+- `getListingStatus(listingId: string): Promise<ListingStatus>`
+
+# Data Normalization
+
+- Convert marketplace-specific data formats to ListForge canonical types.
+- Handle differences in:
+  - Field names and structures
+  - Enum values and statuses
+  - Date/time formats
+  - Currency and pricing formats
+
+# Rate Limiting & Retry
+
+- Handle rate-limiting and retry behavior inside adapters, not controllers.
+- Implement exponential backoff for retries.
+- Respect marketplace-specific rate limits and quotas.
+
+# Error Handling
+
+- Convert marketplace API errors to standardized error types.
+- Preserve error details when useful for debugging.
+- Handle authentication failures and token refresh if needed.
+
+# Testing
+
+- Mock marketplace APIs in tests.
+- Test normalization logic independently.
+- Verify adapter interface compliance.

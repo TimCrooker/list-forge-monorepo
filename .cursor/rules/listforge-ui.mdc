@@ -1,0 +1,56 @@
+---
+globs: packages/ui/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+@listforge-base.mdc
+
+# Purpose
+
+- Provide a cohesive design system for ListForge: buttons, forms, tables, modals, layout components, etc.
+- Wrap ShadCN primitives with project-specific styling and defaults.
+- Export a consistent, typed component API for the web app.
+
+# Constraints
+
+- No business logic / no direct API calls.
+- Light local state for UI only (open/close state, input values).
+- No Redux or RTK Query imports here.
+- Keep components pure and reusable.
+
+# Patterns
+
+- Prefer composition over configuration-heavy components.
+- Ensure all components are fully typed and ergonomic for the app.
+- Use TypeScript interfaces for component props.
+- Export components from `src/index.ts` for easy importing.
+
+# ShadCN Integration
+
+- Wrap ShadCN UI primitives (from `@/components/ui/*`).
+- Apply ListForge-specific theming and defaults.
+- Maintain compatibility with ShadCN's component API where possible.
+- Customize styling via Tailwind classes and CSS variables.
+
+# Component Organization
+
+- Organize by category: `ui/` (primitives), `blocks/` (composite components).
+- Use Storybook stories for component documentation and testing.
+- Keep component files focused: one component per file (or related components).
+
+# Theming
+
+- Support theme switching (light/dark mode) via theme provider.
+- Use CSS variables for theme tokens.
+- Export theme configuration and utilities.
+
+# Accessibility
+
+- Ensure components are accessible (ARIA attributes, keyboard navigation).
+- Follow WCAG guidelines.
+- Test with screen readers when possible.
+
+# Examples
+
+- Primitives: `Button`, `Input`, `Dialog`, `Table`
+- Blocks: `AppShell`, `DashboardShell`, `UserProfile`, `SettingsPanel`

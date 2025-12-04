@@ -1,0 +1,54 @@
+---
+globs: packages/queue-types/**/*.ts
+alwaysApply: false
+---
+
+@listforge-base.mdc
+
+# Purpose
+
+- Define:
+  - Queue names (string constants)
+  - Job names (string literals or enums)
+  - Payload interfaces
+- Shared between `listforge-api` producers and processors.
+- Single source of truth for queue contracts.
+
+# Constraints
+
+- No BullMQ imports or logic here.
+- No NestJS – pure TypeScript types/constants.
+- No runtime queue operations, only type definitions.
+
+# Patterns
+
+- Export queue names as `const` strings: `export const QUEUE_XXX = 'queue:xxx';`
+- Define payload interfaces for each job type.
+- Use descriptive names that indicate the queue's purpose.
+- Group related job types together.
+
+# Example Structure
+
+```typescript
+export const QUEUE_AI_WORKFLOW = 'queue:ai-workflows';
+
+export interface StartWorkflowJob {
+  workflowType: 'photo-intake-v1' | 'price-refresh-v1';
+  itemId: string;
+  orgId: string;
+  userId: string;
+}
+```
+
+# Usage
+
+- Import queue names and payload types in:
+  - API services that enqueue jobs
+  - Queue processors that handle jobs
+- Never hardcode queue names or payload shapes elsewhere.
+
+# Versioning
+
+- When changing payload interfaces, consider backward compatibility.
+- Use versioned workflow types (e.g., `photo-intake-v1`, `photo-intake-v2`).
+- Document breaking changes.

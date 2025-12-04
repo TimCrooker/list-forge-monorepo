@@ -1,0 +1,72 @@
+---
+globs: apps/listforge-api/**/*.ts
+alwaysApply: false
+---
+@listforge-base.mdc
+
+# Framework & Structure
+
+- This code is NestJS. Use **modules, controllers, services, providers**.
+- Controllers must be thin: validate inputs, call services, return DTOs.
+- Business logic belongs in services, not controllers.
+- Use dependency injection via constructor injection.
+- Follow NestJS module organization: one feature per module (e.g., `UsersModule`, `OrganizationsModule`).
+
+# Types & DTOs
+
+- **Never** define external request/response DTOs inline.
+- Import all externally-visible types from `@listforge/api-types`.
+- Internal domain entities use TypeORM entities under `apps/listforge-api/src/*/entities/`.
+- DTOs in `@listforge/api-types` are the contract between API and clients.
+- Use domain types from `@listforge/core-types` for internal business logic (roles, statuses, etc.).
+
+# Multi-Tenancy
+
+- Every org-scoped model has `orgId` column.
+- Never trust `orgId` from the request body; instead:
+  - Read `currentOrgId` from the JWT token payload (available via `@Request()` decorator or custom decorator).
+  - Use a `RequestContext` service/decorator pattern if implemented.
+- All queries must be filtered by `orgId` unless explicitly global (e.g., admin endpoints).
+- Example: `this.repo.find({ where: { orgId, ...otherFilters } })`.
+
+# Auth & Roles
+
+- JWT includes `userId`, `globalRole`, `currentOrgId`.
+- Use Passport.js JWT strategy for authentication.
+- For `/admin/*` routes, require `globalRole` in `['staff', 'superadmin']`.
+- Use guards to enforce authorization (e.g., `@Roles()` decorator or custom guard).
+- Check org membership and role for org-scoped operations.
+
+# Database & TypeORM
+
+- Use TypeORM repositories and query builders.
+- Avoid raw SQL unless absolutely necessary, and keep it localized.
+- Use transactions for multi-step operations (e.g., user registration with org creation).
+- Leverage TypeORM relations for entity relationships.
+- Use migrations for schema changes (not `synchronize: true` in production).
+
+# Queues & BullMQ
+
+- Use BullMQ via Nest's `@nestjs/bullmq` integration.
+- Queue names and payload types **must** come from `@listforge/queue-types`.
+- Do not hardcode queue names or inline payload shapes.
+- Example: Import `QUEUE_AI_WORKFLOW` and `StartWorkflowJob` from `@listforge/queue-types`.
+- Keep queue processors in dedicated service classes.
+
+# Error Handling
+
+- Use NestJS built-in exceptions (`BadRequestException`, `UnauthorizedException`, `NotFoundException`, etc.).
+- Return consistent error response shapes.
+- Log errors appropriately for debugging without exposing sensitive data.
+
+# AI Workflows
+
+- Orchestration of LangGraph flows should live in dedicated services.
+- Side effects (DB writes, HTTP calls) belong in services/tools, not inside raw LLM prompts.
+- Keep AI workflow logic separate from HTTP controllers.
+
+# Testing
+
+- Write unit tests for services.
+- Write integration tests for controllers.
+- Mock external dependencies (database, queues, AI services).

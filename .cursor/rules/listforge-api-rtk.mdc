@@ -1,0 +1,68 @@
+---
+globs: packages/api-rtk/**/*.ts
+alwaysApply: false
+---
+
+@listforge-base.mdc
+
+# Purpose
+
+- Exposes a single or few `createApi` slices for `listforge-api`.
+- Provides generated hooks for the React app (`listforge-web`).
+- This is the data layer for all API communication in React.
+
+# Constraints
+
+- No React components here.
+- Only data-layer code: endpoint definitions, tags, baseQuery, etc.
+- Keep it focused on API communication only.
+
+# DTOs & Endpoints
+
+- All endpoint input/output types must come from `@listforge/api-types`.
+- When adding a new API endpoint:
+  1. Add DTOs in `@listforge/api-types`.
+  2. Add corresponding endpoint here.
+  3. Use consistent naming: `useCreateXxxMutation`, `useGetXxxQuery`, etc.
+
+# Naming Conventions
+
+- Query hooks: `useGetXxxQuery`, `useListXxxQuery`
+- Mutation hooks: `useCreateXxxMutation`, `useUpdateXxxMutation`, `useDeleteXxxMutation`
+- Endpoint names: `getXxx`, `listXxx`, `createXxx`, `updateXxx`, `deleteXxx`
+
+# Tag Management
+
+- Use RTK Query tags for cache invalidation.
+- Tag types: `'User'`, `'Org'`, `'OrgMember'`, etc.
+- Use `providesTags` for queries and `invalidatesTags` for mutations.
+- Invalidate related tags when data changes (e.g., updating a user invalidates `['User']`).
+
+# Base Query Configuration
+
+- Configure `baseQuery` with:
+  - Base URL from environment variable (`VITE_API_URL` in browser).
+  - Authorization header from `localStorage.getItem('auth_token')`.
+- Handle token refresh/expiration if needed.
+
+# Example Pattern
+
+```typescript
+getUser: builder.query<UserDto, string>({
+  query: (userId) => `/users/${userId}`,
+  providesTags: (result, error, userId) => [{ type: 'User', id: userId }],
+}),
+updateUser: builder.mutation<UpdateUserResponse, { userId: string; data: UpdateUserRequest }>({
+  query: ({ userId, data }) => ({
+    url: `/users/${userId}`,
+    method: 'PATCH',
+    body: data,
+  }),
+  invalidatesTags: (result, error, { userId }) => [{ type: 'User', id: userId }],
+}),
+```
+
+# Export Hooks
+
+- Export all generated hooks from the main entry point.
+- Use destructured exports: `export const { useGetUserQuery, useUpdateUserMutation } = api;`
