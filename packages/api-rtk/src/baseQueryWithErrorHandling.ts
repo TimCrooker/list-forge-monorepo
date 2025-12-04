@@ -1,52 +1,21 @@
+/// <reference types="vite/client" />
 import { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolkit/query/react';
 import { fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { ApiErrorResponse, ErrorMessages } from '@listforge/api-types';
 import { toast } from 'sonner';
 
 /**
- * Vite import.meta.env type for build-time environment variables
+ * API Base URL
+ * 
+ * Set via VITE_API_URL environment variable (replaced at build time by Vite).
+ * - Development: defaults to http://localhost:3001
+ * - Production/Staging/Preview: set VITE_API_URL in your CI/CD environment
+ * 
+ * Example .env files:
+ *   .env.development: VITE_API_URL=http://localhost:3001
+ *   .env.production:  VITE_API_URL=https://api.your-domain.com
  */
-interface ViteImportMeta {
-  env?: {
-    VITE_API_URL?: string;
-  };
-}
-
-const getBaseUrl = () => {
-  if (typeof window !== 'undefined') {
-    // Browser environment - check for Vite env var
-    const viteImport = import.meta as unknown as ViteImportMeta;
-    const env = viteImport.env?.VITE_API_URL;
-
-    if (env) {
-      return env;
-    }
-
-    // Check if we're in production (not localhost)
-    const isProduction = window.location.hostname !== 'localhost' &&
-                        window.location.hostname !== '127.0.0.1';
-
-    if (isProduction) {
-      // VITE_API_URL MUST be set for each environment (production, staging, preview, etc.)
-      // This is a build-time variable - set it in Vercel's Environment Variables
-      console.error(
-        '❌ VITE_API_URL is not set!\n' +
-        'This environment variable must be configured in Vercel for each environment:\n' +
-        '  - Production: https://api.your-domain.com\n' +
-        '  - Staging: https://api-staging.your-domain.com\n' +
-        '  - Preview: https://api-preview.your-domain.com\n' +
-        'Set this in Vercel Dashboard → Settings → Environment Variables'
-      );
-      // Return empty string - API calls will fail but with a clear error
-      return '';
-    }
-
-    // Development fallback
-    return 'http://localhost:3001';
-  }
-  // Node environment (SSR)
-  return process.env.API_URL || 'http://localhost:3001';
-};
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 const getToken = () => {
   if (typeof window !== 'undefined') {
@@ -56,7 +25,7 @@ const getToken = () => {
 };
 
 const baseQuery = fetchBaseQuery({
-  baseUrl: `${getBaseUrl()}/api`,
+  baseUrl: `${API_BASE_URL}/api`,
   prepareHeaders: (headers) => {
     const token = getToken();
     if (token) {
