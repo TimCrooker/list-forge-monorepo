@@ -61,15 +61,27 @@ function parseRedisUrl(url: string): {
     TypeOrmModule.forRoot({
       type: 'postgres',
       ...(process.env.DATABASE_URL
-        ? {
-            url: process.env.DATABASE_URL,
-            // SSL configuration for production databases (Supabase, Neon, etc.)
-            ssl: process.env.NODE_ENV === 'production' || process.env.DB_SSL === 'true'
-              ? {
-                  rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false',
-                }
-              : false,
-          }
+        ? (() => {
+            // Parse DATABASE_URL to extract connection params
+            const url = new URL(process.env.DATABASE_URL);
+            const isProduction = process.env.NODE_ENV === 'production';
+            const sslEnabled = process.env.DB_SSL !== 'false' && (isProduction || process.env.DB_SSL === 'true');
+
+            return {
+              host: url.hostname,
+              port: parseInt(url.port || '5432', 10),
+              username: url.username,
+              password: url.password,
+              database: url.pathname.slice(1), // Remove leading '/'
+              // SSL configuration - required for Supabase and most cloud providers
+              ssl: sslEnabled
+                ? {
+                    // For Supabase and similar services, we may need to accept their certificates
+                    rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true',
+                  }
+                : false,
+            };
+          })()
         : {
             host: process.env.DB_HOST || 'localhost',
             port: parseInt(process.env.DB_PORT || '5432', 10),
