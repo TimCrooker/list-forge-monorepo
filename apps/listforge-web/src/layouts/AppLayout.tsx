@@ -53,8 +53,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
     },
   ];
 
-  // Add admin navigation if user is superadmin
-  if (user?.globalRole === 'superadmin') {
+  // Add admin navigation if user is superadmin or staff
+  if (user?.globalRole === 'superadmin' || user?.globalRole === 'staff') {
     navGroups.push({
       id: 'admin',
       label: 'Administration',

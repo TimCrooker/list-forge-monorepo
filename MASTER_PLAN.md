@@ -44,13 +44,14 @@ ListForge is a multi-tenant, AI-driven tool that allows resellers to:
      - Admin endpoints (`/admin/*`).
 
 3. **AI & Orchestration (inside `listforge-api`)**
-   - Uses LangChain / LangGraph (via `@listforge/ai-flows`) to:
+   - Uses direct OpenAI API calls (via `OpenAIService`) to:
      - Analyze photos (vision).
      - Research comps (eBay/Amazon).
      - Generate pricing recommendations.
      - Generate titles/descriptions per marketplace.
 
    - Steps are invoked via BullMQ jobs (in app).
+   - **Note:** Originally planned to use LangChain/LangGraph via `@listforge/ai-flows` package, but simplified to direct OpenAI service calls for easier debugging and fewer dependencies. LangGraph can be added later if needed for more complex agentic workflows.
 
 4. **Marketplace Integrations**
    - Implemented in `@listforge/marketplace-adapters`.
@@ -87,7 +88,6 @@ listforge/
     api-client/                  # @listforge/api-client  - Typed API client (Node)
     api-rtk/                     # @listforge/api-rtk     - RTK Query slice
     queue-types/                 # @listforge/queue-types - BullMQ job names & payloads
-    ai-flows/                    # @listforge/ai-flows    - LangGraph/LangChain flows & tools
     marketplace-adapters/        # @listforge/marketplace-adapters - eBay, Amazon, etc.
 ```
 
@@ -201,8 +201,8 @@ Key entities:
 
 - **AiWorkflowsModule**
   - BullMQ queue registration & processors.
-  - Orchestrator that runs LangGraph flows.
-  - Entry points for AI job handling (e.g. “photo-intake-v1”).
+  - Workflow services that execute AI pipelines (e.g. `PhotoIntakeWorkflow`).
+  - Entry points for AI job handling (e.g. "photo-intake-v1").
 
 - **AdminModule**
   - Admin-only controllers under `/admin/*`.
@@ -305,32 +305,33 @@ export interface StartWorkflowJob {
 }
 ```
 
-### 6.3 LangGraph / LangChain Flow
+### 6.3 AI Workflow Implementation
 
 **Photo Intake Workflow (`photo-intake-v1`):**
 
-1. **vision_extract**
+Implemented as a NestJS service (`PhotoIntakeWorkflow`) that executes sequentially:
+
+1. **Vision Extract**
    - Input: photos.
-   - Uses a vision model to identify category, brand, model; runs OCR on labels.
+   - Uses OpenAI Vision API to identify category, brand, model; runs OCR on labels.
    - Outputs: `baseAttributes`.
 
-2. **normalize_attributes**
+2. **Normalize Attributes**
    - Normalizes free-text attributes into canonical enums where possible (condition, categories, brand names).
 
-3. **search_comps**
+3. **Search Comps**
    - Uses `@listforge/marketplace-adapters`:
-     - `searchEbaySold(baseAttributes)`
-     - `searchEbayActive(baseAttributes)`
-     - `searchAmazonListings(baseAttributes)`
+     - `searchComps()` with `soldOnly: true` for sold listings
+     - `searchComps()` with `soldOnly: false` for active listings
 
    - Outputs: `ResearchSnapshot` (normalized comps with pricing statistics).
 
-4. **price_recommendation**
-   - Uses heuristics and/or an LLM:
-     - Derive `priceSuggested`, `priceMin`, `priceMax`.
+4. **Price Recommendation**
+   - Uses heuristics based on comps data:
+     - Derive `priceSuggested`, `priceMin`, `priceMax` from sold/active listing medians.
 
-5. **generate_meta_listing**
-   - LLM generates:
+5. **Generate Meta Listing**
+   - OpenAI LLM generates:
      - `generatedTitle`
      - `generatedDescription`
      - `bulletPoints` (for Amazon)
@@ -338,16 +339,18 @@ export interface StartWorkflowJob {
 
    - Combines attributes + pricing + research summary.
 
-6. **validate_and_finalize**
+6. **Validate and Finalize**
    - Checks required fields per marketplace capability.
    - Marks `MetaListing.aiStatus` as:
      - `complete` or
      - `needs_review` (with list of missing fields).
 
-7. **persist_result**
+7. **Persist Result**
    - Updates `Item`, `MetaListing`, `WorkflowRun` tables.
 
 Front-end then polls or subscribes via RTK Query to see when the meta listing is ready.
+
+**Note:** Originally planned to use LangGraph/LangChain for a more sophisticated graph-based workflow, but simplified to a sequential service class for faster iteration and easier debugging. Can be refactored to LangGraph later if complex branching/agentic behavior is needed.
 
 ---
 
@@ -593,33 +596,35 @@ Admin sits entirely in `listforge-web`, using RTK Query hooks from `@listforge/a
 
 **Phase 1 – Skeleton & Core Tenancy**
 
-- Turborepo structure & base configs.
-- `listforge-api` with:
-  - Auth, Users, Organizations, simple multi-tenancy.
+- [x] Turborepo structure & base configs.
+- [x] `listforge-api` with:
+  - [x] Auth, Users, Organizations, simple multi-tenancy.
 
-- `listforge-web` with login, org onboarding, and basic layout.
-- `@listforge/api-types`, `@listforge/api-rtk`, `@listforge/ui` v1.
+- [x] `listforge-web` with login, org onboarding, and basic layout.
+- [x] `@listforge/api-types`, `@listforge/api-rtk`, `@listforge/ui` v1.
 
 **Phase 2 – Items & AI MVP**
 
-- `Item`, `ItemPhoto`, `MetaListing` models.
-- Photo upload → `POST /items`.
-- BullMQ integration + simple AI pipeline (even if mocked initially).
-- Basic item detail page showing AI result.
+- [x] `Item`, `ItemPhoto`, `MetaListing` models.
+- [x] Photo upload → `POST /items`.
+- [x] BullMQ integration + AI pipeline (using direct OpenAI service, not LangGraph).
+- [x] Basic item detail page showing AI result.
 
 **Phase 3 – Marketplace Integrations**
 
-- eBay integration via `@listforge/marketplace-adapters`.
-- Marketplace connection setup UI.
-- Publish flow for eBay only.
-- Admin dashboard with simple metrics.
+- [x] eBay integration via `@listforge/marketplace-adapters`.
+- [x] Marketplace connection setup UI.
+- [x] Publish flow for eBay only.
+- [x] Admin dashboard with simple metrics.
 
 **Phase 4 – Multi-Marketplace & Enhanced Admin**
 
-- Add Amazon adapter.
-- Multi-marketplace publish & status sync.
-- Flesh out admin tables for users/orgs/marketplace accounts.
-- System health dashboard from queues + DB.
+- [ ] Add Amazon adapter.
+- [ ] Multi-marketplace publish & status sync.
+- [ ] Enhanced admin: user detail with org memberships.
+- [ ] Enhanced admin: org detail with members, status toggle.
+- [ ] Enhanced admin: marketplace accounts cross-org view.
+- [ ] System health dashboard improvements.
 
 ---
 

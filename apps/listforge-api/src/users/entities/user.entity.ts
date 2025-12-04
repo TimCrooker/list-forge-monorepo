@@ -29,6 +29,9 @@ export class User {
   })
   globalRole: GlobalRole;
 
+  @Column({ default: false })
+  disabled: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

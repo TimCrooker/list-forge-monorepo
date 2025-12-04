@@ -62,6 +62,7 @@ function AdminDashboard() {
           value: metricsData.counts.marketplaceAccounts,
           description: 'Connected accounts',
           icon: <ShoppingCart className="h-4 w-4" />,
+          href: '/admin/marketplace-accounts',
         },
       ]
     : [];
@@ -141,6 +142,19 @@ function AdminDashboard() {
                 </p>
                 <Button variant="outline" onClick={() => navigate({ to: '/admin/orgs' })}>
                   View Organizations →
+                </Button>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Marketplace Accounts</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Manage marketplace connections across all organizations
+                </p>
+                <Button variant="outline" onClick={() => navigate({ to: '/admin/marketplace-accounts' })}>
+                  View Accounts →
                 </Button>
               </CardContent>
             </Card>

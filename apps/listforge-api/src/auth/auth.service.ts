@@ -34,7 +34,7 @@ export class AuthService {
 
   async validateUser(email: string, password: string): Promise<User | null> {
     const user = await this.userRepo.findOne({ where: { email } });
-    if (user && (await bcrypt.compare(password, user.passwordHash))) {
+    if (user && !user.disabled && (await bcrypt.compare(password, user.passwordHash))) {
       return user;
     }
     return null;

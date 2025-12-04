@@ -1,5 +1,6 @@
 import { GlobalRole } from '@listforge/core-types';
 import { UserDto } from './auth';
+import { AdminUserDto } from './admin';
 
 export interface UpdateUserRequest {
   name?: string;
@@ -15,6 +16,6 @@ export interface AdminUpdateUserRequest {
 }
 
 export interface AdminUpdateUserResponse {
-  user: UserDto;
+  user: AdminUserDto;
 }
 

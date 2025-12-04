@@ -11,6 +11,17 @@ import {
   AdminListUsersResponse,
   AdminListOrgsResponse,
   SystemMetricsResponse,
+  AdminUserDetailDto,
+  AdminUserOrgMembershipDto,
+  AdminGetUserDetailResponse,
+  AdminOrgDetailDto,
+  AdminOrgMemberDto,
+  AdminGetOrgDetailResponse,
+  AdminUpdateOrgStatusRequest,
+  AdminUpdateOrgStatusResponse,
+  AdminMarketplaceAccountDto,
+  AdminListMarketplaceAccountsQuery,
+  AdminListMarketplaceAccountsResponse,
 } from '@listforge/api-types';
 import { OrgStatus } from '@listforge/core-types';
 import { User } from '../users/entities/user.entity';
@@ -57,7 +68,87 @@ export class AdminService {
         globalRole: u.globalRole,
         createdAt: u.createdAt.toISOString(),
         lastLoginAt: u.lastLoginAt?.toISOString() || null,
+        disabled: u.disabled || false,
       })),
+    };
+  }
+
+  async getUserDetail(userId: string): Promise<AdminGetUserDetailResponse> {
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      relations: ['memberships', 'memberships.organization'],
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const memberships: AdminUserOrgMembershipDto[] = user.memberships.map((membership) => {
+      const org = membership.organization;
+      return {
+        orgId: membership.orgId,
+        orgName: org?.name || 'Unknown',
+        role: membership.role,
+        orgStatus: (org?.status as OrgStatus) || 'active',
+        joinedAt: org?.createdAt?.toISOString() || new Date().toISOString(),
+      };
+    });
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        globalRole: user.globalRole,
+        createdAt: user.createdAt.toISOString(),
+        lastLoginAt: user.lastLoginAt?.toISOString() || null,
+        disabled: user.disabled || false,
+        orgMemberships: memberships,
+      },
+    };
+  }
+
+  async disableUser(userId: string): Promise<AdminUpdateUserResponse> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    user.disabled = true;
+    const updated = await this.userRepo.save(user);
+
+    return {
+      user: {
+        id: updated.id,
+        email: updated.email,
+        name: updated.name,
+        globalRole: updated.globalRole,
+        createdAt: updated.createdAt.toISOString(),
+        lastLoginAt: updated.lastLoginAt?.toISOString() || null,
+        disabled: updated.disabled || false,
+      },
+    };
+  }
+
+  async enableUser(userId: string): Promise<AdminUpdateUserResponse> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    user.disabled = false;
+    const updated = await this.userRepo.save(user);
+
+    return {
+      user: {
+        id: updated.id,
+        email: updated.email,
+        name: updated.name,
+        globalRole: updated.globalRole,
+        createdAt: updated.createdAt.toISOString(),
+        lastLoginAt: updated.lastLoginAt?.toISOString() || null,
+        disabled: updated.disabled || false,
+      },
     };
   }
 
@@ -107,8 +198,132 @@ export class AdminService {
         globalRole: updated.globalRole,
         createdAt: updated.createdAt.toISOString(),
         lastLoginAt: updated.lastLoginAt?.toISOString() || null,
+        disabled: updated.disabled || false,
       },
     };
+  }
+
+  async getOrgDetail(orgId: string): Promise<AdminGetOrgDetailResponse> {
+    const org = await this.orgRepo.findOne({
+      where: { id: orgId },
+      relations: ['members', 'members.user'],
+    });
+
+    if (!org) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    const memberCount = await this.userOrgRepo.count({
+      where: { orgId: org.id },
+    });
+
+    const itemCount = await this.itemRepo.count({
+      where: { orgId: org.id },
+    });
+
+    const marketplaceAccountCount = await this.marketplaceAccountRepo.count({
+      where: { orgId: org.id },
+    });
+
+    const members: AdminOrgMemberDto[] = org.members.map((membership) => {
+      const user = membership.user;
+      return {
+        userId: membership.userId,
+        userName: user?.name || 'Unknown',
+        userEmail: user?.email || 'Unknown',
+        role: membership.role,
+        joinedAt: org.createdAt.toISOString(),
+      };
+    });
+
+    return {
+      org: {
+        id: org.id,
+        name: org.name,
+        status: org.status as OrgStatus,
+        createdAt: org.createdAt.toISOString(),
+        memberCount,
+        itemCount,
+        marketplaceAccountCount,
+        members,
+      },
+    };
+  }
+
+  async updateOrgStatus(
+    orgId: string,
+    data: AdminUpdateOrgStatusRequest,
+  ): Promise<AdminUpdateOrgStatusResponse> {
+    const org = await this.orgRepo.findOne({ where: { id: orgId } });
+    if (!org) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    org.status = data.status;
+    await this.orgRepo.save(org);
+
+    return this.getOrgDetail(orgId);
+  }
+
+  async listMarketplaceAccounts(
+    query: AdminListMarketplaceAccountsQuery,
+  ): Promise<AdminListMarketplaceAccountsResponse> {
+    const queryBuilder = this.marketplaceAccountRepo
+      .createQueryBuilder('account')
+      .leftJoinAndSelect('account.organization', 'org')
+      .leftJoinAndSelect('account.user', 'user');
+
+    if (query.marketplace) {
+      queryBuilder.andWhere('account.marketplace = :marketplace', {
+        marketplace: query.marketplace,
+      });
+    }
+
+    if (query.status) {
+      queryBuilder.andWhere('account.status = :status', {
+        status: query.status,
+      });
+    }
+
+    if (query.orgId) {
+      queryBuilder.andWhere('account.orgId = :orgId', { orgId: query.orgId });
+    }
+
+    const accounts = await queryBuilder
+      .orderBy('account.createdAt', 'DESC')
+      .getMany();
+
+    return {
+      accounts: accounts.map((acc) => ({
+        id: acc.id,
+        orgId: acc.orgId,
+        orgName: acc.organization?.name || 'Unknown',
+        userId: acc.userId,
+        userName: acc.user?.name || 'Unknown',
+        marketplace: acc.marketplace,
+        status: acc.status,
+        remoteAccountId: acc.remoteAccountId,
+        createdAt: acc.createdAt.toISOString(),
+        updatedAt: acc.updatedAt.toISOString(),
+      })),
+    };
+  }
+
+  async disableMarketplaceAccount(
+    accountId: string,
+  ): Promise<{ success: boolean }> {
+    const account = await this.marketplaceAccountRepo.findOne({
+      where: { id: accountId },
+    });
+
+    if (!account) {
+      throw new NotFoundException('Marketplace account not found');
+    }
+
+    account.status = 'revoked';
+    await this.marketplaceAccountRepo.save(account);
+
+    return { success: true };
   }
 
   async getSystemMetrics(): Promise<SystemMetricsResponse> {

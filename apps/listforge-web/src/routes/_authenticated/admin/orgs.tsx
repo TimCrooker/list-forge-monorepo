@@ -1,4 +1,4 @@
-import { createFileRoute, Navigate } from '@tanstack/react-router';
+import { createFileRoute, Navigate, useNavigate } from '@tanstack/react-router';
 import { useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/store/store';
@@ -13,6 +13,7 @@ export const Route = createFileRoute('/_authenticated/admin/orgs')({
 });
 
 function AdminOrgsPage() {
+  const navigate = useNavigate();
   const user = useSelector((state: RootState) => state.auth.user);
   const { data, isLoading } = useListOrgsAdminQuery();
 
@@ -29,7 +30,12 @@ function AdminOrgsPage() {
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
             <Building2 className="h-4 w-4 text-muted-foreground" />
-            <span className="font-medium">{row.original.name}</span>
+            <button
+              onClick={() => navigate({ to: '/admin/orgs/$id', params: { id: row.original.id } })}
+              className="font-medium hover:underline text-left"
+            >
+              {row.original.name}
+            </button>
           </div>
         ),
       },
@@ -64,7 +70,7 @@ function AdminOrgsPage() {
           new Date(row.original.createdAt).toLocaleDateString(),
       },
     ],
-    []
+    [navigate]
   );
 
   return (

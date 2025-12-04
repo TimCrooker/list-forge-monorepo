@@ -33,7 +33,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       where: { id: payload.userId },
     });
 
-    if (!user) {
+    if (!user || user.disabled) {
       throw new UnauthorizedException();
     }
 

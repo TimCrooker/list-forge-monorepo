@@ -1,4 +1,4 @@
-import { createFileRoute, Navigate } from '@tanstack/react-router';
+import { createFileRoute, Navigate, useNavigate } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/store/store';
@@ -15,6 +15,7 @@ export const Route = createFileRoute('/_authenticated/admin/users')({
 });
 
 function AdminUsersPage() {
+  const navigate = useNavigate();
   const user = useSelector((state: RootState) => state.auth.user);
   const { data, isLoading } = useListUsersQuery();
   const [updateUser] = useUpdateUserAdminMutation();
@@ -47,9 +48,23 @@ function AdminUsersPage() {
         header: 'Name',
         cell: ({ row }) => (
           <div>
-            <div className="font-medium">{row.original.name}</div>
+            <button
+              onClick={() => navigate({ to: '/admin/users/$id', params: { id: row.original.id } })}
+              className="font-medium hover:underline text-left"
+            >
+              {row.original.name}
+            </button>
             <div className="text-sm text-muted-foreground">{row.original.email}</div>
           </div>
+        ),
+      },
+      {
+        accessorKey: 'disabled',
+        header: 'Status',
+        cell: ({ row }) => (
+          <Badge variant={row.original.disabled ? 'destructive' : 'default'}>
+            {row.original.disabled ? 'Disabled' : 'Active'}
+          </Badge>
         ),
       },
       {
@@ -132,7 +147,7 @@ function AdminUsersPage() {
         },
       },
     ],
-    [editingUserId, newRole, updateUser]
+    [editingUserId, newRole, updateUser, navigate]
   );
 
   return (

@@ -20,6 +20,12 @@ import {
   AdminUpdateUserResponse,
   AdminListUsersResponse,
   AdminListOrgsResponse,
+  AdminGetUserDetailResponse,
+  AdminGetOrgDetailResponse,
+  AdminUpdateOrgStatusRequest,
+  AdminUpdateOrgStatusResponse,
+  AdminListMarketplaceAccountsQuery,
+  AdminListMarketplaceAccountsResponse,
   CreateItemResponse,
   ListItemsResponse,
   GetItemResponse,
@@ -127,9 +133,29 @@ export const api = createApi({
       query: () => '/admin/users',
       providesTags: ['User'],
     }),
-    listOrgsAdmin: builder.query<AdminListOrgsResponse, void>({
-      query: () => '/admin/orgs',
-      providesTags: ['Org'],
+    getUserAdmin: builder.query<AdminGetUserDetailResponse, string>({
+      query: (userId) => `/admin/users/${userId}`,
+      providesTags: (result, error, userId) => [{ type: 'User', id: userId }],
+    }),
+    disableUser: builder.mutation<AdminUpdateUserResponse, string>({
+      query: (userId) => ({
+        url: `/admin/users/${userId}/disable`,
+        method: 'POST',
+      }),
+      invalidatesTags: (result, error, userId) => [
+        { type: 'User', id: userId },
+        'User',
+      ],
+    }),
+    enableUser: builder.mutation<AdminUpdateUserResponse, string>({
+      query: (userId) => ({
+        url: `/admin/users/${userId}/enable`,
+        method: 'POST',
+      }),
+      invalidatesTags: (result, error, userId) => [
+        { type: 'User', id: userId },
+        'User',
+      ],
     }),
     updateUserAdmin: builder.mutation<
       AdminUpdateUserResponse,
@@ -140,7 +166,49 @@ export const api = createApi({
         method: 'PATCH',
         body: data,
       }),
-      invalidatesTags: ['User'],
+      invalidatesTags: (result, error, { userId }) => [
+        { type: 'User', id: userId },
+        'User',
+      ],
+    }),
+    listOrgsAdmin: builder.query<AdminListOrgsResponse, void>({
+      query: () => '/admin/orgs',
+      providesTags: ['Org'],
+    }),
+    getOrgAdmin: builder.query<AdminGetOrgDetailResponse, string>({
+      query: (orgId) => `/admin/orgs/${orgId}`,
+      providesTags: (result, error, orgId) => [{ type: 'Org', id: orgId }],
+    }),
+    updateOrgStatus: builder.mutation<
+      AdminUpdateOrgStatusResponse,
+      { orgId: string; data: AdminUpdateOrgStatusRequest }
+    >({
+      query: ({ orgId, data }) => ({
+        url: `/admin/orgs/${orgId}/status`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: (result, error, { orgId }) => [
+        { type: 'Org', id: orgId },
+        'Org',
+      ],
+    }),
+    listMarketplaceAccountsAdmin: builder.query<
+      AdminListMarketplaceAccountsResponse,
+      AdminListMarketplaceAccountsQuery | void
+    >({
+      query: (params = {}) => ({
+        url: '/admin/marketplace-accounts',
+        params: params as Record<string, string>,
+      }),
+      providesTags: ['MarketplaceAccount'],
+    }),
+    disableMarketplaceAccount: builder.mutation<{ success: boolean }, string>({
+      query: (accountId) => ({
+        url: `/admin/marketplace-accounts/${accountId}/disable`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['MarketplaceAccount'],
     }),
 
     // Item endpoints
@@ -248,8 +316,15 @@ export const {
   useAddOrgMemberMutation,
   useUpdateOrgMemberMutation,
   useListUsersQuery,
-  useListOrgsAdminQuery,
+  useGetUserAdminQuery,
+  useDisableUserMutation,
+  useEnableUserMutation,
   useUpdateUserAdminMutation,
+  useListOrgsAdminQuery,
+  useGetOrgAdminQuery,
+  useUpdateOrgStatusMutation,
+  useListMarketplaceAccountsAdminQuery,
+  useDisableMarketplaceAccountMutation,
   useCreateItemMutation,
   useListItemsQuery,
   useGetItemQuery,
