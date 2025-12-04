@@ -6,11 +6,11 @@ import { toast } from 'sonner';
 
 /**
  * API Base URL
- * 
+ *
  * Set via VITE_API_URL environment variable (replaced at build time by Vite).
  * - Development: defaults to http://localhost:3001
  * - Production/Staging/Preview: set VITE_API_URL in your CI/CD environment
- * 
+ *
  * Example .env files:
  *   .env.development: VITE_API_URL=http://localhost:3001
  *   .env.production:  VITE_API_URL=https://api.your-domain.com
