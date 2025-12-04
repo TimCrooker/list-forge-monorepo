@@ -7,7 +7,11 @@ import {
   OneToOne,
   JoinColumn,
 } from 'typeorm';
-import { MetaListingAiStatus } from '@listforge/core-types';
+import {
+  MetaListingAiStatus,
+  MetaListingAttributes,
+  ShippingOptions,
+} from '@listforge/core-types';
 import { Item } from '../../items/entities/item.entity';
 
 @Entity('meta_listings')
@@ -39,7 +43,7 @@ export class MetaListing {
   model: string | null;
 
   @Column({ type: 'jsonb', nullable: true })
-  attributes: Record<string, any> | null;
+  attributes: MetaListingAttributes | null;
 
   @Column({ nullable: true })
   generatedTitle: string | null;
@@ -60,7 +64,7 @@ export class MetaListing {
   priceMax: number | null;
 
   @Column({ type: 'jsonb', nullable: true })
-  shippingOptions: Record<string, any> | null;
+  shippingOptions: ShippingOptions | null;
 
   @Column({ type: 'jsonb', nullable: true })
   missingFields: string[] | null;

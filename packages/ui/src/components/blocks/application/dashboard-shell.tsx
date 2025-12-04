@@ -370,8 +370,8 @@ export const DashboardLayout = ({
             onSearch={onSearch}
             onThemeChange={onThemeChange}
           />
-          <main className="flex-1 overflow-y-auto bg-muted/10 w-full">
-            <ScrollArea className="h-full w-full">{children}</ScrollArea>
+          <main className="flex-1 overflow-y-auto bg-muted/10 w-full max-w-none">
+            <ScrollArea className="h-full w-full max-w-none">{children}</ScrollArea>
           </main>
         </div>
       </div>

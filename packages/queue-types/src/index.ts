@@ -7,3 +7,12 @@ export interface StartWorkflowJob {
   userId: string;
 }
 
+export const QUEUE_MARKETPLACE_PUBLISH = 'queue-marketplace-publish';
+
+export interface PublishListingJob {
+  metaListingId: string;
+  marketplaceAccountId: string;
+  orgId: string;
+  userId: string;
+}
+

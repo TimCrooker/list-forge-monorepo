@@ -30,5 +30,10 @@ export class AdminController {
   ): Promise<AdminUpdateUserResponse> {
     return this.adminService.updateUser(id, body);
   }
+
+  @Get('system/metrics')
+  async getSystemMetrics() {
+    return this.adminService.getSystemMetrics();
+  }
 }
 

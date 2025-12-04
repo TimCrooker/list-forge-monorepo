@@ -1,8 +1,7 @@
 ---
-globs: packages/config/**/*.{js,json,ts}
+globs: packages/config/**/*
 alwaysApply: false
 ---
-
 @listforge-base.mdc
 
 # Purpose

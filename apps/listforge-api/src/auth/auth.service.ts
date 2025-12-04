@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -81,7 +81,7 @@ export class AuthService {
         where: { email: req.email },
       });
       if (existingUser) {
-        throw new Error('User already exists');
+        throw new ConflictException('An account with this email already exists');
       }
 
       // Create user

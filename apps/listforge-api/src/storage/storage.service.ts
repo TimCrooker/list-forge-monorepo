@@ -1,20 +1,25 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { put, del } from '@vercel/blob';
 
 @Injectable()
 export class StorageService {
+  private readonly logger = new Logger(StorageService.name);
   private readonly token: string;
 
   constructor() {
     this.token = process.env.BLOB_READ_WRITE_TOKEN || '';
     if (!this.token) {
-      console.warn('BLOB_READ_WRITE_TOKEN not set - storage operations will fail');
+      this.logger.warn('BLOB_READ_WRITE_TOKEN not set - storage operations will fail');
     }
   }
 
   async uploadPhoto(file: Buffer, filename: string): Promise<string> {
     if (!this.token) {
-      throw new Error('Blob storage token not configured');
+      throw new ServiceUnavailableException('File storage is not configured. Please contact support.');
     }
 
     const blob = await put(filename, file as any, {
@@ -27,14 +32,14 @@ export class StorageService {
 
   async deletePhoto(url: string): Promise<void> {
     if (!this.token) {
-      throw new Error('Blob storage token not configured');
+      throw new ServiceUnavailableException('File storage is not configured. Please contact support.');
     }
 
     try {
       await del(url, { token: this.token });
     } catch (error) {
       // Log but don't throw - deletion failures shouldn't break the flow
-      console.error(`Failed to delete blob ${url}:`, error);
+      this.logger.error(`Failed to delete blob ${url}:`, error);
     }
   }
 

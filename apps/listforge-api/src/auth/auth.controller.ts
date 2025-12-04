@@ -4,7 +4,7 @@ import {
   Get,
   Body,
   UseGuards,
-  Request,
+  Req,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import {
@@ -18,6 +18,10 @@ import {
 } from '@listforge/api-types';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import {
+  AuthenticatedRequest,
+  LocalAuthenticatedRequest,
+} from '../common/interfaces/authenticated-request.interface';
 
 @Controller('auth')
 export class AuthController {
@@ -30,22 +34,21 @@ export class AuthController {
 
   @UseGuards(AuthGuard('local'))
   @Post('login')
-  async login(@Request() req): Promise<LoginResponse> {
+  async login(@Req() req: LocalAuthenticatedRequest): Promise<LoginResponse> {
     // req.user is already validated by LocalStrategy
-    const user = req.user;
-    return this.authService.loginWithUser(user);
+    return this.authService.loginWithUser(req.user);
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('me')
-  async me(@Request() req): Promise<MeResponse> {
+  async me(@Req() req: AuthenticatedRequest): Promise<MeResponse> {
     return this.authService.me(req.user.userId, req.user.currentOrgId);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('switch-org')
   async switchOrg(
-    @Request() req,
+    @Req() req: AuthenticatedRequest,
     @Body() body: SwitchOrgRequest,
   ): Promise<SwitchOrgResponse> {
     return this.authService.switchOrg(req.user.userId, body);

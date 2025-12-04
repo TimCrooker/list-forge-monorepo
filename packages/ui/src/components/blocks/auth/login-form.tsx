@@ -165,6 +165,7 @@ export const LoginForm = ({
                       )}
                       <Input
                         {...field}
+                        autoComplete={fieldConfig.type === 'email' ? 'email' : 'username'}
                         className={fieldConfig.icon ? 'pl-9' : ''}
                         disabled={loading}
                         placeholder={fieldConfig.placeholder}
@@ -191,6 +192,7 @@ export const LoginForm = ({
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
                         {...field}
+                        autoComplete="current-password"
                         className="pl-9 pr-9"
                         disabled={loading}
                         placeholder={passwordConfig.placeholder || 'Enter your password'}

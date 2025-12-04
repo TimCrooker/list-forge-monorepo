@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Item } from '../../items/entities/item.entity';
@@ -6,10 +6,19 @@ import { ItemPhoto } from '../../items/entities/item-photo.entity';
 import { MetaListing } from '../../meta-listings/entities/meta-listing.entity';
 import { WorkflowRun } from '../entities/workflow-run.entity';
 import { OpenAIService } from '../services/openai.service';
-import { MetaListingAiStatus } from '@listforge/core-types';
+import { MarketplaceAccountService } from '../../marketplaces/services/marketplace-account.service';
+import {
+  MetaListingAiStatus,
+  VisionExtractResult,
+  GeneratedListingContent,
+  ResearchSnapshot,
+} from '@listforge/core-types';
+import { CompResult } from '@listforge/marketplace-adapters';
 
 @Injectable()
 export class PhotoIntakeWorkflow {
+  private readonly logger = new Logger(PhotoIntakeWorkflow.name);
+
   constructor(
     @InjectRepository(Item)
     private itemRepo: Repository<Item>,
@@ -20,6 +29,7 @@ export class PhotoIntakeWorkflow {
     @InjectRepository(WorkflowRun)
     private workflowRunRepo: Repository<WorkflowRun>,
     private openaiService: OpenAIService,
+    private marketplaceAccountService: MarketplaceAccountService,
   ) {}
 
   async execute(
@@ -55,7 +65,7 @@ export class PhotoIntakeWorkflow {
       });
 
       if (!item) {
-        throw new Error('Item not found');
+        throw new NotFoundException(`Item not found: ${itemId}`);
       }
 
       const photoUrls = item.photos.map((photo) => photo.storagePath);
@@ -69,8 +79,71 @@ export class PhotoIntakeWorkflow {
         condition: extracted.condition,
       };
 
-      // Step 4: Price recommendation (placeholder - will be enhanced later)
-      const priceSuggested = this.calculatePrice(extracted);
+      // Step 3.5: Search comps (if marketplace account available)
+      let compsResults: CompResult[] = [];
+      let researchSnapshot: ResearchSnapshot | null = null;
+      try {
+        const accounts = await this.marketplaceAccountService.listAccounts(orgId);
+        const ebayAccount = accounts.find((acc) => acc.marketplace === 'EBAY' && acc.status === 'active');
+
+        if (ebayAccount) {
+          const adapter = await this.marketplaceAccountService.getAdapter(ebayAccount.id);
+
+          // Search sold listings for pricing data
+          const soldComps = await adapter.searchComps({
+            keywords: extracted.brand && extracted.model
+              ? `${extracted.brand} ${extracted.model}`
+              : extracted.category || '',
+            brand: extracted.brand,
+            model: extracted.model,
+            condition: extracted.condition,
+            soldOnly: true,
+            limit: 20,
+          });
+
+          // Search active listings
+          const activeComps = await adapter.searchComps({
+            keywords: extracted.brand && extracted.model
+              ? `${extracted.brand} ${extracted.model}`
+              : extracted.category || '',
+            brand: extracted.brand,
+            model: extracted.model,
+            condition: extracted.condition,
+            soldOnly: false,
+            limit: 20,
+          });
+
+          compsResults = [...soldComps, ...activeComps];
+
+          // Calculate pricing statistics
+          const soldPrices = soldComps.map((c) => c.price).filter((p) => p > 0);
+          const activePrices = activeComps.map((c) => c.price).filter((p) => p > 0);
+
+          researchSnapshot = {
+            soldComps: soldComps.length,
+            activeComps: activeComps.length,
+            soldPrices: soldPrices.length > 0 ? {
+              min: Math.min(...soldPrices),
+              max: Math.max(...soldPrices),
+              avg: soldPrices.reduce((a, b) => a + b, 0) / soldPrices.length,
+              median: this.median(soldPrices),
+            } : null,
+            activePrices: activePrices.length > 0 ? {
+              min: Math.min(...activePrices),
+              max: Math.max(...activePrices),
+              avg: activePrices.reduce((a, b) => a + b, 0) / activePrices.length,
+              median: this.median(activePrices),
+            } : null,
+            searchedAt: new Date().toISOString(),
+          };
+        }
+      } catch (error) {
+        console.warn('Failed to search comps:', error);
+        // Continue without comps data
+      }
+
+      // Step 4: Price recommendation (enhanced with comps if available)
+      const priceSuggested = this.calculatePrice(extracted, researchSnapshot);
       const priceMin = priceSuggested * 0.8;
       const priceMax = priceSuggested * 1.2;
 
@@ -96,7 +169,10 @@ export class PhotoIntakeWorkflow {
         metaListing.category = extracted.category;
         metaListing.brand = extracted.brand;
         metaListing.model = extracted.model;
-        metaListing.attributes = normalizedAttributes;
+        metaListing.attributes = {
+          ...normalizedAttributes,
+          researchSnapshot,
+        };
         metaListing.generatedTitle = listingContent.title;
         metaListing.generatedDescription = listingContent.description;
         metaListing.bulletPoints = listingContent.bulletPoints;
@@ -131,9 +207,24 @@ export class PhotoIntakeWorkflow {
     }
   }
 
-  private calculatePrice(extracted: any): number {
-    // Placeholder pricing logic - will be enhanced with comps research later
-    // For now, return a default based on category
+  private calculatePrice(
+    extracted: VisionExtractResult,
+    researchSnapshot: ResearchSnapshot | null,
+  ): number {
+    // Use comps data if available
+    if (researchSnapshot?.soldPrices) {
+      // Use median sold price as base, with slight discount for faster sale
+      const basePrice = researchSnapshot.soldPrices.median;
+      return Math.max(basePrice * 0.95, researchSnapshot.soldPrices.min * 0.9);
+    }
+
+    if (researchSnapshot?.activePrices) {
+      // Use median active price, slightly below to be competitive
+      const basePrice = researchSnapshot.activePrices.median;
+      return Math.max(basePrice * 0.9, researchSnapshot.activePrices.min * 0.85);
+    }
+
+    // Fallback to category defaults
     const categoryDefaults: Record<string, number> = {
       Electronics: 50,
       Clothing: 20,
@@ -145,9 +236,18 @@ export class PhotoIntakeWorkflow {
     return categoryDefaults[extracted.category] || 25;
   }
 
+  private median(numbers: number[]): number {
+    if (numbers.length === 0) return 0;
+    const sorted = [...numbers].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid];
+  }
+
   private validateFields(
-    extracted: any,
-    listingContent: any,
+    extracted: VisionExtractResult,
+    listingContent: GeneratedListingContent,
   ): string[] {
     const missing: string[] = [];
 

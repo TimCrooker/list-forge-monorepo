@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link } from '@tanstack/react-router';
 import { Card, CardContent, CardHeader, CardTitle } from '@listforge/ui';
 import { ItemDto } from '@listforge/api-types';
 import AiStatusBadge from './AiStatusBadge';
@@ -11,7 +11,7 @@ export default function ItemCard({ item }: ItemCardProps) {
   const primaryPhoto = item.photos.find((p) => p.isPrimary) || item.photos[0];
 
   return (
-    <Link to={`/items/${item.id}`}>
+    <Link to="/items/$id" params={{ id: item.id }}>
       <Card className="hover:shadow-lg transition-shadow cursor-pointer">
         <CardHeader>
           <div className="aspect-square w-full bg-gray-100 rounded-lg overflow-hidden mb-4">

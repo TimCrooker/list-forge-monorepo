@@ -176,6 +176,7 @@ export const RegisterForm = ({
                       <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
                         {...field}
+                        autoComplete="name"
                         className="pl-9"
                         disabled={loading}
                         placeholder="John Doe"
@@ -198,6 +199,7 @@ export const RegisterForm = ({
                       <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
                         {...field}
+                        autoComplete="email"
                         className="pl-9"
                         disabled={loading}
                         placeholder="name@example.com"
@@ -221,6 +223,7 @@ export const RegisterForm = ({
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
                         {...field}
+                        autoComplete="new-password"
                         className="pl-9 pr-9"
                         disabled={loading}
                         placeholder="Create a strong password"
@@ -281,6 +284,7 @@ export const RegisterForm = ({
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
                         {...field}
+                        autoComplete="new-password"
                         className="pl-9 pr-9"
                         disabled={loading}
                         placeholder="Confirm your password"

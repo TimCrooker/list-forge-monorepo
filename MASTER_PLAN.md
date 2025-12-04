@@ -412,6 +412,7 @@ The backend uses these adapters in:
 ### 8.1 Stack
 
 - React (TypeScript) + Vite.
+- **TanStack Router** for type-safe file-based routing.
 - Redux Toolkit for global state.
 - RTK Query for server data.
 - `@listforge/ui` for all UI primitives (ShadCN-wrapped).
@@ -442,20 +443,36 @@ const store = configureStore({
 })
 ```
 
-### 8.3 Routing Layout
+### 8.3 Routing Layout (TanStack Router)
 
-Main route structure:
+The frontend uses **TanStack Router** with file-based routing for type-safe navigation:
 
-- `/login` – authentication.
-- `/onboarding` – create first org, connect marketplace, etc.
-- `/items` – inventory overview.
-- `/items/new` – new item from photos.
-- `/items/:id` – item + meta listing detail, publish UI.
-- `/settings` – user profile, org switcher.
-- `/admin` – admin dashboard.
-- `/admin/users`, `/admin/orgs`, `/admin/marketplaces` – admin tables & detail views.
+```txt
+src/routes/
+  __root.tsx              # Root layout with providers
+  _authenticated.tsx      # Auth-protected layout wrapper
+  _authenticated/
+    index.tsx             # Dashboard (/)
+    items/
+      index.tsx           # Inventory list (/items)
+      new.tsx             # New item (/items/new)
+      $id.tsx             # Item detail (/items/:id)
+    settings/
+      index.tsx           # Settings (/settings)
+      marketplaces.tsx    # Marketplace connections (/settings/marketplaces)
+    admin/
+      index.tsx           # Admin dashboard (/admin)
+      users.tsx           # Admin users (/admin/users)
+      orgs.tsx            # Admin orgs (/admin/orgs)
+  login.tsx               # Login page (/login)
+  register.tsx            # Registration (/register)
+```
 
-Admin routes are **gated** via `globalRole` from `/auth/me`. If not `staff` or `superadmin`, they’re hidden / redirected.
+**Key patterns:**
+- `_authenticated.tsx` layout checks auth state and redirects to `/login` if unauthenticated.
+- Admin routes within `_authenticated/admin/` additionally check `globalRole` for `staff` or `superadmin`.
+- File-based routing auto-generates `routeTree.gen.ts` via the TanStack Router Vite plugin.
+- Type-safe navigation with `useNavigate()` and `<Link>` components from `@tanstack/react-router`.
 
 ### 8.4 UX Flows
 

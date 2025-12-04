@@ -5,10 +5,12 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { GlobalRole } from '@listforge/core-types';
+import { JwtUserPayload } from '../../common/interfaces/authenticated-request.interface';
 
 export interface JwtPayload {
   userId: string;
-  globalRole: string;
+  globalRole: GlobalRole;
   currentOrgId: string;
 }
 
@@ -26,7 +28,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: JwtPayload) {
+  async validate(payload: JwtPayload): Promise<JwtUserPayload> {
     const user = await this.userRepo.findOne({
       where: { id: payload.userId },
     });

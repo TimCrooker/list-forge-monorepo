@@ -1,4 +1,4 @@
-import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+import { createApi } from '@reduxjs/toolkit/query/react';
 import {
   LoginRequest,
   LoginResponse,
@@ -18,47 +18,29 @@ import {
   UpdateOrgMemberResponse,
   AdminUpdateUserRequest,
   AdminUpdateUserResponse,
+  AdminListUsersResponse,
+  AdminListOrgsResponse,
   CreateItemResponse,
   ListItemsResponse,
   GetItemResponse,
   UpdateItemRequest,
   UpdateItemResponse,
+  GetEbayAuthUrlResponse,
+  ExchangeEbayCodeRequest,
+  ExchangeEbayCodeResponse,
+  ListMarketplaceAccountsResponse,
+  DeleteMarketplaceAccountResponse,
+  PublishMetaListingRequest,
+  PublishMetaListingResponse,
+  GetMarketplaceListingsResponse,
+  SystemMetricsResponse,
 } from '@listforge/api-types';
-
-const getBaseUrl = () => {
-  if (typeof window !== 'undefined') {
-    // Browser environment - check for Vite env var
-    // In Vite, this will be replaced at build time
-    // For TypeScript compilation, we use a type assertion
-    const env = (typeof import.meta !== 'undefined' && (import.meta as any).env)
-      ? (import.meta as any).env.VITE_API_URL
-      : undefined;
-    return env || 'http://localhost:3001';
-  }
-  // Node environment
-  return process.env.API_URL || 'http://localhost:3001';
-};
-
-const getToken = () => {
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem('auth_token');
-  }
-  return null;
-};
+import { baseQueryWithErrorHandling } from './baseQueryWithErrorHandling';
 
 export const api = createApi({
   reducerPath: 'api',
-  baseQuery: fetchBaseQuery({
-    baseUrl: `${getBaseUrl()}/api`,
-    prepareHeaders: (headers) => {
-      const token = getToken();
-      if (token) {
-        headers.set('authorization', `Bearer ${token}`);
-      }
-      return headers;
-    },
-  }),
-  tagTypes: ['User', 'Org', 'OrgMember', 'Item'],
+  baseQuery: baseQueryWithErrorHandling,
+  tagTypes: ['User', 'Org', 'OrgMember', 'Item', 'MarketplaceAccount', 'MarketplaceListing'],
   endpoints: (builder) => ({
     // Auth endpoints
     login: builder.mutation<LoginResponse, LoginRequest>({
@@ -141,11 +123,11 @@ export const api = createApi({
     }),
 
     // Admin endpoints
-    listUsers: builder.query<{ users: any[] }, void>({
+    listUsers: builder.query<AdminListUsersResponse, void>({
       query: () => '/admin/users',
       providesTags: ['User'],
     }),
-    listOrgsAdmin: builder.query<{ orgs: any[] }, void>({
+    listOrgsAdmin: builder.query<AdminListOrgsResponse, void>({
       query: () => '/admin/orgs',
       providesTags: ['Org'],
     }),
@@ -204,6 +186,53 @@ export const api = createApi({
       }),
       invalidatesTags: ['Item'],
     }),
+
+    // Marketplace endpoints
+    getEbayAuthUrl: builder.query<GetEbayAuthUrlResponse, void>({
+      query: () => '/marketplaces/ebay/auth-url',
+    }),
+    exchangeEbayCode: builder.mutation<ExchangeEbayCodeResponse, ExchangeEbayCodeRequest>({
+      query: (body) => ({
+        url: '/marketplaces/ebay/exchange-code',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['MarketplaceAccount'],
+    }),
+    listMarketplaceAccounts: builder.query<ListMarketplaceAccountsResponse, void>({
+      query: () => '/marketplaces/accounts',
+      providesTags: ['MarketplaceAccount'],
+    }),
+    deleteMarketplaceAccount: builder.mutation<DeleteMarketplaceAccountResponse, string>({
+      query: (accountId) => ({
+        url: `/marketplaces/accounts/${accountId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['MarketplaceAccount'],
+    }),
+    publishMetaListing: builder.mutation<
+      PublishMetaListingResponse,
+      { metaListingId: string; data: PublishMetaListingRequest }
+    >({
+      query: ({ metaListingId, data }) => ({
+        url: `/meta-listings/${metaListingId}/publish`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: ['MarketplaceListing', 'Item'],
+    }),
+    getMarketplaceListings: builder.query<
+      GetMarketplaceListingsResponse,
+      string
+    >({
+      query: (metaListingId) => `/meta-listings/${metaListingId}/marketplace-listings`,
+      providesTags: ['MarketplaceListing'],
+    }),
+
+    // Admin endpoints - metrics
+    getSystemMetrics: builder.query<SystemMetricsResponse, void>({
+      query: () => '/admin/system/metrics',
+    }),
   }),
 });
 
@@ -226,5 +255,12 @@ export const {
   useGetItemQuery,
   useUpdateItemMutation,
   useDeleteItemMutation,
+  useGetEbayAuthUrlQuery,
+  useExchangeEbayCodeMutation,
+  useListMarketplaceAccountsQuery,
+  useDeleteMarketplaceAccountMutation,
+  usePublishMetaListingMutation,
+  useGetMarketplaceListingsQuery,
+  useGetSystemMetricsQuery,
 } = api;
 

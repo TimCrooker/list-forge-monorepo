@@ -25,6 +25,7 @@
     "@listforge/api-types": "workspace:*",
     "@listforge/core-types": "workspace:*",
     "@listforge/queue-types": "workspace:*",
+    "@listforge/marketplace-adapters": "workspace:*",
     "@nestjs/common": "^10.3.0",
     "@nestjs/config": "^3.1.1",
     "@nestjs/core": "^10.3.0",

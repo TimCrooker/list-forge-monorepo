@@ -5,7 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { WorkflowRunStatus } from '@listforge/core-types';
+import { WorkflowRunStatus, WorkflowRunState } from '@listforge/core-types';
 
 @Entity('workflow_runs')
 export class WorkflowRun {
@@ -32,7 +32,7 @@ export class WorkflowRun {
   status: WorkflowRunStatus;
 
   @Column({ type: 'jsonb', nullable: true })
-  state: Record<string, any> | null;
+  state: WorkflowRunState | null;
 
   @Column({ type: 'text', nullable: true })
   error: string | null;

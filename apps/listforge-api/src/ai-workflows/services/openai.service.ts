@@ -1,25 +1,30 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadGatewayException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import OpenAI from 'openai';
-
-export interface VisionExtractResult {
-  category: string;
-  brand: string | null;
-  model: string | null;
-  condition: string;
-  attributes: Record<string, any>;
-  description: string;
-}
+import {
+  VisionExtractResult,
+  GeneratedListingContent,
+  ExtractedAttributes,
+} from '@listforge/core-types';
 
 @Injectable()
 export class OpenAIService {
+  private readonly logger = new Logger(OpenAIService.name);
   private client: OpenAI;
 
   constructor() {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      throw new Error('OPENAI_API_KEY environment variable is required');
+      this.logger.warn('OPENAI_API_KEY not configured - AI features will be unavailable');
+      // Initialize with empty key - will fail gracefully when used
+      this.client = new OpenAI({ apiKey: 'not-configured' });
+    } else {
+      this.client = new OpenAI({ apiKey });
     }
-    this.client = new OpenAI({ apiKey });
   }
 
   async analyzePhotos(imageUrls: string[]): Promise<VisionExtractResult> {
@@ -52,14 +57,15 @@ export class OpenAIService {
 
     const content = response.choices[0]?.message?.content;
     if (!content) {
-      throw new Error('No response from OpenAI');
+      throw new BadGatewayException('No response from AI service. Please try again.');
     }
 
     // Parse JSON from response
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        throw new Error('No JSON found in response');
+        this.logger.warn('AI response did not contain valid JSON', { content });
+        throw new BadGatewayException('AI response format was unexpected. Please try again.');
       }
       const parsed = JSON.parse(jsonMatch[0]);
 
@@ -87,11 +93,7 @@ export class OpenAIService {
   async generateListingContent(
     extracted: VisionExtractResult,
     priceSuggested: number,
-  ): Promise<{
-    title: string;
-    description: string;
-    bulletPoints: string[];
-  }> {
+  ): Promise<GeneratedListingContent> {
     const response = await this.client.chat.completions.create({
       model: 'gpt-4',
       messages: [
@@ -123,13 +125,14 @@ Return as JSON with keys: title, description, bulletPoints (array).`,
 
     const content = response.choices[0]?.message?.content;
     if (!content) {
-      throw new Error('No response from OpenAI');
+      throw new BadGatewayException('No response from AI service. Please try again.');
     }
 
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        throw new Error('No JSON found in response');
+        this.logger.warn('AI listing response did not contain valid JSON', { content });
+        throw new BadGatewayException('AI response format was unexpected. Please try again.');
       }
       const parsed = JSON.parse(jsonMatch[0]);
 
