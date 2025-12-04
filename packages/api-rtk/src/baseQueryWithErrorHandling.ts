@@ -22,29 +22,29 @@ const getBaseUrl = () => {
       return env;
     }
 
-    // If no env var set, check if we're in production
+    // Check if we're in production (not localhost)
     const isProduction = window.location.hostname !== 'localhost' &&
                         window.location.hostname !== '127.0.0.1';
 
     if (isProduction) {
-      // In production without VITE_API_URL set, use relative /api path
-      // This will be proxied by vercel.json to the API server
-      // But log a warning that VITE_API_URL should be set for better performance
-      if (!env) {
-        console.warn(
-          '⚠️ VITE_API_URL is not set in production.\n' +
-          'Using relative /api path (proxied by Vercel).\n' +
-          'For better performance, set VITE_API_URL=https://api.list-forge.ai'
-        );
-      }
-      // Use relative path - vercel.json will proxy to API server
+      // VITE_API_URL MUST be set for each environment (production, staging, preview, etc.)
+      // This is a build-time variable - set it in Vercel's Environment Variables
+      console.error(
+        '❌ VITE_API_URL is not set!\n' +
+        'This environment variable must be configured in Vercel for each environment:\n' +
+        '  - Production: https://api.your-domain.com\n' +
+        '  - Staging: https://api-staging.your-domain.com\n' +
+        '  - Preview: https://api-preview.your-domain.com\n' +
+        'Set this in Vercel Dashboard → Settings → Environment Variables'
+      );
+      // Return empty string - API calls will fail but with a clear error
       return '';
     }
 
     // Development fallback
     return 'http://localhost:3001';
   }
-  // Node environment
+  // Node environment (SSR)
   return process.env.API_URL || 'http://localhost:3001';
 };
 
