@@ -14,6 +14,44 @@ import { StorageModule } from './storage/storage.module';
 import { MarketplacesModule } from './marketplaces/marketplaces.module';
 import { QUEUE_AI_WORKFLOW } from '@listforge/queue-types';
 
+/**
+ * Parse Redis URL into connection options
+ * Supports formats:
+ *   redis://host:port
+ *   redis://:password@host:port
+ *   redis://password@host:port
+ *   redis://host:port/db
+ *   redis://:password@host:port/db
+ */
+function parseRedisUrl(url: string): {
+  host: string;
+  port: number;
+  password?: string;
+  db?: number;
+} {
+  try {
+    const parsedUrl = new URL(url);
+    // Redis URLs can have password in username field (redis://password@host) or password field (redis://:password@host)
+    const password = parsedUrl.password || parsedUrl.username || undefined;
+    const db = parsedUrl.pathname && parsedUrl.pathname.length > 1
+      ? parseInt(parsedUrl.pathname.slice(1), 10)
+      : undefined;
+
+    return {
+      host: parsedUrl.hostname,
+      port: parsedUrl.port ? parseInt(parsedUrl.port, 10) : 6379,
+      password,
+      db,
+    };
+  } catch {
+    // If URL parsing fails, return defaults
+    return {
+      host: 'localhost',
+      port: 6379,
+    };
+  }
+}
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -36,7 +74,7 @@ import { QUEUE_AI_WORKFLOW } from '@listforge/queue-types';
     }),
     BullModule.forRoot({
       connection: process.env.REDIS_URL
-        ? process.env.REDIS_URL
+        ? parseRedisUrl(process.env.REDIS_URL)
         : {
             host: process.env.REDIS_HOST || 'localhost',
             port: parseInt(process.env.REDIS_PORT || '6379', 10),
