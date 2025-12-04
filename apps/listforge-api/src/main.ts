@@ -37,12 +37,13 @@ async function bootstrap() {
   }
 
   // Enable CORS
+  // FRONTEND_URL can be comma-separated list: "https://example.com,https://www.example.com"
+  const allowedOrigins = process.env.FRONTEND_URL
+    ? process.env.FRONTEND_URL.split(',').map((url) => url.trim())
+    : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174'];
+
   app.enableCors({
-    origin: process.env.FRONTEND_URL || [
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'http://localhost:5174',
-    ],
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
