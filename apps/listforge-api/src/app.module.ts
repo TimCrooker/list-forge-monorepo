@@ -61,13 +61,26 @@ function parseRedisUrl(url: string): {
     TypeOrmModule.forRoot({
       type: 'postgres',
       ...(process.env.DATABASE_URL
-        ? { url: process.env.DATABASE_URL }
+        ? {
+            url: process.env.DATABASE_URL,
+            // SSL configuration for production databases (Supabase, Neon, etc.)
+            ssl: process.env.NODE_ENV === 'production' || process.env.DB_SSL === 'true'
+              ? {
+                  rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false',
+                }
+              : false,
+          }
         : {
             host: process.env.DB_HOST || 'localhost',
             port: parseInt(process.env.DB_PORT || '5432', 10),
             username: process.env.DB_USER || 'listforge',
             password: process.env.DB_PASSWORD || 'listforge',
             database: process.env.DB_NAME || 'listforge_dev',
+            ssl: process.env.DB_SSL === 'true'
+              ? {
+                  rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false',
+                }
+              : false,
           }),
       autoLoadEntities: true,
       synchronize: process.env.NODE_ENV !== 'production',
