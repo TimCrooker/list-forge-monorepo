@@ -18,6 +18,11 @@ import {
   UpdateOrgMemberResponse,
   AdminUpdateUserRequest,
   AdminUpdateUserResponse,
+  CreateItemResponse,
+  ListItemsResponse,
+  GetItemResponse,
+  UpdateItemRequest,
+  UpdateItemResponse,
 } from '@listforge/api-types';
 
 const getBaseUrl = () => {
@@ -53,7 +58,7 @@ export const api = createApi({
       return headers;
     },
   }),
-  tagTypes: ['User', 'Org', 'OrgMember'],
+  tagTypes: ['User', 'Org', 'OrgMember', 'Item'],
   endpoints: (builder) => ({
     // Auth endpoints
     login: builder.mutation<LoginResponse, LoginRequest>({
@@ -155,6 +160,50 @@ export const api = createApi({
       }),
       invalidatesTags: ['User'],
     }),
+
+    // Item endpoints
+    createItem: builder.mutation<CreateItemResponse, FormData>({
+      query: (formData) => ({
+        url: '/items',
+        method: 'POST',
+        body: formData,
+      }),
+      invalidatesTags: ['Item'],
+    }),
+    listItems: builder.query<
+      ListItemsResponse,
+      { page?: number; pageSize?: number }
+    >({
+      query: ({ page = 1, pageSize = 20 }) => ({
+        url: '/items',
+        params: { page, pageSize },
+      }),
+      providesTags: ['Item'],
+    }),
+    getItem: builder.query<GetItemResponse, string>({
+      query: (itemId) => `/items/${itemId}`,
+      providesTags: (result, error, itemId) => [{ type: 'Item', id: itemId }],
+    }),
+    updateItem: builder.mutation<
+      UpdateItemResponse,
+      { itemId: string; data: UpdateItemRequest }
+    >({
+      query: ({ itemId, data }) => ({
+        url: `/items/${itemId}`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: (result, error, { itemId }) => [
+        { type: 'Item', id: itemId },
+      ],
+    }),
+    deleteItem: builder.mutation<void, string>({
+      query: (itemId) => ({
+        url: `/items/${itemId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Item'],
+    }),
   }),
 });
 
@@ -172,5 +221,10 @@ export const {
   useListUsersQuery,
   useListOrgsAdminQuery,
   useUpdateUserAdminMutation,
+  useCreateItemMutation,
+  useListItemsQuery,
+  useGetItemQuery,
+  useUpdateItemMutation,
+  useDeleteItemMutation,
 } = api;
 

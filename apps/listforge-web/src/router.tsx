@@ -3,6 +3,9 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import SettingsPage from './pages/SettingsPage';
+import ItemsListPage from './pages/items/ItemsListPage';
+import NewItemPage from './pages/items/NewItemPage';
+import ItemDetailPage from './pages/items/ItemDetailPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminUsersPage from './pages/admin/AdminUsersPage';
 import AdminOrgsPage from './pages/admin/AdminOrgsPage';
@@ -31,6 +34,30 @@ export const router: RouteObject[] = [
     element: (
       <ProtectedRoute>
         <SettingsPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/items',
+    element: (
+      <ProtectedRoute>
+        <ItemsListPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/items/new',
+    element: (
+      <ProtectedRoute>
+        <NewItemPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/items/:id',
+    element: (
+      <ProtectedRoute>
+        <ItemDetailPage />
       </ProtectedRoute>
     ),
   },

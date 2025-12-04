@@ -19,6 +19,8 @@ const initialState: AuthState = {
   user: null,
   currentOrg: null,
   token: getStoredToken(),
+  // Don't set isAuthenticated to true just because we have a token
+  // Wait for /auth/me to confirm it's valid
   isAuthenticated: false,
 };
 

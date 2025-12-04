@@ -1,8 +1,7 @@
 ---
-globs: packages/ui/**/*.{ts,tsx}
+globs: packages/ui/**/*
 alwaysApply: false
 ---
-
 @listforge-base.mdc
 
 # Purpose

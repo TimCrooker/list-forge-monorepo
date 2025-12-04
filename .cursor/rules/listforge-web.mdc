@@ -1,5 +1,5 @@
 ---
-globs: apps/listforge-web/**/*.{ts,tsx,jsx}
+globs: apps/listforge-web/**/*
 alwaysApply: false
 ---
 @listforge-base.mdc
