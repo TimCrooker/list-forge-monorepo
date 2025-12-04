@@ -95,8 +95,8 @@ function parseRedisUrl(url: string): {
               : false,
           }),
       autoLoadEntities: true,
-      synchronize: process.env.NODE_ENV !== 'production',
-      logging: process.env.NODE_ENV === 'development',
+      synchronize: true, // Auto-sync schema - disable and use migrations for production data safety
+      logging: process.env.NODE_ENV === 'development' || process.env.DB_LOGGING === 'true',
       // Retry connection on failure (useful for serverless cold starts)
       retryAttempts: 3,
       retryDelay: 3000,
