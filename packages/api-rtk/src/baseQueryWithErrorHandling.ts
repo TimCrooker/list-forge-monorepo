@@ -17,7 +17,30 @@ const getBaseUrl = () => {
     // Browser environment - check for Vite env var
     const viteImport = import.meta as unknown as ViteImportMeta;
     const env = viteImport.env?.VITE_API_URL;
-    return env || 'http://localhost:3001';
+
+    if (env) {
+      return env;
+    }
+
+    // If no env var set, check if we're in production
+    const isProduction = window.location.hostname !== 'localhost' &&
+                        window.location.hostname !== '127.0.0.1';
+
+    if (isProduction) {
+      // In production without VITE_API_URL set, this is a configuration error
+      // Log a clear error message
+      console.error(
+        '❌ VITE_API_URL is not set in production!\n' +
+        'API calls will fail. Please set VITE_API_URL environment variable in your deployment platform.\n' +
+        'Example: VITE_API_URL=https://api.list-forge.ai'
+      );
+      // Still return origin as fallback, but API calls will likely fail
+      // This allows the app to load and show proper error messages
+      return window.location.origin;
+    }
+
+    // Development fallback
+    return 'http://localhost:3001';
   }
   // Node environment
   return process.env.API_URL || 'http://localhost:3001';

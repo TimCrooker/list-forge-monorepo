@@ -12,6 +12,7 @@ import { MetaListingsModule } from './meta-listings/meta-listings.module';
 import { AiWorkflowsModule } from './ai-workflows/ai-workflows.module';
 import { StorageModule } from './storage/storage.module';
 import { MarketplacesModule } from './marketplaces/marketplaces.module';
+import { HealthModule } from './health/health.module';
 import { QUEUE_AI_WORKFLOW } from '@listforge/queue-types';
 
 /**
@@ -84,6 +85,7 @@ function parseRedisUrl(url: string): {
     }),
     CommonModule,
     StorageModule,
+    HealthModule,
     AuthModule,
     UsersModule,
     OrganizationsModule,
