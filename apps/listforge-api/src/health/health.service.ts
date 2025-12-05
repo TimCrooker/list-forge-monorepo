@@ -13,6 +13,7 @@ export class HealthService {
   async check(): Promise<{
     status: 'ok' | 'degraded';
     timestamp: string;
+    version: string;
     services: {
       database: { status: 'ok' | 'error' | 'not_configured'; message?: string };
     };
@@ -27,6 +28,7 @@ export class HealthService {
     return {
       status: allHealthy ? 'ok' : 'degraded',
       timestamp: new Date().toISOString(),
+      version: '1.0.1',
       services,
     };
   }
