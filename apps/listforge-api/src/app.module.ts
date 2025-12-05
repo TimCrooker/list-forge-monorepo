@@ -13,6 +13,9 @@ import { AiWorkflowsModule } from './ai-workflows/ai-workflows.module';
 import { StorageModule } from './storage/storage.module';
 import { MarketplacesModule } from './marketplaces/marketplaces.module';
 import { HealthModule } from './health/health.module';
+import { ListingDraftsModule } from './listing-drafts/listing-drafts.module';
+import { EvidenceModule } from './evidence/evidence.module';
+import { ReviewModule } from './review/review.module';
 
 const logger = new Logger('AppModule');
 
@@ -117,6 +120,9 @@ function getRedisConfig() {
     AuthModule,
     UsersModule,
     OrganizationsModule,
+    ListingDraftsModule,
+    EvidenceModule,
+    ReviewModule,
   ],
 })
 export class AppModule {}

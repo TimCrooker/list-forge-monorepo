@@ -27,14 +27,70 @@ export class OpenAIService {
     }
   }
 
+  /**
+   * Check if a URL is a local URL that OpenAI can't access
+   */
+  private isLocalUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      return (
+        parsed.hostname === 'localhost' ||
+        parsed.hostname === '127.0.0.1' ||
+        parsed.hostname.startsWith('192.168.') ||
+        parsed.hostname.startsWith('10.') ||
+        parsed.hostname === 'host.docker.internal'
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Fetch an image and convert to base64 data URI
+   */
+  private async imageToBase64(url: string): Promise<string> {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+      }
+
+      const contentType = response.headers.get('content-type') || 'image/jpeg';
+      const buffer = await response.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString('base64');
+      return `data:${contentType};base64,${base64}`;
+    } catch (error) {
+      this.logger.error(`Failed to convert image to base64: ${url}`, error);
+      throw new BadGatewayException(`Failed to process image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Prepare image URLs for OpenAI - convert local URLs to base64
+   */
+  private async prepareImageUrls(urls: string[]): Promise<string[]> {
+    return Promise.all(
+      urls.map(async (url) => {
+        if (this.isLocalUrl(url)) {
+          this.logger.debug(`Converting local URL to base64: ${url}`);
+          return this.imageToBase64(url);
+        }
+        return url;
+      })
+    );
+  }
+
   async analyzePhotos(imageUrls: string[]): Promise<VisionExtractResult> {
-    const imageContents = imageUrls.map((url) => ({
+    // Convert local URLs to base64 so OpenAI can access them
+    const preparedUrls = await this.prepareImageUrls(imageUrls);
+
+    const imageContents = preparedUrls.map((url) => ({
       type: 'image_url' as const,
       image_url: { url },
     }));
 
     const response = await this.client.chat.completions.create({
-      model: 'gpt-4-vision-preview',
+      model: 'gpt-4o',
       messages: [
         {
           role: 'system',
@@ -95,7 +151,7 @@ export class OpenAIService {
     priceSuggested: number,
   ): Promise<GeneratedListingContent> {
     const response = await this.client.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-4o',
       messages: [
         {
           role: 'system',

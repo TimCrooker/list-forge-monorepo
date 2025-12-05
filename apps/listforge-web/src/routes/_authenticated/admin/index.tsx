@@ -95,6 +95,19 @@ function AdminDashboard() {
                 : 'success',
           icon: Activity,
         },
+        {
+          id: 'marketplace-sync',
+          label: 'Marketplace Sync Queue',
+          value: metricsData.queues.marketplaceSync.active,
+          description: `${metricsData.queues.marketplaceSync.waiting} waiting, ${metricsData.queues.marketplaceSync.failed} failed`,
+          status:
+            metricsData.queues.marketplaceSync.failed > 0
+              ? 'error'
+              : metricsData.queues.marketplaceSync.waiting > 10
+                ? 'warning'
+                : 'success',
+          icon: Activity,
+        },
       ]
     : [];
 
@@ -115,7 +128,7 @@ function AdminDashboard() {
         <>
           <OverviewCards cards={overviewCards} columns={5} />
 
-          <MetricsDashboard metrics={queueMetrics} columns={2} />
+          <MetricsDashboard metrics={queueMetrics} columns={3} />
 
           {/* Management Links */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

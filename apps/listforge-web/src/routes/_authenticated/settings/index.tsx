@@ -81,7 +81,7 @@ function SettingsPage() {
           <p className="text-sm text-muted-foreground mb-4">
             Connect eBay, Amazon, and other marketplace accounts to publish your listings
           </p>
-          <Link to="/settings/marketplaces" search={{ code: undefined, state: undefined }}>
+          <Link to="/settings/marketplaces" search={{ code: undefined, state: undefined, spapi_oauth_code: undefined, selling_partner_id: undefined }}>
             <Button variant="outline">
               <Store className="mr-2 h-4 w-4" />
               Manage Connections

@@ -34,19 +34,38 @@ import {
   GetEbayAuthUrlResponse,
   ExchangeEbayCodeRequest,
   ExchangeEbayCodeResponse,
+  GetAmazonAuthUrlResponse,
+  ExchangeAmazonCodeRequest,
+  ExchangeAmazonCodeResponse,
   ListMarketplaceAccountsResponse,
   DeleteMarketplaceAccountResponse,
   PublishMetaListingRequest,
   PublishMetaListingResponse,
   GetMarketplaceListingsResponse,
   SystemMetricsResponse,
+  // Listing Draft types
+  CreateListingDraftResponse,
+  ListListingDraftsResponse,
+  GetListingDraftResponse,
+  UpdateListingDraftRequest,
+  UpdateListingDraftResponse,
+  DeleteListingDraftResponse,
+  GetEvidenceResponse,
+  RerunAiResponse,
+  AssignReviewerRequest,
+  AssignReviewerResponse,
+  // Review types
+  ReviewQueueResponse,
+  ReviewQueueFilters,
+  ApplyReviewRequest,
+  ApplyReviewResponse,
 } from '@listforge/api-types';
 import { baseQueryWithErrorHandling } from './baseQueryWithErrorHandling';
 
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithErrorHandling,
-  tagTypes: ['User', 'Org', 'OrgMember', 'Item', 'MarketplaceAccount', 'MarketplaceListing'],
+  tagTypes: ['User', 'Org', 'OrgMember', 'Item', 'MarketplaceAccount', 'MarketplaceListing', 'ListingDraft'],
   endpoints: (builder) => ({
     // Auth endpoints
     login: builder.mutation<LoginResponse, LoginRequest>({
@@ -255,7 +274,7 @@ export const api = createApi({
       invalidatesTags: ['Item'],
     }),
 
-    // Marketplace endpoints
+    // Marketplace endpoints - eBay
     getEbayAuthUrl: builder.query<GetEbayAuthUrlResponse, void>({
       query: () => '/marketplaces/ebay/auth-url',
     }),
@@ -267,6 +286,20 @@ export const api = createApi({
       }),
       invalidatesTags: ['MarketplaceAccount'],
     }),
+
+    // Marketplace endpoints - Amazon
+    getAmazonAuthUrl: builder.query<GetAmazonAuthUrlResponse, void>({
+      query: () => '/marketplaces/amazon/auth-url',
+    }),
+    exchangeAmazonCode: builder.mutation<ExchangeAmazonCodeResponse, ExchangeAmazonCodeRequest>({
+      query: (body) => ({
+        url: '/marketplaces/amazon/exchange-code',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['MarketplaceAccount'],
+    }),
+
     listMarketplaceAccounts: builder.query<ListMarketplaceAccountsResponse, void>({
       query: () => '/marketplaces/accounts',
       providesTags: ['MarketplaceAccount'],
@@ -301,6 +334,132 @@ export const api = createApi({
     getSystemMetrics: builder.query<SystemMetricsResponse, void>({
       query: () => '/admin/system/metrics',
     }),
+
+    // Listing Draft endpoints - Ingestion
+    createListingDraft: builder.mutation<CreateListingDraftResponse, FormData>({
+      query: (formData) => ({
+        url: '/ingestion/listings',
+        method: 'POST',
+        body: formData,
+      }),
+      invalidatesTags: ['ListingDraft'],
+    }),
+    listIngestionDrafts: builder.query<
+      ListListingDraftsResponse,
+      { page?: number; pageSize?: number }
+    >({
+      query: ({ page = 1, pageSize = 20 }) => ({
+        url: '/ingestion/listings',
+        params: { page, pageSize },
+      }),
+      providesTags: ['ListingDraft'],
+    }),
+
+    // Listing Draft endpoints - CRUD
+    listListingDrafts: builder.query<
+      ListListingDraftsResponse,
+      { page?: number; pageSize?: number }
+    >({
+      query: ({ page = 1, pageSize = 20 }) => ({
+        url: '/listings/drafts',
+        params: { page, pageSize },
+      }),
+      providesTags: ['ListingDraft'],
+    }),
+    getListingDraft: builder.query<GetListingDraftResponse, string>({
+      query: (id) => `/listings/drafts/${id}`,
+      providesTags: (result, error, id) => [{ type: 'ListingDraft', id }],
+    }),
+    getListingDraftEvidence: builder.query<GetEvidenceResponse, string>({
+      query: (id) => `/listings/drafts/${id}/evidence`,
+      providesTags: (result, error, id) => [{ type: 'ListingDraft', id }],
+    }),
+    updateListingDraft: builder.mutation<
+      UpdateListingDraftResponse,
+      { id: string; data: UpdateListingDraftRequest }
+    >({
+      query: ({ id, data }) => ({
+        url: `/listings/drafts/${id}`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: (result, error, { id }) => [
+        { type: 'ListingDraft', id },
+        'ListingDraft',
+      ],
+    }),
+    deleteListingDraft: builder.mutation<DeleteListingDraftResponse, string>({
+      query: (id) => ({
+        url: `/listings/drafts/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['ListingDraft'],
+    }),
+    rerunListingDraftAi: builder.mutation<RerunAiResponse, string>({
+      query: (id) => ({
+        url: `/listings/drafts/${id}/ai-run`,
+        method: 'POST',
+      }),
+      invalidatesTags: (result, error, id) => [
+        { type: 'ListingDraft', id },
+        'ListingDraft',
+      ],
+    }),
+    assignReviewer: builder.mutation<
+      AssignReviewerResponse,
+      { id: string; data: AssignReviewerRequest }
+    >({
+      query: ({ id, data }) => ({
+        url: `/listings/drafts/${id}/assign`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (result, error, { id }) => [
+        { type: 'ListingDraft', id },
+        'ListingDraft',
+      ],
+    }),
+
+    // Review endpoints
+    getReviewQueue: builder.query<
+      ReviewQueueResponse,
+      { page?: number; pageSize?: number; filters?: ReviewQueueFilters }
+    >({
+      query: ({ page = 1, pageSize = 20, filters }) => {
+        const params: Record<string, string> = {
+          page: String(page),
+          pageSize: String(pageSize),
+        };
+        if (filters?.category) params.category = filters.category;
+        if (filters?.assignedTo) params.assignedTo = filters.assignedTo;
+        if (filters?.dateFrom) params.dateFrom = filters.dateFrom;
+        if (filters?.dateTo) params.dateTo = filters.dateTo;
+        if (filters?.minConfidence !== undefined)
+          params.minConfidence = String(filters.minConfidence);
+        if (filters?.maxConfidence !== undefined)
+          params.maxConfidence = String(filters.maxConfidence);
+
+        return {
+          url: '/review/queue',
+          params,
+        };
+      },
+      providesTags: ['ListingDraft'],
+    }),
+    applyReviewDecision: builder.mutation<
+      ApplyReviewResponse,
+      { id: string; data: ApplyReviewRequest }
+    >({
+      query: ({ id, data }) => ({
+        url: `/review/drafts/${id}/decision`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (result, error, { id }) => [
+        { type: 'ListingDraft', id },
+        'ListingDraft',
+      ],
+    }),
   }),
 });
 
@@ -332,10 +491,25 @@ export const {
   useDeleteItemMutation,
   useGetEbayAuthUrlQuery,
   useExchangeEbayCodeMutation,
+  useGetAmazonAuthUrlQuery,
+  useExchangeAmazonCodeMutation,
   useListMarketplaceAccountsQuery,
   useDeleteMarketplaceAccountMutation,
   usePublishMetaListingMutation,
   useGetMarketplaceListingsQuery,
   useGetSystemMetricsQuery,
+  // Listing Draft hooks
+  useCreateListingDraftMutation,
+  useListIngestionDraftsQuery,
+  useListListingDraftsQuery,
+  useGetListingDraftQuery,
+  useGetListingDraftEvidenceQuery,
+  useUpdateListingDraftMutation,
+  useDeleteListingDraftMutation,
+  useRerunListingDraftAiMutation,
+  useAssignReviewerMutation,
+  // Review hooks
+  useGetReviewQueueQuery,
+  useApplyReviewDecisionMutation,
 } = api;
 

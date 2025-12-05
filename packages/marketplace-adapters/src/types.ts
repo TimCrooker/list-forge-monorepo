@@ -33,7 +33,19 @@ export interface MarketplaceCredentials {
   /** eBay-specific: Sandbox mode flag */
   sandbox?: boolean;
 
-  /** Remote account/user ID from marketplace */
+  /** Amazon-specific: LWA Client ID */
+  amazonClientId?: string;
+
+  /** Amazon-specific: LWA Client Secret */
+  amazonClientSecret?: string;
+
+  /** Amazon-specific: Region (NA, EU, FE) */
+  amazonRegion?: 'NA' | 'EU' | 'FE';
+
+  /** Amazon-specific: Marketplace ID (e.g., ATVPDKIKX0DER for US) */
+  amazonMarketplaceId?: string;
+
+  /** Remote account/user ID from marketplace (eBay username, Amazon seller ID) */
   remoteAccountId?: string;
 }
 

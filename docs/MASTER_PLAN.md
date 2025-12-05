@@ -620,8 +620,8 @@ Admin sits entirely in `listforge-web`, using RTK Query hooks from `@listforge/a
 
 **Phase 4 – Multi-Marketplace & Enhanced Admin**
 
-- [ ] Add Amazon adapter.
-- [ ] Multi-marketplace publish & status sync.
+- [x] Add Amazon adapter.
+- [x] Multi-marketplace publish & status sync.
 - [x] Enhanced admin: user detail with org memberships.
 - [x] Enhanced admin: org detail with members, status toggle.
 - [x] Enhanced admin: marketplace accounts cross-org view.

@@ -24,7 +24,8 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ['sonner', '@listforge/api-types', '@listforge/api-rtk'],
+    include: ['sonner', '@listforge/api-types'],
+    exclude: ['@listforge/api-rtk'], // Exclude from pre-bundling to always use latest workspace version
   },
   server: {
     port: 3000,

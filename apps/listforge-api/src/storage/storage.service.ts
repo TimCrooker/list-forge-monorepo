@@ -3,154 +3,118 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { put, del } from '@vercel/blob';
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+} from '@aws-sdk/client-s3';
 
-type StorageProvider = 'vercel' | 'spaces' | 's3';
+type StorageProvider = 's3';
 
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   private readonly provider: StorageProvider;
-  private readonly vercelToken: string;
   private readonly s3Client: S3Client | null;
   private readonly s3Bucket: string;
   private readonly s3Region: string;
 
   constructor() {
-    this.provider = (process.env.STORAGE_PROVIDER || 'vercel') as StorageProvider;
+    this.provider = (process.env.STORAGE_PROVIDER || 's3') as StorageProvider;
 
-    if (this.provider === 'vercel') {
-      this.vercelToken = process.env.BLOB_READ_WRITE_TOKEN || '';
-      if (!this.vercelToken) {
-        this.logger.warn('BLOB_READ_WRITE_TOKEN not set - storage operations will fail');
-      }
-      this.s3Client = null;
-      this.s3Bucket = '';
-      this.s3Region = '';
-    } else if (this.provider === 's3') {
-      // AWS S3 configuration
+    if (this.provider === 's3') {
+      // AWS S3 or MinIO configuration
       this.s3Bucket = process.env.S3_BUCKET || '';
       this.s3Region = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
+      const s3Endpoint = process.env.S3_ENDPOINT; // For local MinIO: http://localhost:9000
+      const s3AccessKeyId = process.env.S3_ACCESS_KEY_ID; // For MinIO: minioadmin
+      const s3SecretAccessKey = process.env.S3_SECRET_ACCESS_KEY; // For MinIO: minioadmin
 
       if (!this.s3Bucket) {
         this.logger.warn('S3_BUCKET not set - storage operations will fail');
         this.s3Client = null;
       } else {
-        // AWS SDK automatically uses credentials from environment (IAM role, credentials file, or env vars)
-        this.s3Client = new S3Client({
+        // If endpoint is provided, use it (for MinIO or other S3-compatible services)
+        const clientConfig: any = {
           region: this.s3Region,
-        });
-      }
-      this.vercelToken = '';
-    } else {
-      // DO Spaces configuration (legacy)
-      const accessKeyId = process.env.SPACES_KEY || '';
-      const secretAccessKey = process.env.SPACES_SECRET || '';
-      const spacesEndpoint = process.env.SPACES_ENDPOINT || '';
-      this.s3Bucket = process.env.SPACES_BUCKET || '';
-      this.s3Region = 'us-east-1';
+        };
 
-      if (!accessKeyId || !secretAccessKey || !spacesEndpoint || !this.s3Bucket) {
-        this.logger.warn('DO Spaces configuration incomplete - storage operations will fail');
-        this.s3Client = null;
-      } else {
-        this.s3Client = new S3Client({
-          endpoint: spacesEndpoint,
-          region: this.s3Region,
-          credentials: {
-            accessKeyId,
-            secretAccessKey,
-          },
-          forcePathStyle: false,
-        });
+        if (s3Endpoint) {
+          clientConfig.endpoint = s3Endpoint;
+          // MinIO requires path-style URLs
+          clientConfig.forcePathStyle = true;
+          // Use provided credentials or fall back to AWS SDK defaults
+          if (s3AccessKeyId && s3SecretAccessKey) {
+            clientConfig.credentials = {
+              accessKeyId: s3AccessKeyId,
+              secretAccessKey: s3SecretAccessKey,
+            };
+          }
+        }
+        // Otherwise, AWS SDK automatically uses credentials from environment (IAM role, credentials file, or env vars)
+
+        this.s3Client = new S3Client(clientConfig);
       }
-      this.vercelToken = '';
     }
   }
 
   async uploadPhoto(file: Buffer, filename: string): Promise<string> {
-    if (this.provider === 'vercel') {
-      if (!this.vercelToken) {
-        throw new ServiceUnavailableException('File storage is not configured. Please contact support.');
-      }
+    // S3 (AWS S3 or MinIO)
+    if (!this.s3Client || !this.s3Bucket) {
+      throw new ServiceUnavailableException('File storage is not configured. Please contact support.');
+    }
 
-      const blob = await put(filename, file as any, {
-        access: 'public',
-        token: this.vercelToken,
-      });
+    const command = new PutObjectCommand({
+      Bucket: this.s3Bucket,
+      Key: filename,
+      Body: file,
+      ACL: 'public-read',
+      ContentType: this.getContentType(filename),
+    });
 
-      return blob.url;
+    await this.s3Client.send(command);
+
+    // Construct public URL
+    const s3Endpoint = process.env.S3_ENDPOINT;
+    if (s3Endpoint) {
+      // MinIO or custom S3-compatible: http://localhost:9000/bucket-name/key
+      const endpointUrl = s3Endpoint.replace(/\/$/, '');
+      return `${endpointUrl}/${this.s3Bucket}/${filename}`;
     } else {
-      // S3 (AWS or DO Spaces)
-      if (!this.s3Client || !this.s3Bucket) {
-        throw new ServiceUnavailableException('File storage is not configured. Please contact support.');
-      }
-
-      const command = new PutObjectCommand({
-        Bucket: this.s3Bucket,
-        Key: filename,
-        Body: file,
-        ACL: 'public-read',
-        ContentType: this.getContentType(filename),
-      });
-
-      await this.s3Client.send(command);
-
-      // Construct public URL
-      if (this.provider === 's3') {
-        // AWS S3: https://bucket-name.s3.region.amazonaws.com/key
-        return `https://${this.s3Bucket}.s3.${this.s3Region}.amazonaws.com/${filename}`;
-      } else {
-        // DO Spaces: https://bucket-name.endpoint/key
-        const endpointUrl = process.env.SPACES_ENDPOINT?.replace(/^https?:\/\//, '').replace(/\/$/, '') || '';
-        return `https://${this.s3Bucket}.${endpointUrl}/${filename}`;
-      }
+      // AWS S3: https://bucket-name.s3.region.amazonaws.com/key
+      return `https://${this.s3Bucket}.s3.${this.s3Region}.amazonaws.com/${filename}`;
     }
   }
 
   async deletePhoto(url: string): Promise<void> {
-    if (this.provider === 'vercel') {
-      if (!this.vercelToken) {
-        throw new ServiceUnavailableException('File storage is not configured. Please contact support.');
+    // S3 (AWS S3 or MinIO)
+    if (!this.s3Client || !this.s3Bucket) {
+      throw new ServiceUnavailableException('File storage is not configured. Please contact support.');
+    }
+
+    try {
+      // Extract key from URL
+      const key = this.extractKeyFromUrl(url);
+      if (!key) {
+        this.logger.warn(`Could not extract key from URL: ${url}`);
+        return;
       }
 
-      try {
-        await del(url, { token: this.vercelToken });
-      } catch (error) {
-        // Log but don't throw - deletion failures shouldn't break the flow
-        this.logger.error(`Failed to delete blob ${url}:`, error);
-      }
-    } else {
-      // S3 (AWS or DO Spaces)
-      if (!this.s3Client || !this.s3Bucket) {
-        throw new ServiceUnavailableException('File storage is not configured. Please contact support.');
-      }
+      const command = new DeleteObjectCommand({
+        Bucket: this.s3Bucket,
+        Key: key,
+      });
 
-      try {
-        // Extract key from URL
-        const key = this.extractKeyFromUrl(url);
-        if (!key) {
-          this.logger.warn(`Could not extract key from URL: ${url}`);
-          return;
-        }
-
-        const command = new DeleteObjectCommand({
-          Bucket: this.s3Bucket,
-          Key: key,
-        });
-
-        await this.s3Client.send(command);
-      } catch (error) {
-        // Log but don't throw - deletion failures shouldn't break the flow
-        this.logger.error(`Failed to delete object ${url}:`, error);
-      }
+      await this.s3Client.send(command);
+    } catch (error) {
+      // Log but don't throw - deletion failures shouldn't break the flow
+      this.logger.error(`Failed to delete object ${url}:`, error);
     }
   }
 
   async getSignedUrl(url: string): Promise<string> {
-    // Both Vercel Blob and DO Spaces URLs are public, so we can return as-is
-    // If we need signed URLs later, we can use the respective SDKs
+    // S3 URLs are public, so we can return as-is
+    // If we need signed URLs later, we can use the AWS SDK
     return url;
   }
 
@@ -172,21 +136,17 @@ export class StorageService {
       const urlObj = new URL(url);
       const pathParts = urlObj.pathname.split('/').filter(Boolean);
 
-      if (this.provider === 's3') {
-        // AWS S3: https://bucket-name.s3.region.amazonaws.com/key
-        // Path is just the key
-        return pathParts.join('/');
-      } else {
-        // DO Spaces: https://bucket-name.region.digitaloceanspaces.com/key
-        if (urlObj.hostname.includes(this.s3Bucket)) {
-          if (pathParts[0] === this.s3Bucket) {
-            pathParts.shift();
-          }
-          return pathParts.join('/');
-        }
+      const s3Endpoint = process.env.S3_ENDPOINT;
+      if (s3Endpoint) {
+        // MinIO or custom S3-compatible: http://localhost:9000/bucket-name/key
+        // Path format: /bucket-name/key, so remove first part if it's the bucket name
         if (pathParts[0] === this.s3Bucket) {
           pathParts.shift();
         }
+        return pathParts.join('/');
+      } else {
+        // AWS S3: https://bucket-name.s3.region.amazonaws.com/key
+        // Path is just the key
         return pathParts.join('/');
       }
     } catch {

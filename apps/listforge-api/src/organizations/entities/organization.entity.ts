@@ -6,6 +6,10 @@ import {
   OneToMany,
 } from 'typeorm';
 import { UserOrganization } from './user-organization.entity';
+import {
+  AutoApprovalSettings,
+  DEFAULT_AUTO_APPROVAL_SETTINGS,
+} from '@listforge/core-types';
 
 @Entity('organizations')
 export class Organization {
@@ -21,6 +25,12 @@ export class Organization {
     default: 'active',
   })
   status: string;
+
+  @Column({
+    type: 'jsonb',
+    default: JSON.stringify(DEFAULT_AUTO_APPROVAL_SETTINGS),
+  })
+  autoApprovalSettings: AutoApprovalSettings;
 
   @CreateDateColumn()
   createdAt: Date;

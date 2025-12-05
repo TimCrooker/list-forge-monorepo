@@ -23,6 +23,8 @@ export class MarketplaceConnectionController {
     private listingService: MarketplaceListingService,
   ) {}
 
+  // ============ eBay OAuth Endpoints ============
+
   @Get('ebay/auth-url')
   getEbayAuthUrl(@ReqCtx() ctx: RequestContext) {
     const url = this.accountService.getEbayAuthUrl(ctx.currentOrgId, ctx.userId);
@@ -49,6 +51,54 @@ export class MarketplaceConnectionController {
     const account = await this.accountService.exchangeEbayCode(
       body.code,
       body.state,
+      ctx.currentOrgId,
+      ctx.userId,
+    );
+
+    return {
+      success: true,
+      account: {
+        id: account.id,
+        marketplace: account.marketplace,
+        status: account.status,
+        remoteAccountId: account.remoteAccountId,
+      },
+    };
+  }
+
+  // ============ Amazon OAuth Endpoints ============
+
+  @Get('amazon/auth-url')
+  getAmazonAuthUrl(@ReqCtx() ctx: RequestContext) {
+    const url = this.accountService.getAmazonAuthUrl(ctx.currentOrgId, ctx.userId);
+    return { authUrl: url };
+  }
+
+  /**
+   * Exchange Amazon OAuth authorization code for tokens
+   * Called by frontend after Amazon redirects back with code
+   */
+  @Post('amazon/exchange-code')
+  async exchangeAmazonCode(
+    @Body() body: { spapi_oauth_code: string; state: string; selling_partner_id: string },
+    @ReqCtx() ctx: RequestContext,
+  ) {
+    if (!body.spapi_oauth_code) {
+      throw new BadRequestException('Authorization code is required');
+    }
+
+    if (!body.state) {
+      throw new BadRequestException('State parameter is required');
+    }
+
+    if (!body.selling_partner_id) {
+      throw new BadRequestException('Selling partner ID is required');
+    }
+
+    const account = await this.accountService.exchangeAmazonCode(
+      body.spapi_oauth_code,
+      body.state,
+      body.selling_partner_id,
       ctx.currentOrgId,
       ctx.userId,
     );

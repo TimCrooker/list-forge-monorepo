@@ -10,7 +10,7 @@ import { Item } from '../items/entities/item.entity';
 import { MetaListing } from '../meta-listings/entities/meta-listing.entity';
 import { MarketplaceAccount } from '../marketplaces/entities/marketplace-account.entity';
 import { WorkflowRun } from '../ai-workflows/entities/workflow-run.entity';
-import { QUEUE_AI_WORKFLOW, QUEUE_MARKETPLACE_PUBLISH } from '@listforge/queue-types';
+import { QUEUE_AI_WORKFLOW, QUEUE_MARKETPLACE_PUBLISH, QUEUE_MARKETPLACE_SYNC } from '@listforge/queue-types';
 
 @Module({
   imports: [
@@ -26,6 +26,7 @@ import { QUEUE_AI_WORKFLOW, QUEUE_MARKETPLACE_PUBLISH } from '@listforge/queue-t
     BullModule.registerQueue(
       { name: QUEUE_AI_WORKFLOW },
       { name: QUEUE_MARKETPLACE_PUBLISH },
+      { name: QUEUE_MARKETPLACE_SYNC },
     ),
   ],
   controllers: [AdminController],

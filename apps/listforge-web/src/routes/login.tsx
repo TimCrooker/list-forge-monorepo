@@ -42,7 +42,7 @@ function LoginPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
       <div className="mb-8">
         <img
-          src="/assets/text_logo.png"
+          src="/assets/full_logo.png"
           alt="ListForge"
           className="h-20 w-auto"
         />
@@ -59,4 +59,3 @@ function LoginPage() {
     </div>
   );
 }
-

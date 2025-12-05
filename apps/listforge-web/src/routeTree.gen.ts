@@ -14,11 +14,14 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
+import { Route as AuthenticatedReviewIndexRouteImport } from './routes/_authenticated/review/index'
 import { Route as AuthenticatedItemsIndexRouteImport } from './routes/_authenticated/items/index'
+import { Route as AuthenticatedCaptureIndexRouteImport } from './routes/_authenticated/capture/index'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 import { Route as AuthenticatedSettingsMarketplacesRouteImport } from './routes/_authenticated/settings/marketplaces'
 import { Route as AuthenticatedItemsNewRouteImport } from './routes/_authenticated/items/new'
 import { Route as AuthenticatedItemsIdRouteImport } from './routes/_authenticated/items/$id'
+import { Route as AuthenticatedCaptureIdRouteImport } from './routes/_authenticated/capture/$id'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminOrgsRouteImport } from './routes/_authenticated/admin/orgs'
 import { Route as AuthenticatedAdminMarketplaceAccountsRouteImport } from './routes/_authenticated/admin/marketplace-accounts'
@@ -50,11 +53,23 @@ const AuthenticatedSettingsIndexRoute =
     path: '/settings/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedReviewIndexRoute =
+  AuthenticatedReviewIndexRouteImport.update({
+    id: '/review/',
+    path: '/review/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedItemsIndexRoute = AuthenticatedItemsIndexRouteImport.update({
   id: '/items/',
   path: '/items/',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedCaptureIndexRoute =
+  AuthenticatedCaptureIndexRouteImport.update({
+    id: '/capture/',
+    path: '/capture/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   id: '/admin/',
   path: '/admin/',
@@ -74,6 +89,11 @@ const AuthenticatedItemsNewRoute = AuthenticatedItemsNewRouteImport.update({
 const AuthenticatedItemsIdRoute = AuthenticatedItemsIdRouteImport.update({
   id: '/items/$id',
   path: '/items/$id',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedCaptureIdRoute = AuthenticatedCaptureIdRouteImport.update({
+  id: '/capture/$id',
+  path: '/capture/$id',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
@@ -112,11 +132,14 @@ export interface FileRoutesByFullPath {
   '/admin/marketplace-accounts': typeof AuthenticatedAdminMarketplaceAccountsRoute
   '/admin/orgs': typeof AuthenticatedAdminOrgsRouteWithChildren
   '/admin/users': typeof AuthenticatedAdminUsersRouteWithChildren
+  '/capture/$id': typeof AuthenticatedCaptureIdRoute
   '/items/$id': typeof AuthenticatedItemsIdRoute
   '/items/new': typeof AuthenticatedItemsNewRoute
   '/settings/marketplaces': typeof AuthenticatedSettingsMarketplacesRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
+  '/capture': typeof AuthenticatedCaptureIndexRoute
   '/items': typeof AuthenticatedItemsIndexRoute
+  '/review': typeof AuthenticatedReviewIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/admin/orgs/$id': typeof AuthenticatedAdminOrgsIdRoute
   '/admin/users/$id': typeof AuthenticatedAdminUsersIdRoute
@@ -128,11 +151,14 @@ export interface FileRoutesByTo {
   '/admin/marketplace-accounts': typeof AuthenticatedAdminMarketplaceAccountsRoute
   '/admin/orgs': typeof AuthenticatedAdminOrgsRouteWithChildren
   '/admin/users': typeof AuthenticatedAdminUsersRouteWithChildren
+  '/capture/$id': typeof AuthenticatedCaptureIdRoute
   '/items/$id': typeof AuthenticatedItemsIdRoute
   '/items/new': typeof AuthenticatedItemsNewRoute
   '/settings/marketplaces': typeof AuthenticatedSettingsMarketplacesRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
+  '/capture': typeof AuthenticatedCaptureIndexRoute
   '/items': typeof AuthenticatedItemsIndexRoute
+  '/review': typeof AuthenticatedReviewIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/admin/orgs/$id': typeof AuthenticatedAdminOrgsIdRoute
   '/admin/users/$id': typeof AuthenticatedAdminUsersIdRoute
@@ -146,11 +172,14 @@ export interface FileRoutesById {
   '/_authenticated/admin/marketplace-accounts': typeof AuthenticatedAdminMarketplaceAccountsRoute
   '/_authenticated/admin/orgs': typeof AuthenticatedAdminOrgsRouteWithChildren
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRouteWithChildren
+  '/_authenticated/capture/$id': typeof AuthenticatedCaptureIdRoute
   '/_authenticated/items/$id': typeof AuthenticatedItemsIdRoute
   '/_authenticated/items/new': typeof AuthenticatedItemsNewRoute
   '/_authenticated/settings/marketplaces': typeof AuthenticatedSettingsMarketplacesRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
+  '/_authenticated/capture/': typeof AuthenticatedCaptureIndexRoute
   '/_authenticated/items/': typeof AuthenticatedItemsIndexRoute
+  '/_authenticated/review/': typeof AuthenticatedReviewIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/_authenticated/admin/orgs/$id': typeof AuthenticatedAdminOrgsIdRoute
   '/_authenticated/admin/users/$id': typeof AuthenticatedAdminUsersIdRoute
@@ -164,11 +193,14 @@ export interface FileRouteTypes {
     | '/admin/marketplace-accounts'
     | '/admin/orgs'
     | '/admin/users'
+    | '/capture/$id'
     | '/items/$id'
     | '/items/new'
     | '/settings/marketplaces'
     | '/admin'
+    | '/capture'
     | '/items'
+    | '/review'
     | '/settings'
     | '/admin/orgs/$id'
     | '/admin/users/$id'
@@ -180,11 +212,14 @@ export interface FileRouteTypes {
     | '/admin/marketplace-accounts'
     | '/admin/orgs'
     | '/admin/users'
+    | '/capture/$id'
     | '/items/$id'
     | '/items/new'
     | '/settings/marketplaces'
     | '/admin'
+    | '/capture'
     | '/items'
+    | '/review'
     | '/settings'
     | '/admin/orgs/$id'
     | '/admin/users/$id'
@@ -197,11 +232,14 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/marketplace-accounts'
     | '/_authenticated/admin/orgs'
     | '/_authenticated/admin/users'
+    | '/_authenticated/capture/$id'
     | '/_authenticated/items/$id'
     | '/_authenticated/items/new'
     | '/_authenticated/settings/marketplaces'
     | '/_authenticated/admin/'
+    | '/_authenticated/capture/'
     | '/_authenticated/items/'
+    | '/_authenticated/review/'
     | '/_authenticated/settings/'
     | '/_authenticated/admin/orgs/$id'
     | '/_authenticated/admin/users/$id'
@@ -250,11 +288,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/review/': {
+      id: '/_authenticated/review/'
+      path: '/review'
+      fullPath: '/review'
+      preLoaderRoute: typeof AuthenticatedReviewIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/items/': {
       id: '/_authenticated/items/'
       path: '/items'
       fullPath: '/items'
       preLoaderRoute: typeof AuthenticatedItemsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/capture/': {
+      id: '/_authenticated/capture/'
+      path: '/capture'
+      fullPath: '/capture'
+      preLoaderRoute: typeof AuthenticatedCaptureIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/admin/': {
@@ -283,6 +335,13 @@ declare module '@tanstack/react-router' {
       path: '/items/$id'
       fullPath: '/items/$id'
       preLoaderRoute: typeof AuthenticatedItemsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/capture/$id': {
+      id: '/_authenticated/capture/$id'
+      path: '/capture/$id'
+      fullPath: '/capture/$id'
+      preLoaderRoute: typeof AuthenticatedCaptureIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/admin/users': {
@@ -356,11 +415,14 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAdminMarketplaceAccountsRoute: typeof AuthenticatedAdminMarketplaceAccountsRoute
   AuthenticatedAdminOrgsRoute: typeof AuthenticatedAdminOrgsRouteWithChildren
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRouteWithChildren
+  AuthenticatedCaptureIdRoute: typeof AuthenticatedCaptureIdRoute
   AuthenticatedItemsIdRoute: typeof AuthenticatedItemsIdRoute
   AuthenticatedItemsNewRoute: typeof AuthenticatedItemsNewRoute
   AuthenticatedSettingsMarketplacesRoute: typeof AuthenticatedSettingsMarketplacesRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
+  AuthenticatedCaptureIndexRoute: typeof AuthenticatedCaptureIndexRoute
   AuthenticatedItemsIndexRoute: typeof AuthenticatedItemsIndexRoute
+  AuthenticatedReviewIndexRoute: typeof AuthenticatedReviewIndexRoute
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
 }
 
@@ -370,12 +432,15 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
     AuthenticatedAdminMarketplaceAccountsRoute,
   AuthenticatedAdminOrgsRoute: AuthenticatedAdminOrgsRouteWithChildren,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRouteWithChildren,
+  AuthenticatedCaptureIdRoute: AuthenticatedCaptureIdRoute,
   AuthenticatedItemsIdRoute: AuthenticatedItemsIdRoute,
   AuthenticatedItemsNewRoute: AuthenticatedItemsNewRoute,
   AuthenticatedSettingsMarketplacesRoute:
     AuthenticatedSettingsMarketplacesRoute,
   AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
+  AuthenticatedCaptureIndexRoute: AuthenticatedCaptureIndexRoute,
   AuthenticatedItemsIndexRoute: AuthenticatedItemsIndexRoute,
+  AuthenticatedReviewIndexRoute: AuthenticatedReviewIndexRoute,
   AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
 }
 

@@ -58,6 +58,27 @@ export interface EbayCallbackResponse {
   };
 }
 
+// Amazon OAuth types
+export interface GetAmazonAuthUrlResponse {
+  authUrl: string;
+}
+
+export interface ExchangeAmazonCodeRequest {
+  spapi_oauth_code: string;
+  state: string;
+  selling_partner_id: string;
+}
+
+export interface ExchangeAmazonCodeResponse {
+  success: boolean;
+  account: {
+    id: string;
+    marketplace: MarketplaceType;
+    status: MarketplaceAccountStatus;
+    remoteAccountId: string | null;
+  };
+}
+
 export interface ListMarketplaceAccountsResponse {
   accounts: MarketplaceAccountDto[];
 }
@@ -86,6 +107,11 @@ export interface SystemMetricsResponse {
       failed: number;
     };
     marketplacePublish: {
+      waiting: number;
+      active: number;
+      failed: number;
+    };
+    marketplaceSync: {
       waiting: number;
       active: number;
       failed: number;

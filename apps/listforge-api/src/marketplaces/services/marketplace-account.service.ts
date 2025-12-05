@@ -315,7 +315,7 @@ export class MarketplaceAccountService {
    * Create adapter from account entity
    */
   private createAdapterFromAccount(account: MarketplaceAccount): MarketplaceAdapter {
-    const credentials: MarketplaceCredentials = {
+    const baseCredentials: MarketplaceCredentials = {
       marketplace: account.marketplace,
       accessToken: this.encryptionService.decrypt(account.accessToken),
       refreshToken: account.refreshToken
@@ -324,12 +324,30 @@ export class MarketplaceAccountService {
       tokenExpiresAt: account.tokenExpiresAt
         ? Math.floor(account.tokenExpiresAt.getTime() / 1000)
         : undefined,
-      appId: this.configService.get<string>('EBAY_APP_ID'),
-      certId: this.configService.get<string>('EBAY_CERT_ID'),
-      devId: this.configService.get<string>('EBAY_DEV_ID'),
-      sandbox: this.configService.get<string>('EBAY_SANDBOX') === 'true',
       remoteAccountId: account.remoteAccountId || undefined,
     };
+
+    // Add marketplace-specific credentials
+    let credentials: MarketplaceCredentials;
+    if (account.marketplace === 'EBAY') {
+      credentials = {
+        ...baseCredentials,
+        appId: this.configService.get<string>('EBAY_APP_ID'),
+        certId: this.configService.get<string>('EBAY_CERT_ID'),
+        devId: this.configService.get<string>('EBAY_DEV_ID'),
+        sandbox: this.configService.get<string>('EBAY_SANDBOX') === 'true',
+      };
+    } else if (account.marketplace === 'AMAZON') {
+      credentials = {
+        ...baseCredentials,
+        amazonClientId: this.configService.get<string>('AMAZON_CLIENT_ID'),
+        amazonClientSecret: this.configService.get<string>('AMAZON_CLIENT_SECRET'),
+        amazonRegion: (this.configService.get<string>('AMAZON_REGION') || 'NA') as 'NA' | 'EU' | 'FE',
+        amazonMarketplaceId: this.configService.get<string>('AMAZON_MARKETPLACE_ID') || 'ATVPDKIKX0DER',
+      };
+    } else {
+      credentials = baseCredentials;
+    }
 
     // Create adapter with token refresh callback
     return createAdapter(account.marketplace, credentials, async (updatedCreds) => {
@@ -370,6 +388,144 @@ export class MarketplaceAccountService {
     account.status = 'active';
 
     await this.accountRepo.save(account);
+  }
+
+  /**
+   * Generate Amazon SP-API OAuth authorization URL
+   */
+  getAmazonAuthUrl(orgId: string, userId: string): string {
+    const clientId = this.configService.get<string>('AMAZON_CLIENT_ID');
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const redirectUri = this.configService.get<string>('AMAZON_REDIRECT_URI') ||
+      `${frontendUrl}/settings/marketplaces/amazon/callback`;
+
+    if (!clientId) {
+      throw new BadRequestException('Amazon credentials not configured');
+    }
+
+    // Create HMAC-signed state for CSRF protection
+    const state = this.createSignedState(orgId, userId);
+
+    // Amazon LWA OAuth URL
+    const params = new URLSearchParams({
+      application_id: clientId,
+      redirect_uri: redirectUri,
+      state,
+    });
+
+    return `https://sellercentral.amazon.com/apps/authorize/consent?${params.toString()}`;
+  }
+
+  /**
+   * Exchange Amazon OAuth code with state verification
+   */
+  async exchangeAmazonCode(
+    code: string,
+    state: string,
+    sellingPartnerId: string,
+    currentOrgId: string,
+    currentUserId: string,
+  ): Promise<MarketplaceAccount> {
+    // Verify the signed state
+    const statePayload = this.verifySignedState(state);
+
+    // Verify the state matches the current user context
+    if (statePayload.orgId !== currentOrgId) {
+      throw new BadRequestException('Organization mismatch in OAuth state');
+    }
+
+    if (statePayload.userId !== currentUserId) {
+      throw new BadRequestException('User mismatch in OAuth state');
+    }
+
+    // Exchange the code for tokens
+    return this.connectAmazon(statePayload.orgId, statePayload.userId, code, sellingPartnerId);
+  }
+
+  /**
+   * Exchange Amazon OAuth authorization code for tokens and store account
+   */
+  async connectAmazon(
+    orgId: string,
+    userId: string,
+    authCode: string,
+    sellingPartnerId: string,
+  ): Promise<MarketplaceAccount> {
+    const clientId = this.configService.get<string>('AMAZON_CLIENT_ID');
+    const clientSecret = this.configService.get<string>('AMAZON_CLIENT_SECRET');
+
+    if (!clientId || !clientSecret) {
+      throw new BadRequestException('Amazon credentials not configured');
+    }
+
+    // Exchange code for tokens via Amazon LWA
+    const tokenUrl = 'https://api.amazon.com/auth/o2/token';
+
+    const response = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: authCode,
+        client_id: clientId,
+        client_secret: clientSecret,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new BadRequestException(`Failed to exchange Amazon OAuth code: ${error}`);
+    }
+
+    interface AmazonTokenResponse {
+      access_token: string;
+      refresh_token?: string;
+      expires_in?: number;
+      token_type?: string;
+    }
+
+    const tokenData = await response.json() as AmazonTokenResponse;
+
+    // Create or update account
+    const existingAccount = await this.accountRepo.findOne({
+      where: {
+        orgId,
+        marketplace: 'AMAZON',
+        remoteAccountId: sellingPartnerId,
+      },
+    });
+
+    const expiresAt = tokenData.expires_in
+      ? new Date(Date.now() + tokenData.expires_in * 1000)
+      : null;
+
+    if (existingAccount) {
+      existingAccount.accessToken = this.encryptionService.encrypt(tokenData.access_token);
+      existingAccount.refreshToken = tokenData.refresh_token
+        ? this.encryptionService.encrypt(tokenData.refresh_token)
+        : existingAccount.refreshToken;
+      existingAccount.tokenExpiresAt = expiresAt;
+      existingAccount.status = 'active';
+      existingAccount.userId = userId;
+      return await this.accountRepo.save(existingAccount);
+    }
+
+    const account = this.accountRepo.create({
+      orgId,
+      userId,
+      marketplace: 'AMAZON',
+      accessToken: this.encryptionService.encrypt(tokenData.access_token),
+      refreshToken: tokenData.refresh_token
+        ? this.encryptionService.encrypt(tokenData.refresh_token)
+        : null,
+      tokenExpiresAt: expiresAt,
+      remoteAccountId: sellingPartnerId,
+      status: 'active',
+    });
+
+    return await this.accountRepo.save(account);
   }
 
   /**

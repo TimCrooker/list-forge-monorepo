@@ -9,9 +9,11 @@ import { MarketplaceConnectionController } from './marketplace-connection.contro
 import { MarketplaceWebhookController } from './marketplace-webhook.controller';
 import { MarketplaceAccountService } from './services/marketplace-account.service';
 import { MarketplaceListingService } from './services/marketplace-listing.service';
+import { MarketplaceSyncService } from './services/marketplace-sync.service';
 import { EncryptionService } from './services/encryption.service';
 import { PublishProcessor } from './processors/publish.processor';
-import { QUEUE_MARKETPLACE_PUBLISH } from '@listforge/queue-types';
+import { SyncProcessor } from './processors/sync.processor';
+import { QUEUE_MARKETPLACE_PUBLISH, QUEUE_MARKETPLACE_SYNC } from '@listforge/queue-types';
 
 @Module({
   imports: [
@@ -24,15 +26,20 @@ import { QUEUE_MARKETPLACE_PUBLISH } from '@listforge/queue-types';
     BullModule.registerQueue({
       name: QUEUE_MARKETPLACE_PUBLISH,
     }),
+    BullModule.registerQueue({
+      name: QUEUE_MARKETPLACE_SYNC,
+    }),
   ],
   controllers: [MarketplaceConnectionController, MarketplaceWebhookController],
   providers: [
     MarketplaceAccountService,
     MarketplaceListingService,
+    MarketplaceSyncService,
     EncryptionService,
     PublishProcessor,
+    SyncProcessor,
   ],
-  exports: [MarketplaceAccountService, MarketplaceListingService],
+  exports: [MarketplaceAccountService, MarketplaceListingService, MarketplaceSyncService],
 })
 export class MarketplacesModule {}
 

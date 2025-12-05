@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     container_name: listforge-postgres
     environment:
       POSTGRES_DB: listforge_dev
@@ -31,7 +31,42 @@ services:
       timeout: 5s
       retries: 5
 
+  minio:
+    image: minio/minio:latest
+    container_name: listforge-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"  # S3 API
+      - "9001:9001"  # Web Console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Init container to create MinIO bucket on first startup
+  minio-init:
+    image: minio/mc:latest
+    container_name: listforge-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set minio http://minio:9000 minioadmin minioadmin;
+      mc mb minio/listforge-uploads --ignore-existing;
+      mc anonymous set download minio/listforge-uploads;
+      echo 'Bucket listforge-uploads created and configured';
+      "
+    restart: "no"
+
 volumes:
   postgres_data:
   redis_data:
+  minio_data:
 

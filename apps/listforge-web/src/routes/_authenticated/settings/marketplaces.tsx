@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import {
   useListMarketplaceAccountsQuery,
   useExchangeEbayCodeMutation,
+  useExchangeAmazonCodeMutation,
   api,
 } from '@listforge/api-rtk';
 import { useAppDispatch } from '@/store/store';
@@ -20,8 +21,12 @@ import { showSuccess } from '@/utils/toast';
 export const Route = createFileRoute('/_authenticated/settings/marketplaces')({
   component: MarketplacesPage,
   validateSearch: (search: Record<string, unknown>) => ({
+    // eBay OAuth params
     code: search.code as string | undefined,
     state: search.state as string | undefined,
+    // Amazon OAuth params
+    spapi_oauth_code: search.spapi_oauth_code as string | undefined,
+    selling_partner_id: search.selling_partner_id as string | undefined,
   }),
 });
 
@@ -29,42 +34,71 @@ function MarketplacesPage() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const search = useSearch({ from: '/_authenticated/settings/marketplaces' });
-  const { code, state } = search;
+  const { code, state, spapi_oauth_code, selling_partner_id } = search;
 
   const { data, isLoading, refetch } = useListMarketplaceAccountsQuery();
-  const [exchangeEbayCode, { isLoading: isExchanging }] = useExchangeEbayCodeMutation();
-  const [isGettingUrl, setIsGettingUrl] = useState(false);
+  const [exchangeEbayCode, { isLoading: isExchangingEbay }] = useExchangeEbayCodeMutation();
+  const [exchangeAmazonCode, { isLoading: isExchangingAmazon }] = useExchangeAmazonCodeMutation();
+  const [isGettingEbayUrl, setIsGettingEbayUrl] = useState(false);
+  const [isGettingAmazonUrl, setIsGettingAmazonUrl] = useState(false);
 
-  // Handle OAuth callback
+  const isExchanging = isExchangingEbay || isExchangingAmazon;
+
+  // Clear URL params helper
+  const clearSearchParams = () => {
+    navigate({
+      to: '/settings/marketplaces',
+      search: {
+        code: undefined,
+        state: undefined,
+        spapi_oauth_code: undefined,
+        selling_partner_id: undefined,
+      },
+      replace: true,
+    });
+  };
+
+  // Handle eBay OAuth callback
   useEffect(() => {
-    if (code && state) {
+    if (code && state && !spapi_oauth_code) {
       exchangeEbayCode({ code, state })
         .unwrap()
         .then(() => {
           showSuccess('eBay account connected successfully!');
           refetch();
-          // Clear URL params
-          navigate({
-            to: '/settings/marketplaces',
-            search: { code: undefined, state: undefined },
-            replace: true,
-          });
+          clearSearchParams();
         })
         .catch((err) => {
-          // Error toast shown automatically
-          console.error('Failed to exchange code:', err);
-          navigate({
-            to: '/settings/marketplaces',
-            search: { code: undefined, state: undefined },
-            replace: true,
-          });
+          console.error('Failed to exchange eBay code:', err);
+          clearSearchParams();
         });
     }
-  }, [code, state, exchangeEbayCode, navigate, refetch]);
+  }, [code, state, spapi_oauth_code, exchangeEbayCode, navigate, refetch]);
+
+  // Handle Amazon OAuth callback
+  useEffect(() => {
+    if (spapi_oauth_code && state && selling_partner_id) {
+      exchangeAmazonCode({
+        spapi_oauth_code,
+        state,
+        selling_partner_id,
+      })
+        .unwrap()
+        .then(() => {
+          showSuccess('Amazon account connected successfully!');
+          refetch();
+          clearSearchParams();
+        })
+        .catch((err) => {
+          console.error('Failed to exchange Amazon code:', err);
+          clearSearchParams();
+        });
+    }
+  }, [spapi_oauth_code, state, selling_partner_id, exchangeAmazonCode, navigate, refetch]);
 
   const handleConnectEbay = async () => {
     try {
-      setIsGettingUrl(true);
+      setIsGettingEbayUrl(true);
       const result = await dispatch(
         api.endpoints.getEbayAuthUrl.initiate(undefined)
       ).unwrap();
@@ -72,10 +106,33 @@ function MarketplacesPage() {
         window.location.href = result.authUrl;
       }
     } catch (err) {
-      // Error toast shown automatically
       console.error('Failed to get eBay auth URL:', err);
     } finally {
-      setIsGettingUrl(false);
+      setIsGettingEbayUrl(false);
+    }
+  };
+
+  const handleConnectAmazon = async () => {
+    try {
+      setIsGettingAmazonUrl(true);
+      const result = await dispatch(
+        api.endpoints.getAmazonAuthUrl.initiate(undefined)
+      ).unwrap();
+      if (result?.authUrl) {
+        window.location.href = result.authUrl;
+      }
+    } catch (err) {
+      console.error('Failed to get Amazon auth URL:', err);
+    } finally {
+      setIsGettingAmazonUrl(false);
+    }
+  };
+
+  const handleReconnect = (marketplace: string) => {
+    if (marketplace === 'EBAY') {
+      handleConnectEbay();
+    } else if (marketplace === 'AMAZON') {
+      handleConnectAmazon();
     }
   };
 
@@ -105,12 +162,26 @@ function MarketplacesPage() {
     }
   };
 
+  const getMarketplaceName = (marketplace: string) => {
+    switch (marketplace) {
+      case 'EBAY':
+        return 'eBay';
+      case 'AMAZON':
+        return 'Amazon';
+      default:
+        return marketplace;
+    }
+  };
+
   if (isExchanging) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground">Connecting your eBay account...</p>
+          <p className="text-muted-foreground">
+            {isExchangingEbay && 'Connecting your eBay account...'}
+            {isExchangingAmazon && 'Connecting your Amazon account...'}
+          </p>
         </div>
       </div>
     );
@@ -143,6 +214,7 @@ function MarketplacesPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
+            {/* eBay */}
             <div className="flex items-center justify-between p-4 border rounded-lg">
               <div className="flex items-center gap-4">
                 <div className="h-12 w-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
@@ -155,8 +227,8 @@ function MarketplacesPage() {
                   </p>
                 </div>
               </div>
-              <Button onClick={handleConnectEbay} disabled={isGettingUrl}>
-                {isGettingUrl ? (
+              <Button onClick={handleConnectEbay} disabled={isGettingEbayUrl}>
+                {isGettingEbayUrl ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Connecting...
@@ -167,17 +239,29 @@ function MarketplacesPage() {
               </Button>
             </div>
 
-            <div className="flex items-center justify-between p-4 border rounded-lg opacity-50">
+            {/* Amazon */}
+            <div className="flex items-center justify-between p-4 border rounded-lg">
               <div className="flex items-center gap-4">
                 <div className="h-12 w-12 bg-orange-100 dark:bg-orange-900 rounded-lg flex items-center justify-center">
                   <Store className="h-6 w-6 text-orange-600 dark:text-orange-400" />
                 </div>
                 <div>
                   <h3 className="font-medium">Amazon</h3>
-                  <p className="text-sm text-muted-foreground">Coming soon</p>
+                  <p className="text-sm text-muted-foreground">
+                    Connect your Amazon Seller Central account
+                  </p>
                 </div>
               </div>
-              <Button disabled>Coming Soon</Button>
+              <Button onClick={handleConnectAmazon} disabled={isGettingAmazonUrl}>
+                {isGettingAmazonUrl ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Connecting...
+                  </>
+                ) : (
+                  'Connect'
+                )}
+              </Button>
             </div>
           </div>
         </CardContent>
@@ -204,7 +288,7 @@ function MarketplacesPage() {
                     {getStatusIcon(account.status)}
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="font-medium">{account.marketplace}</h3>
+                        <h3 className="font-medium">{getMarketplaceName(account.marketplace)}</h3>
                         <Badge variant={getStatusBadgeVariant(account.status)}>
                           {account.status}
                         </Badge>
@@ -217,7 +301,11 @@ function MarketplacesPage() {
                     </div>
                   </div>
                   {account.status === 'expired' && (
-                    <Button variant="outline" size="sm" onClick={handleConnectEbay}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleReconnect(account.marketplace)}
+                    >
                       Reconnect
                     </Button>
                   )}
@@ -238,4 +326,3 @@ function MarketplacesPage() {
     </div>
   );
 }
-

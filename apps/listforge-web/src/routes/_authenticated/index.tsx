@@ -96,7 +96,7 @@ function DashboardPage() {
       label: 'Connect Marketplace',
       description: 'Link your eBay account',
       icon: <Store className="h-5 w-5" />,
-      onClick: () => navigate({ to: '/settings/marketplaces', search: { code: undefined, state: undefined } }),
+      onClick: () => navigate({ to: '/settings/marketplaces', search: { code: undefined, state: undefined, spapi_oauth_code: undefined, selling_partner_id: undefined } }),
       variant: expiredAccounts > 0 ? ('destructive' as const) : ('outline' as const),
     },
     {

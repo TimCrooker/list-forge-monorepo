@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   useGetItemQuery,
   useDeleteItemMutation,
@@ -15,11 +15,14 @@ import {
   CardTitle,
   Badge,
   MediaGallery,
+  Checkbox,
+  Label,
   type MediaItem,
 } from '@listforge/ui';
-import { ArrowLeft, Loader2, Edit, Trash2, ExternalLink, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { ArrowLeft, Loader2, Edit, Trash2, ExternalLink, CheckCircle2, XCircle, Clock, Store, RefreshCw } from 'lucide-react';
 import AiStatusBadge from '@/components/AiStatusBadge';
 import { showSuccess } from '@/utils/toast';
+import type { MarketplaceType, MarketplaceAccountDto } from '@listforge/api-types';
 
 export const Route = createFileRoute('/_authenticated/items/$id')({
   component: ItemDetailPage,
@@ -62,23 +65,78 @@ function ItemDetailPage() {
     }
   };
 
+  // Track selected marketplaces for publishing
+  const [selectedMarketplaces, setSelectedMarketplaces] = useState<Set<string>>(new Set());
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  // Group accounts by marketplace
+  const accountsByMarketplace = useMemo(() => {
+    const groups: Record<MarketplaceType, MarketplaceAccountDto[]> = {
+      EBAY: [],
+      AMAZON: [],
+    };
+    accountsData?.accounts?.forEach((acc) => {
+      if (acc.status === 'active') {
+        groups[acc.marketplace as MarketplaceType]?.push(acc);
+      }
+    });
+    return groups;
+  }, [accountsData?.accounts]);
+
+  const toggleMarketplace = (marketplace: MarketplaceType) => {
+    setSelectedMarketplaces((prev) => {
+      const next = new Set(prev);
+      if (next.has(marketplace)) {
+        next.delete(marketplace);
+      } else {
+        next.add(marketplace);
+      }
+      return next;
+    });
+  };
+
   const handlePublish = async () => {
     if (!metaListing) return;
-    const activeAccounts = accountsData?.accounts?.filter(
-      (acc) => acc.status === 'active' && acc.marketplace === 'EBAY'
-    );
-    if (!activeAccounts?.length) return;
 
+    // Get all active accounts for selected marketplaces
+    const accountIds: string[] = [];
+    selectedMarketplaces.forEach((marketplace) => {
+      const accounts = accountsByMarketplace[marketplace as MarketplaceType] || [];
+      accounts.forEach((acc) => accountIds.push(acc.id));
+    });
+
+    if (accountIds.length === 0) return;
+
+    setIsPublishing(true);
     try {
       await publishListing({
         metaListingId: metaListing.id,
-        data: { accountIds: activeAccounts.map((acc) => acc.id) },
+        data: { accountIds },
       }).unwrap();
       refetchListings();
-      showSuccess('Listing published successfully!');
+      showSuccess(`Listing published to ${selectedMarketplaces.size} marketplace(s)!`);
+      setSelectedMarketplaces(new Set());
     } catch (err) {
       // Error toast shown automatically
+    } finally {
+      setIsPublishing(false);
     }
+  };
+
+  const getMarketplaceName = (marketplace: string) => {
+    switch (marketplace) {
+      case 'EBAY':
+        return 'eBay';
+      case 'AMAZON':
+        return 'Amazon';
+      default:
+        return marketplace;
+    }
+  };
+
+  const getMarketplaceFromAccountId = (accountId: string): string => {
+    const account = accountsData?.accounts?.find((acc) => acc.id === accountId);
+    return account?.marketplace || 'UNKNOWN';
   };
 
   const getStatusIcon = (status: string) => {
@@ -308,13 +366,13 @@ function ItemDetailPage() {
                   <CardTitle>Marketplace Publishing</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     {accountsData?.accounts && accountsData.accounts.length === 0 ? (
                       <div className="p-4 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded">
                         <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-2">
                           No marketplace accounts connected
                         </p>
-                        <Link to="/settings/marketplaces" search={{ code: undefined, state: undefined }}>
+                        <Link to="/settings/marketplaces" search={{ code: undefined, state: undefined, spapi_oauth_code: undefined, selling_partner_id: undefined }}>
                           <Button variant="outline" size="sm">
                             Connect Marketplace
                           </Button>
@@ -322,28 +380,106 @@ function ItemDetailPage() {
                       </div>
                     ) : (
                       <>
+                        {/* Marketplace Selection */}
                         <div>
-                          <p className="text-sm text-muted-foreground mb-4">
-                            Publish this listing to your connected marketplace accounts
-                          </p>
+                          <h3 className="text-sm font-medium mb-3">Select Marketplaces to Publish</h3>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {/* eBay Option */}
+                            <div
+                              className={`flex items-center gap-3 p-4 border rounded-lg cursor-pointer transition-colors ${
+                                accountsByMarketplace.EBAY.length === 0
+                                  ? 'opacity-50 cursor-not-allowed'
+                                  : selectedMarketplaces.has('EBAY')
+                                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950'
+                                    : 'hover:border-muted-foreground'
+                              }`}
+                              onClick={() => accountsByMarketplace.EBAY.length > 0 && toggleMarketplace('EBAY')}
+                            >
+                              <Checkbox
+                                checked={selectedMarketplaces.has('EBAY')}
+                                disabled={accountsByMarketplace.EBAY.length === 0}
+                                onCheckedChange={() => toggleMarketplace('EBAY')}
+                              />
+                              <div className="h-10 w-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+                                <Store className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                              </div>
+                              <div className="flex-1">
+                                <Label className="font-medium cursor-pointer">eBay</Label>
+                                <p className="text-xs text-muted-foreground">
+                                  {accountsByMarketplace.EBAY.length > 0
+                                    ? `${accountsByMarketplace.EBAY.length} account(s) connected`
+                                    : 'No accounts connected'}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Amazon Option */}
+                            <div
+                              className={`flex items-center gap-3 p-4 border rounded-lg cursor-pointer transition-colors ${
+                                accountsByMarketplace.AMAZON.length === 0
+                                  ? 'opacity-50 cursor-not-allowed'
+                                  : selectedMarketplaces.has('AMAZON')
+                                    ? 'border-orange-500 bg-orange-50 dark:bg-orange-950'
+                                    : 'hover:border-muted-foreground'
+                              }`}
+                              onClick={() => accountsByMarketplace.AMAZON.length > 0 && toggleMarketplace('AMAZON')}
+                            >
+                              <Checkbox
+                                checked={selectedMarketplaces.has('AMAZON')}
+                                disabled={accountsByMarketplace.AMAZON.length === 0}
+                                onCheckedChange={() => toggleMarketplace('AMAZON')}
+                              />
+                              <div className="h-10 w-10 bg-orange-100 dark:bg-orange-900 rounded-lg flex items-center justify-center">
+                                <Store className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                              </div>
+                              <div className="flex-1">
+                                <Label className="font-medium cursor-pointer">Amazon</Label>
+                                <p className="text-xs text-muted-foreground">
+                                  {accountsByMarketplace.AMAZON.length > 0
+                                    ? `${accountsByMarketplace.AMAZON.length} account(s) connected`
+                                    : 'No accounts connected'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
                           <Button
                             onClick={handlePublish}
-                            disabled={
-                              !accountsData?.accounts?.some(
-                                (acc) => acc.status === 'active' && acc.marketplace === 'EBAY'
-                              )
-                            }
+                            disabled={selectedMarketplaces.size === 0 || isPublishing}
+                            className="mt-4"
                           >
+                            {isPublishing ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Publishing...
+                              </>
+                            ) : (
+                              <>
                             <ExternalLink className="mr-2 h-4 w-4" />
-                            Publish to eBay
+                                Publish to {selectedMarketplaces.size || 'Selected'} Marketplace{selectedMarketplaces.size !== 1 ? 's' : ''}
+                              </>
+                            )}
                           </Button>
                         </div>
 
+                        {/* Published Listings */}
                         {listingsData?.listings && listingsData.listings.length > 0 && (
-                          <div className="mt-6">
-                            <h3 className="text-sm font-medium mb-3">Published Listings</h3>
+                          <div className="border-t pt-6">
+                            <div className="flex items-center justify-between mb-3">
+                              <h3 className="text-sm font-medium">Published Listings</h3>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => refetchListings()}
+                              >
+                                <RefreshCw className="h-4 w-4 mr-1" />
+                                Refresh Status
+                              </Button>
+                            </div>
                             <div className="space-y-2">
-                              {listingsData.listings.map((listing) => (
+                              {listingsData.listings.map((listing) => {
+                                const marketplace = getMarketplaceFromAccountId(listing.marketplaceAccountId);
+                                return (
                                 <div
                                   key={listing.id}
                                   className="flex items-center justify-between p-3 border rounded-lg"
@@ -352,6 +488,9 @@ function ItemDetailPage() {
                                     {getStatusIcon(listing.status)}
                                     <div>
                                       <div className="flex items-center gap-2">
+                                          <Badge variant="outline" className="text-xs">
+                                            {getMarketplaceName(marketplace)}
+                                          </Badge>
                                         <span className="font-medium capitalize">
                                           {listing.status}
                                         </span>
@@ -368,7 +507,7 @@ function ItemDetailPage() {
                                           rel="noopener noreferrer"
                                           className="text-xs text-primary hover:underline flex items-center gap-1"
                                         >
-                                          View on eBay
+                                            View on {getMarketplaceName(marketplace)}
                                           <ExternalLink className="h-3 w-3" />
                                         </a>
                                       )}
@@ -385,7 +524,8 @@ function ItemDetailPage() {
                                     </span>
                                   )}
                                 </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         )}

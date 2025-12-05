@@ -1,5 +1,6 @@
 import { MarketplaceType, MarketplaceCredentials, MarketplaceAdapter, TokenRefreshCallback } from './types';
 import { EbayAdapter } from './adapters/ebay.adapter';
+import { AmazonAdapter } from './adapters/amazon.adapter';
 
 /**
  * Creates a marketplace adapter instance with credentials
@@ -18,7 +19,7 @@ export function createAdapter(
     case 'EBAY':
       return new EbayAdapter(credentials, onTokenRefresh);
     case 'AMAZON':
-      throw new Error('Amazon adapter not yet implemented');
+      return new AmazonAdapter(credentials, onTokenRefresh);
     default:
       throw new Error(`Unsupported marketplace type: ${type}`);
   }
