@@ -45,12 +45,52 @@ jobs:
           docker push $ECR_REGISTRY/listforge-web:${{ github.sha }}
           docker push $ECR_REGISTRY/listforge-web:latest
 
+      - name: Wait for API service to be ready
+        run: |
+          echo "Waiting for API service to be in RUNNING state..."
+          for i in {1..60}; do
+            STATUS=$(aws apprunner describe-service \
+              --service-arn ${{ secrets.APP_RUNNER_API_ARN }} \
+              --region ${{ env.AWS_REGION }} \
+              --query 'Service.Status' --output text 2>/dev/null || echo "NOT_FOUND")
+            echo "Attempt $i: Status = $STATUS"
+            if [ "$STATUS" = "RUNNING" ]; then
+              echo "API service is ready!"
+              break
+            fi
+            if [ $i -eq 60 ]; then
+              echo "Timeout waiting for API service"
+              exit 1
+            fi
+            sleep 10
+          done
+
       - name: Deploy API to App Runner
         run: |
           echo "Triggering API deployment..."
           aws apprunner start-deployment \
             --service-arn ${{ secrets.APP_RUNNER_API_ARN }} \
             --region ${{ env.AWS_REGION }}
+
+      - name: Wait for Web service to be ready
+        run: |
+          echo "Waiting for Web service to be in RUNNING state..."
+          for i in {1..60}; do
+            STATUS=$(aws apprunner describe-service \
+              --service-arn ${{ secrets.APP_RUNNER_WEB_ARN }} \
+              --region ${{ env.AWS_REGION }} \
+              --query 'Service.Status' --output text 2>/dev/null || echo "NOT_FOUND")
+            echo "Attempt $i: Status = $STATUS"
+            if [ "$STATUS" = "RUNNING" ]; then
+              echo "Web service is ready!"
+              break
+            fi
+            if [ $i -eq 60 ]; then
+              echo "Timeout waiting for Web service"
+              exit 1
+            fi
+            sleep 10
+          done
 
       - name: Deploy Web to App Runner
         run: |
