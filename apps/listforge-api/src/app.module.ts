@@ -48,9 +48,6 @@ function parseRedisUrl(url: string): {
   }
 }
 
-// Check if Redis is configured
-const redisConfigured = !!(process.env.REDIS_URL || process.env.REDIS_HOST);
-
 // Get Redis config - required for BullMQ
 function getRedisConfig() {
   if (process.env.REDIS_URL) {
@@ -64,8 +61,7 @@ function getRedisConfig() {
       db: process.env.REDIS_DB ? parseInt(process.env.REDIS_DB, 10) : undefined,
     };
   }
-  // Return null if not configured - BullModule won't be registered
-  return null;
+  throw new Error('Redis configuration required. Set REDIS_URL or REDIS_HOST environment variable.');
 }
 
 @Module({
@@ -107,17 +103,14 @@ function getRedisConfig() {
       retryDelay: 3000,
       keepConnectionAlive: true,
     }),
-    // Only register BullMQ if Redis is configured
-    ...(redisConfigured ? [
-      BullModule.forRoot({
-        connection: getRedisConfig()!,
-      }),
-      ItemsModule,
-      MetaListingsModule,
-      AiWorkflowsModule,
-      MarketplacesModule,
-      AdminModule,
-    ] : []),
+    BullModule.forRoot({
+      connection: getRedisConfig(),
+    }),
+    ItemsModule,
+    MetaListingsModule,
+    AiWorkflowsModule,
+    MarketplacesModule,
+    AdminModule,
     CommonModule,
     StorageModule,
     HealthModule,
@@ -126,10 +119,4 @@ function getRedisConfig() {
     OrganizationsModule,
   ],
 })
-export class AppModule {
-  constructor() {
-    if (!process.env.REDIS_URL && !process.env.REDIS_HOST) {
-      logger.warn('⚠️  No Redis URL configured - background jobs may not work');
-    }
-  }
-}
+export class AppModule {}

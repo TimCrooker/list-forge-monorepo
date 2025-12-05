@@ -225,10 +225,10 @@ A `RequestContext` object is attached to the request:
 
 ```ts
 interface RequestContext {
-	userId: string
-	globalRole: GlobalRole
-	currentOrgId: string
-	orgRole: OrgRole
+ userId: string
+ globalRole: GlobalRole
+ currentOrgId: string
+ orgRole: OrgRole
 }
 ```
 
@@ -298,10 +298,10 @@ Example job payload (in `@listforge/queue-types`):
 
 ```ts
 export interface StartWorkflowJob {
-	workflowType: 'photo-intake-v1' | 'price-refresh-v1'
-	itemId: string
-	orgId: string
-	userId: string
+ workflowType: 'photo-intake-v1' | 'price-refresh-v1'
+ itemId: string
+ orgId: string
+ userId: string
 }
 ```
 
@@ -362,25 +362,25 @@ Front-end then polls or subscribes via RTK Query to see when the meta listing is
 
 ```ts
 interface MarketplaceAdapter {
-	name: 'EBAY' | 'AMAZON' | '...'
+ name: 'EBAY' | 'AMAZON' | '...'
 
-	searchComps(params: SearchCompsParams): Promise<ResearchResult>
+ searchComps(params: SearchCompsParams): Promise<ResearchResult>
 
-	createListing(
-		meta: CanonicalListing,
-		creds: MarketplaceCredentials
-	): Promise<PublishResult>
+ createListing(
+  meta: CanonicalListing,
+  creds: MarketplaceCredentials
+ ): Promise<PublishResult>
 
-	updateListing?(
-		remoteId: string,
-		updates: Partial<CanonicalListing>,
-		creds: MarketplaceCredentials
-	): Promise<void>
+ updateListing?(
+  remoteId: string,
+  updates: Partial<CanonicalListing>,
+  creds: MarketplaceCredentials
+ ): Promise<void>
 
-	parseWebhook(
-		payload: unknown,
-		headers: Record<string, string>
-	): MarketplaceEvent
+ parseWebhook(
+  payload: unknown,
+  headers: Record<string, string>
+ ): MarketplaceEvent
 }
 ```
 
@@ -437,12 +437,12 @@ App store:
 
 ```ts
 const store = configureStore({
-	reducer: {
-		[api.reducerPath]: api.reducer,
-		auth: authSlice.reducer,
-		// other slices...
-	},
-	middleware: (getDefault) => getDefault().concat(api.middleware),
+ reducer: {
+  [api.reducerPath]: api.reducer,
+  auth: authSlice.reducer,
+  // other slices...
+ },
+ middleware: (getDefault) => getDefault().concat(api.middleware),
 })
 ```
 
@@ -472,6 +472,7 @@ src/routes/
 ```
 
 **Key patterns:**
+
 - `_authenticated.tsx` layout checks auth state and redirects to `/login` if unauthenticated.
 - Admin routes within `_authenticated/admin/` additionally check `globalRole` for `staff` or `superadmin`.
 - File-based routing auto-generates `routeTree.gen.ts` via the TanStack Router Vite plugin.
@@ -621,10 +622,10 @@ Admin sits entirely in `listforge-web`, using RTK Query hooks from `@listforge/a
 
 - [ ] Add Amazon adapter.
 - [ ] Multi-marketplace publish & status sync.
-- [ ] Enhanced admin: user detail with org memberships.
-- [ ] Enhanced admin: org detail with members, status toggle.
-- [ ] Enhanced admin: marketplace accounts cross-org view.
-- [ ] System health dashboard improvements.
+- [x] Enhanced admin: user detail with org memberships.
+- [x] Enhanced admin: org detail with members, status toggle.
+- [x] Enhanced admin: marketplace accounts cross-org view.
+- [x] System health dashboard improvements.
 
 ---
 

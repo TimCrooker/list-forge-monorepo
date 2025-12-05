@@ -1,10 +1,11 @@
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   useListMarketplaceAccountsQuery,
-  useGetEbayAuthUrlQuery,
   useExchangeEbayCodeMutation,
+  api,
 } from '@listforge/api-rtk';
+import { useAppDispatch } from '@/store/store';
 import {
   Button,
   Card,
@@ -26,12 +27,13 @@ export const Route = createFileRoute('/_authenticated/settings/marketplaces')({
 
 function MarketplacesPage() {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
   const search = useSearch({ from: '/_authenticated/settings/marketplaces' });
   const { code, state } = search;
 
   const { data, isLoading, refetch } = useListMarketplaceAccountsQuery();
-  const { refetch: getEbayAuthUrl, isFetching: isGettingUrl } = useGetEbayAuthUrlQuery(undefined, { skip: true });
   const [exchangeEbayCode, { isLoading: isExchanging }] = useExchangeEbayCodeMutation();
+  const [isGettingUrl, setIsGettingUrl] = useState(false);
 
   // Handle OAuth callback
   useEffect(() => {
@@ -62,13 +64,18 @@ function MarketplacesPage() {
 
   const handleConnectEbay = async () => {
     try {
-      const result = await getEbayAuthUrl();
-      if (result.data) {
-        window.location.href = result.data.authUrl;
+      setIsGettingUrl(true);
+      const result = await dispatch(
+        api.endpoints.getEbayAuthUrl.initiate(undefined)
+      ).unwrap();
+      if (result?.authUrl) {
+        window.location.href = result.authUrl;
       }
     } catch (err) {
       // Error toast shown automatically
       console.error('Failed to get eBay auth URL:', err);
+    } finally {
+      setIsGettingUrl(false);
     }
   };
 
