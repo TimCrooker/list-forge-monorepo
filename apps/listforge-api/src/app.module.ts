@@ -48,17 +48,24 @@ function parseRedisUrl(url: string): {
   }
 }
 
+// Check if Redis is configured
+const redisConfigured = !!(process.env.REDIS_URL || process.env.REDIS_HOST);
+
 // Get Redis config - required for BullMQ
 function getRedisConfig() {
   if (process.env.REDIS_URL) {
     return parseRedisUrl(process.env.REDIS_URL);
   }
-  return {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379', 10),
-    password: process.env.REDIS_PASSWORD,
-    db: process.env.REDIS_DB ? parseInt(process.env.REDIS_DB, 10) : undefined,
-  };
+  if (process.env.REDIS_HOST) {
+    return {
+      host: process.env.REDIS_HOST,
+      port: parseInt(process.env.REDIS_PORT || '6379', 10),
+      password: process.env.REDIS_PASSWORD,
+      db: process.env.REDIS_DB ? parseInt(process.env.REDIS_DB, 10) : undefined,
+    };
+  }
+  // Return null if not configured - BullModule won't be registered
+  return null;
 }
 
 @Module({
@@ -100,20 +107,23 @@ function getRedisConfig() {
       retryDelay: 3000,
       keepConnectionAlive: true,
     }),
-    BullModule.forRoot({
-      connection: getRedisConfig(),
-    }),
+    // Only register BullMQ if Redis is configured
+    ...(redisConfigured ? [
+      BullModule.forRoot({
+        connection: getRedisConfig()!,
+      }),
+      ItemsModule,
+      MetaListingsModule,
+      AiWorkflowsModule,
+      MarketplacesModule,
+      AdminModule,
+    ] : []),
     CommonModule,
     StorageModule,
     HealthModule,
     AuthModule,
     UsersModule,
     OrganizationsModule,
-    ItemsModule,
-    MetaListingsModule,
-    AiWorkflowsModule,
-    MarketplacesModule,
-    AdminModule,
   ],
 })
 export class AppModule {
