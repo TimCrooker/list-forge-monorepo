@@ -164,4 +164,3 @@ const customThemes = {
   }
 }
 ```
-

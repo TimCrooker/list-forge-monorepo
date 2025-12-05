@@ -149,12 +149,12 @@ export const MediaGallery = ({
         </TabsList>
 
         <TabsContent className="mt-4" value="grid">
-          {renderGrid()}
-        </TabsContent>
+        {renderGrid()}
+      </TabsContent>
 
         <TabsContent className="mt-4" value="carousel">
-          {renderCarousel()}
-        </TabsContent>
+        {renderCarousel()}
+      </TabsContent>
       </Tabs>
     </div>
   )

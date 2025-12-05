@@ -1,0 +1,48 @@
+# Stage 1: Prune monorepo for API only
+FROM node:20-alpine AS pruner
+RUN apk add --no-cache libc6-compat
+RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
+WORKDIR /app
+COPY . .
+RUN pnpm dlx turbo prune listforge-api --docker
+
+# Stage 2: Install dependencies and build
+FROM node:20-alpine AS builder
+RUN apk add --no-cache libc6-compat
+RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
+WORKDIR /app
+
+# Copy package manifests
+COPY --from=pruner /app/out/json/ .
+COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+
+# Install ALL dependencies (including dev for build)
+RUN pnpm install --frozen-lockfile
+
+# Copy source files
+COPY --from=pruner /app/out/full/ .
+
+# Build all packages and API
+RUN pnpm turbo build --filter=listforge-api
+
+# Stage 3: Production runtime (keep full node_modules with symlinks)
+FROM node:20-alpine AS runner
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Copy everything needed for runtime
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/apps/listforge-api/dist ./dist
+COPY --from=builder /app/apps/listforge-api/package.json ./
+
+# Create symlinks for workspace packages
+RUN mkdir -p node_modules/@listforge && \
+    ln -sf /app/packages/api-types node_modules/@listforge/api-types && \
+    ln -sf /app/packages/core-types node_modules/@listforge/core-types && \
+    ln -sf /app/packages/queue-types node_modules/@listforge/queue-types && \
+    ln -sf /app/packages/marketplace-adapters node_modules/@listforge/marketplace-adapters
+
+EXPOSE 3001
+CMD ["node", "dist/main.js"]

@@ -22,10 +22,14 @@
     "db:seed": "ts-node src/seed.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.943.0",
+    "@langchain/langgraph": "^0.0.20",
+    "@langchain/openai": "^0.0.20",
     "@listforge/api-types": "workspace:*",
     "@listforge/core-types": "workspace:*",
-    "@listforge/queue-types": "workspace:*",
     "@listforge/marketplace-adapters": "workspace:*",
+    "@listforge/queue-types": "workspace:*",
+    "@nestjs/bullmq": "^10.0.1",
     "@nestjs/common": "^10.3.0",
     "@nestjs/config": "^3.1.1",
     "@nestjs/core": "^10.3.0",
@@ -33,10 +37,7 @@
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.3.0",
     "@nestjs/typeorm": "^10.0.1",
-    "@nestjs/bullmq": "^10.0.1",
     "@vercel/blob": "^0.19.0",
-    "@langchain/langgraph": "^0.0.20",
-    "@langchain/openai": "^0.0.20",
     "bcrypt": "^5.1.1",
     "bullmq": "^5.4.0",
     "class-transformer": "^0.5.1",
@@ -59,8 +60,8 @@
     "@types/bcrypt": "^5.0.2",
     "@types/express": "^4.17.21",
     "@types/jest": "^29.5.11",
-    "@types/node": "^20.10.6",
     "@types/multer": "^1.4.11",
+    "@types/node": "^20.10.6",
     "@types/passport-jwt": "^4.0.1",
     "@types/passport-local": "^1.0.38",
     "@types/supertest": "^6.0.2",
@@ -75,4 +76,3 @@
     "typescript": "^5.3.3"
   }
 }
-

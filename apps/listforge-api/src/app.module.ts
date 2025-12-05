@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, Logger } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
@@ -13,56 +13,61 @@ import { AiWorkflowsModule } from './ai-workflows/ai-workflows.module';
 import { StorageModule } from './storage/storage.module';
 import { MarketplacesModule } from './marketplaces/marketplaces.module';
 import { HealthModule } from './health/health.module';
-import { QUEUE_AI_WORKFLOW } from '@listforge/queue-types';
+
+const logger = new Logger('AppModule');
 
 /**
  * Parse Redis URL into connection options
- * Supports formats:
- *   redis://host:port
- *   redis://:password@host:port
- *   redis://password@host:port
- *   redis://host:port/db
- *   redis://:password@host:port/db
  */
 function parseRedisUrl(url: string): {
   host: string;
   port: number;
   password?: string;
   db?: number;
+  tls?: object;
 } {
   try {
     const parsedUrl = new URL(url);
-    // Redis URLs can have password in username field (redis://password@host) or password field (redis://:password@host)
     const password = parsedUrl.password || parsedUrl.username || undefined;
     const db = parsedUrl.pathname && parsedUrl.pathname.length > 1
       ? parseInt(parsedUrl.pathname.slice(1), 10)
       : undefined;
 
+    // Check if TLS is required (rediss:// protocol or upstash URLs)
+    const useTls = parsedUrl.protocol === 'rediss:' || parsedUrl.hostname.includes('upstash');
+
     return {
       host: parsedUrl.hostname,
-      port: parsedUrl.port ? parseInt(parsedUrl.port, 10) : 6379,
+      port: parsedUrl.port ? parseInt(parsedUrl.port, 10) : (useTls ? 6379 : 6379),
       password,
       db,
+      ...(useTls ? { tls: {} } : {}),
     };
   } catch {
-    // If URL parsing fails, return defaults
-    return {
-      host: 'localhost',
-      port: 6379,
-    };
+    return { host: 'localhost', port: 6379 };
   }
+}
+
+// Get Redis config - required for BullMQ
+function getRedisConfig() {
+  if (process.env.REDIS_URL) {
+    return parseRedisUrl(process.env.REDIS_URL);
+  }
+  return {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379', 10),
+    password: process.env.REDIS_PASSWORD,
+    db: process.env.REDIS_DB ? parseInt(process.env.REDIS_DB, 10) : undefined,
+  };
 }
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
+    ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRoot({
       type: 'postgres',
       ...(process.env.DATABASE_URL
         ? (() => {
-            // Parse DATABASE_URL to extract connection params
             const url = new URL(process.env.DATABASE_URL);
             const isProduction = process.env.NODE_ENV === 'production';
             const sslEnabled = process.env.DB_SSL !== 'false' && (isProduction || process.env.DB_SSL === 'true');
@@ -72,13 +77,9 @@ function parseRedisUrl(url: string): {
               port: parseInt(url.port || '5432', 10),
               username: url.username,
               password: url.password,
-              database: url.pathname.slice(1), // Remove leading '/'
-              // SSL configuration - required for Supabase and most cloud providers
+              database: url.pathname.slice(1),
               ssl: sslEnabled
-                ? {
-                    // For Supabase and similar services, we may need to accept their certificates
-                    rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true',
-                  }
+                ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true' }
                 : false,
             };
           })()
@@ -89,29 +90,18 @@ function parseRedisUrl(url: string): {
             password: process.env.DB_PASSWORD || 'listforge',
             database: process.env.DB_NAME || 'listforge_dev',
             ssl: process.env.DB_SSL === 'true'
-              ? {
-                  rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false',
-                }
+              ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
               : false,
           }),
       autoLoadEntities: true,
-      synchronize: true, // Auto-sync schema - disable and use migrations for production data safety
+      synchronize: true,
       logging: process.env.NODE_ENV === 'development' || process.env.DB_LOGGING === 'true',
-      // Retry connection on failure (useful for serverless cold starts)
       retryAttempts: 3,
       retryDelay: 3000,
-      // Don't fail immediately if connection fails - let health endpoint handle it
       keepConnectionAlive: true,
     }),
     BullModule.forRoot({
-      connection: process.env.REDIS_URL
-        ? parseRedisUrl(process.env.REDIS_URL)
-        : {
-            host: process.env.REDIS_HOST || 'localhost',
-            port: parseInt(process.env.REDIS_PORT || '6379', 10),
-            password: process.env.REDIS_PASSWORD,
-            db: process.env.REDIS_DB ? parseInt(process.env.REDIS_DB, 10) : undefined,
-          },
+      connection: getRedisConfig(),
     }),
     CommonModule,
     StorageModule,
@@ -126,5 +116,10 @@ function parseRedisUrl(url: string): {
     AdminModule,
   ],
 })
-export class AppModule {}
-
+export class AppModule {
+  constructor() {
+    if (!process.env.REDIS_URL && !process.env.REDIS_HOST) {
+      logger.warn('⚠️  No Redis URL configured - background jobs may not work');
+    }
+  }
+}
