@@ -9,8 +9,15 @@ env:
   AWS_REGION: us-east-1
 
 jobs:
-  build-and-deploy:
+  # ============================================================================
+  # BUILD JOBS - Run in parallel
+  # ============================================================================
+  
+  build-api:
+    name: Build API
     runs-on: ubuntu-latest
+    outputs:
+      image-uri: ${{ steps.build.outputs.image-uri }}
     steps:
       - uses: actions/checkout@v4
 
@@ -26,75 +33,117 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build and push API image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        run: |
-          docker build -f Dockerfile.api -t $ECR_REGISTRY/listforge-api:${{ github.sha }} .
-          docker tag $ECR_REGISTRY/listforge-api:${{ github.sha }} $ECR_REGISTRY/listforge-api:latest
-          docker push $ECR_REGISTRY/listforge-api:${{ github.sha }}
-          docker push $ECR_REGISTRY/listforge-api:latest
+        id: build
+        uses: ./.github/actions/docker-build-push
+        with:
+          dockerfile: Dockerfile.api
+          image-name: listforge-api
+          ecr-registry: ${{ steps.login-ecr.outputs.registry }}
+
+  build-web:
+    name: Build Web
+    runs-on: ubuntu-latest
+    outputs:
+      image-uri: ${{ steps.build.outputs.image-uri }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build and push Web image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        run: |
-          docker build -f Dockerfile.web \
-            --build-arg VITE_API_URL=https://${{ secrets.APP_RUNNER_API_URL }}/api \
-            -t $ECR_REGISTRY/listforge-web:${{ github.sha }} .
-          docker tag $ECR_REGISTRY/listforge-web:${{ github.sha }} $ECR_REGISTRY/listforge-web:latest
-          docker push $ECR_REGISTRY/listforge-web:${{ github.sha }}
-          docker push $ECR_REGISTRY/listforge-web:latest
+        id: build
+        uses: ./.github/actions/docker-build-push
+        with:
+          dockerfile: Dockerfile.web
+          image-name: listforge-web
+          ecr-registry: ${{ steps.login-ecr.outputs.registry }}
+          build-args: |
+            VITE_API_URL=https://${{ secrets.APP_RUNNER_API_URL }}/api
 
-      - name: Wait for API service to be ready
-        run: |
-          echo "Waiting for API service to be in RUNNING state..."
-          for i in {1..60}; do
-            STATUS=$(aws apprunner describe-service \
-              --service-arn ${{ secrets.APP_RUNNER_API_ARN }} \
-              --region ${{ env.AWS_REGION }} \
-              --query 'Service.Status' --output text 2>/dev/null || echo "NOT_FOUND")
-            echo "Attempt $i: Status = $STATUS"
-            if [ "$STATUS" = "RUNNING" ]; then
-              echo "API service is ready!"
-              break
-            fi
-            if [ $i -eq 60 ]; then
-              echo "Timeout waiting for API service"
-              exit 1
-            fi
-            sleep 10
-          done
+  # ============================================================================
+  # DEPLOY JOBS - Run after respective builds complete
+  # ============================================================================
 
-      - name: Deploy API to App Runner
-        run: |
-          echo "Triggering API deployment..."
-          aws apprunner start-deployment \
-            --service-arn ${{ secrets.APP_RUNNER_API_ARN }} \
-            --region ${{ env.AWS_REGION }}
+  deploy-api:
+    name: Deploy API
+    runs-on: ubuntu-latest
+    needs: build-api
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Wait for Web service to be ready
-        run: |
-          echo "Waiting for Web service to be in RUNNING state..."
-          for i in {1..60}; do
-            STATUS=$(aws apprunner describe-service \
-              --service-arn ${{ secrets.APP_RUNNER_WEB_ARN }} \
-              --region ${{ env.AWS_REGION }} \
-              --query 'Service.Status' --output text 2>/dev/null || echo "NOT_FOUND")
-            echo "Attempt $i: Status = $STATUS"
-            if [ "$STATUS" = "RUNNING" ]; then
-              echo "Web service is ready!"
-              break
-            fi
-            if [ $i -eq 60 ]; then
-              echo "Timeout waiting for Web service"
-              exit 1
-            fi
-            sleep 10
-          done
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Deploy Web to App Runner
+      - name: Deploy to App Runner
+        uses: ./.github/actions/deploy-apprunner
+        with:
+          service-arn: ${{ secrets.APP_RUNNER_API_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+  deploy-web:
+    name: Deploy Web
+    runs-on: ubuntu-latest
+    needs: build-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to App Runner
+        uses: ./.github/actions/deploy-apprunner
+        with:
+          service-arn: ${{ secrets.APP_RUNNER_WEB_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+  # ============================================================================
+  # SUMMARY JOB - Run after all deployments complete
+  # ============================================================================
+
+  summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [deploy-api, deploy-web]
+    if: always()
+    steps:
+      - name: Check deployment status
         run: |
-          echo "Triggering Web deployment..."
-          aws apprunner start-deployment \
-            --service-arn ${{ secrets.APP_RUNNER_WEB_ARN }} \
-            --region ${{ env.AWS_REGION }}
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.deploy-api.result }}" = "success" ]; then
+            echo "✅ API deployment: SUCCESS" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ API deployment: ${{ needs.deploy-api.result }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.deploy-web.result }}" = "success" ]; then
+            echo "✅ Web deployment: SUCCESS" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Web deployment: ${{ needs.deploy-web.result }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if any deployment failed
+        if: needs.deploy-api.result != 'success' || needs.deploy-web.result != 'success'
+        run: exit 1

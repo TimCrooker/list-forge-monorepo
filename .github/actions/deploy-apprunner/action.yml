@@ -1,0 +1,98 @@
+name: 'Deploy to App Runner'
+description: 'Wait for App Runner service to be ready and trigger deployment'
+
+inputs:
+  service-arn:
+    description: 'App Runner service ARN'
+    required: true
+  aws-region:
+    description: 'AWS region'
+    required: false
+    default: 'us-east-1'
+  timeout:
+    description: 'Timeout in seconds for waiting'
+    required: false
+    default: '600'
+  poll-interval:
+    description: 'Polling interval in seconds'
+    required: false
+    default: '10'
+
+outputs:
+  deployment-id:
+    description: 'The deployment operation ID'
+    value: ${{ steps.deploy.outputs.deployment-id }}
+  service-url:
+    description: 'The service URL'
+    value: ${{ steps.deploy.outputs.service-url }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Wait for service to be ready
+      id: wait
+      shell: bash
+      env:
+        SERVICE_ARN: ${{ inputs.service-arn }}
+        AWS_REGION: ${{ inputs.aws-region }}
+        TIMEOUT: ${{ inputs.timeout }}
+        POLL_INTERVAL: ${{ inputs.poll-interval }}
+      run: |
+        echo "⏳ Waiting for App Runner service to be in RUNNING state..."
+        
+        ELAPSED=0
+        while [ $ELAPSED -lt $TIMEOUT ]; do
+          STATUS=$(aws apprunner describe-service \
+            --service-arn "$SERVICE_ARN" \
+            --region "$AWS_REGION" \
+            --query 'Service.Status' --output text 2>/dev/null || echo "NOT_FOUND")
+          
+          echo "Status: $STATUS (${ELAPSED}s elapsed)"
+          
+          if [ "$STATUS" = "RUNNING" ]; then
+            echo "✅ Service is ready!"
+            break
+          fi
+          
+          if [ "$STATUS" = "CREATE_FAILED" ] || [ "$STATUS" = "DELETE_FAILED" ]; then
+            echo "❌ Service is in failed state: $STATUS"
+            exit 1
+          fi
+          
+          sleep $POLL_INTERVAL
+          ELAPSED=$((ELAPSED + POLL_INTERVAL))
+        done
+        
+        if [ $ELAPSED -ge $TIMEOUT ]; then
+          echo "❌ Timeout waiting for service to be ready"
+          exit 1
+        fi
+
+    - name: Trigger deployment
+      id: deploy
+      shell: bash
+      env:
+        SERVICE_ARN: ${{ inputs.service-arn }}
+        AWS_REGION: ${{ inputs.aws-region }}
+      run: |
+        echo "🚀 Triggering deployment..."
+        
+        RESULT=$(aws apprunner start-deployment \
+          --service-arn "$SERVICE_ARN" \
+          --region "$AWS_REGION" \
+          --output json)
+        
+        OPERATION_ID=$(echo "$RESULT" | jq -r '.OperationId')
+        echo "deployment-id=${OPERATION_ID}" >> $GITHUB_OUTPUT
+        
+        # Get service URL
+        SERVICE_URL=$(aws apprunner describe-service \
+          --service-arn "$SERVICE_ARN" \
+          --region "$AWS_REGION" \
+          --query 'Service.ServiceUrl' --output text)
+        
+        echo "service-url=${SERVICE_URL}" >> $GITHUB_OUTPUT
+        
+        echo "✅ Deployment triggered (Operation ID: ${OPERATION_ID})"
+        echo "🌐 Service URL: https://${SERVICE_URL}"
+
