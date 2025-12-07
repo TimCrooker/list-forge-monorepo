@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, lazy, Suspense } from 'react';
 import {
   useGetItemQuery,
   useDeleteItemMutation,
@@ -18,12 +18,20 @@ import {
   CardTitle,
   Badge,
   MediaGallery,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
   type MediaItem,
 } from '@listforge/ui';
-import { ArrowLeft, Loader2, CheckCircle2, XCircle, Clock, Store, RefreshCw, FlaskConical, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Loader2, CheckCircle2, XCircle, Clock, Store, RefreshCw, ChevronDown, ChevronUp, FileText, BarChart3, MessageSquare } from 'lucide-react';
 import { showSuccess } from '@/utils/toast';
 import type { MarketplaceAccountDto } from '@listforge/api-types';
-import { ItemChatPanel } from '@/components/chat/ItemChatPanel';
+import { ResearchPanel } from '@/components/research/ResearchPanel';
+import { ChatPanelSkeleton } from '@/components/chat/ChatPanelSkeleton';
+
+// Lazy load ChatPanel for better performance (Phase 7 Slice 8)
+const ChatPanel = lazy(() => import('@/components/chat/ChatPanel').then((m) => ({ default: m.ChatPanel })));
 
 export const Route = createFileRoute('/_authenticated/items/$id')({
   component: ItemDetailPage,
@@ -49,6 +57,7 @@ function ItemDetailPage() {
   } = useGetItemResearchRunsQuery(id);
   const [triggerResearch, { isLoading: isTriggeringResearch }] = useTriggerItemResearchMutation();
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const [activeResearchRunId, setActiveResearchRunId] = useState<string | null>(null);
 
   const activeAccounts =
     accountsData?.accounts?.filter((acc) => acc.status === 'active') || [];
@@ -84,10 +93,24 @@ function ItemDetailPage() {
   };
 
   const handleTriggerResearch = async () => {
-    await triggerResearch({ itemId: id }).unwrap();
+    const result = await triggerResearch({ itemId: id }).unwrap();
     showSuccess('Research run triggered');
+    // Track the active research run ID for polling
+    if (result.researchRun?.id) {
+      setActiveResearchRunId(result.researchRun.id);
+    }
     refetchResearch();
   };
+
+  const handleResearchComplete = () => {
+    // Clear active run ID and refresh data
+    setActiveResearchRunId(null);
+    refetchResearch();
+  };
+
+  // Check if there's a running research run
+  const runningRun = researchData?.researchRuns?.find((run) => run.status === 'running');
+  const currentActiveRunId = activeResearchRunId || runningRun?.id || null;
 
   const toggleRunExpansion = (runId: string) => {
     setExpandedRunId(expandedRunId === runId ? null : runId);
@@ -160,61 +183,96 @@ function ItemDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Photos</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {mediaItems.length === 0 ? (
-                <p className="text-muted-foreground">No photos available</p>
-              ) : (
-                <MediaGallery items={mediaItems} />
-              )}
-            </CardContent>
-          </Card>
+        <div className="lg:col-span-2">
+          <Tabs defaultValue="details" className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="details" className="flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Details
+              </TabsTrigger>
+              <TabsTrigger value="research" className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Research
+              </TabsTrigger>
+              <TabsTrigger value="chat" className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" />
+                Chat
+              </TabsTrigger>
+            </TabsList>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Item Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold">
-                  {item.title || item.userTitleHint || 'No title'}
-                </h3>
-                <p className="text-muted-foreground mt-1">
-                  {item.description || 'No description'}
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Price</p>
-                  <p className="text-lg font-semibold">
-                    {item.defaultPrice ? `$${item.defaultPrice.toFixed(2)}` : '—'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Quantity</p>
-                  <p className="text-lg font-semibold">
-                    {item.quantity}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Condition</p>
-                  <p className="text-lg font-semibold capitalize">
-                    {item.condition ? item.condition.replace(/_/g, ' ') : '—'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Category</p>
-                  <p className="text-lg font-semibold">
-                    {item.categoryPath ? item.categoryPath.join(' > ') : '—'}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+            <TabsContent value="details" className="space-y-6 mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Photos</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {mediaItems.length === 0 ? (
+                    <p className="text-muted-foreground">No photos available</p>
+                  ) : (
+                    <MediaGallery items={mediaItems} />
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Item Details</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">
+                      {item.title || item.userTitleHint || 'No title'}
+                    </h3>
+                    <p className="text-muted-foreground mt-1">
+                      {item.description || 'No description'}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Price</p>
+                      <p className="text-lg font-semibold">
+                        {item.defaultPrice ? `$${item.defaultPrice.toFixed(2)}` : '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Quantity</p>
+                      <p className="text-lg font-semibold">
+                        {item.quantity}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Condition</p>
+                      <p className="text-lg font-semibold capitalize">
+                        {item.condition ? item.condition.replace(/_/g, ' ') : '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Category</p>
+                      <p className="text-lg font-semibold">
+                        {item.categoryPath ? item.categoryPath.join(' > ') : '—'}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="research" className="mt-4">
+              <ResearchPanel
+                itemId={id}
+                onTriggerResearch={handleTriggerResearch}
+                isResearchRunning={isTriggeringResearch || !!runningRun}
+                activeRunId={currentActiveRunId}
+                onResearchComplete={handleResearchComplete}
+              />
+            </TabsContent>
+
+            <TabsContent value="chat" className="mt-4">
+              <Suspense fallback={<ChatPanelSkeleton />}>
+                <ChatPanel itemId={id} itemTitle={item.title} />
+              </Suspense>
+            </TabsContent>
+          </Tabs>
         </div>
 
         <div className="space-y-6">
@@ -331,34 +389,15 @@ function ItemDetailPage() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Research History</CardTitle>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => refetchResearch()}
-                  disabled={isResearchLoading}
-                >
-                  <RefreshCw className={`h-4 w-4 ${isResearchLoading ? 'animate-spin' : ''}`} />
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleTriggerResearch}
-                  disabled={isTriggeringResearch}
-                >
-                  {isTriggeringResearch ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Running...
-                    </>
-                  ) : (
-                    <>
-                      <FlaskConical className="mr-2 h-4 w-4" />
-                      Run Research
-                    </>
-                  )}
-                </Button>
-              </div>
+              <CardTitle>Research Runs</CardTitle>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => refetchResearch()}
+                disabled={isResearchLoading}
+              >
+                <RefreshCw className={`h-4 w-4 ${isResearchLoading ? 'animate-spin' : ''}`} />
+              </Button>
             </CardHeader>
             <CardContent className="space-y-3">
               {isResearchLoading ? (
@@ -367,7 +406,7 @@ function ItemDetailPage() {
                   Loading research runs...
                 </div>
               ) : researchData?.researchRuns?.length ? (
-                researchData.researchRuns.map((run) => (
+                researchData.researchRuns.slice(0, 3).map((run) => (
                   <ResearchRunCard
                     key={run.id}
                     run={run}
@@ -378,10 +417,13 @@ function ItemDetailPage() {
               ) : (
                 <p className="text-sm text-muted-foreground">No research runs yet</p>
               )}
+              {researchData?.researchRuns && researchData.researchRuns.length > 3 && (
+                <p className="text-xs text-muted-foreground text-center pt-2">
+                  +{researchData.researchRuns.length - 3} more runs
+                </p>
+              )}
             </CardContent>
           </Card>
-
-          <ItemChatPanel itemId={id} itemTitle={item.title} />
         </div>
       </div>
     </div>

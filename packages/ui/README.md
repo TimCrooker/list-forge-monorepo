@@ -71,7 +71,7 @@ Foundational UI components built with Radix UI primitives and Tailwind CSS.
 - **Separator** - Visual content dividers
 - **Sheet** - Side panels and overlays
 - **Sidebar** - Application sidebar navigation
-- **Skeleton** - Loading state placeholders
+- **Skeleton** - Loading state placeholders (see [Skeleton Usage Patterns](#skeleton-usage-patterns))
 - **Slider** - Range selection controls
 - **Sonner** - Toast notification system
 - **Switch** - Toggle switches
@@ -276,6 +276,84 @@ function MyApp() {
   )
 }
 ```
+
+## Skeleton Usage Patterns
+
+The `Skeleton` component is used to create loading state placeholders that match the shape of your content. Here are recommended patterns:
+
+### Basic Skeleton
+
+```tsx
+import { Skeleton } from '@listforge/ui'
+
+function LoadingCard() {
+  return (
+    <div className="space-y-3">
+      <Skeleton className="h-4 w-32" />
+      <Skeleton className="h-20 w-full" />
+      <Skeleton className="h-4 w-48" />
+    </div>
+  )
+}
+```
+
+### Complex Component Skeletons
+
+For complex components, create dedicated skeleton components that mirror the structure:
+
+```tsx
+import { Card, CardContent, CardHeader, Skeleton } from '@listforge/ui'
+
+function ChatPanelSkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <Skeleton className="h-4 w-32" />
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex gap-2">
+              <Skeleton className="h-10 w-10 rounded-full" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+```
+
+### Usage with Suspense
+
+Skeleton components work great as Suspense fallbacks:
+
+```tsx
+import { Suspense, lazy } from 'react'
+
+const HeavyComponent = lazy(() => import('./HeavyComponent'))
+
+function App() {
+  return (
+    <Suspense fallback={<HeavyComponentSkeleton />}>
+      <HeavyComponent />
+    </Suspense>
+  )
+}
+```
+
+### Tips for Creating Skeletons
+
+1. **Match Structure**: Skeleton should mirror the actual component's layout
+2. **Use Realistic Sizes**: Width and height should approximate real content
+3. **Vary Sizes**: Use different widths (w-32, w-48, w-full) for visual variety
+4. **Maintain Spacing**: Preserve gaps and padding from the actual component
+5. **Consider Context**: Different content types need different skeleton shapes
+
 
 
 

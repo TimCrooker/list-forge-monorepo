@@ -1,5 +1,5 @@
 import { LifecycleStatus, AiReviewState, ItemSource } from '@listforge/core-types';
-import { ItemDto, ItemSummaryDto } from '@listforge/api-types';
+import { ItemDto, ItemSummaryDto, ChatMessageDto } from '@listforge/api-types';
 import { SocketEvents } from './events';
 
 /**
@@ -102,6 +102,107 @@ export interface OrgUpdatedPayload {
   changes: Record<string, unknown>;
 }
 
+// ============================================================================
+// Research Events (Phase 7 Slice 3)
+// ============================================================================
+
+/**
+ * Payload for research:node-started event
+ */
+export interface ResearchNodeStartedPayload {
+  researchRunId: string;
+  itemId: string;
+  node: string;
+  timestamp: string;
+}
+
+/**
+ * Payload for research:node-completed event
+ */
+export interface ResearchNodeCompletedPayload {
+  researchRunId: string;
+  itemId: string;
+  node: string;
+  status: 'success' | 'error';
+  timestamp: string;
+  error?: string;
+}
+
+/**
+ * Payload for research:job-completed event
+ */
+export interface ResearchJobCompletedPayload {
+  researchRunId: string;
+  itemId: string;
+  status: 'success' | 'error';
+  summary?: string;
+  error?: string;
+  timestamp: string;
+}
+
+// ============================================================================
+// Chat Events (Phase 7 Slice 5)
+// ============================================================================
+
+/**
+ * Payload for chat:message event
+ */
+export interface ChatMessagePayload {
+  sessionId: string;
+  message: ChatMessageDto;
+}
+
+/**
+ * Payload for chat:token event
+ */
+export interface ChatTokenPayload {
+  sessionId: string;
+  token: string;
+}
+
+/**
+ * Payload for chat:error event
+ */
+export interface ChatErrorPayload {
+  sessionId: string;
+  error: string;
+}
+
+/**
+ * Payload for chat:action_applied event (Phase 7 Slice 6)
+ */
+export interface ChatActionAppliedPayload {
+  sessionId: string;
+  messageId: string;
+  actionIndex: number;
+  success: boolean;
+  field?: string;
+  newValue?: unknown;
+  error?: string;
+}
+
+/**
+ * Payload for chat:research_started event (Phase 7 Slice 7)
+ */
+export interface ChatResearchStartedPayload {
+  sessionId: string;
+  itemId: string;
+  researchRunId: string;
+  timestamp: string;
+}
+
+/**
+ * Payload for chat:research_completed event (Phase 7 Slice 7)
+ */
+export interface ChatResearchCompletedPayload {
+  sessionId: string;
+  itemId: string;
+  researchRunId: string;
+  status: 'success' | 'error';
+  timestamp: string;
+  error?: string;
+}
+
 /**
  * Union type of all payload types
  */
@@ -114,7 +215,16 @@ export type SocketEventPayload =
   | UserNotificationPayload
   | OrgMemberAddedPayload
   | OrgMemberRemovedPayload
-  | OrgUpdatedPayload;
+  | OrgUpdatedPayload
+  | ResearchNodeStartedPayload
+  | ResearchNodeCompletedPayload
+  | ResearchJobCompletedPayload
+  | ChatMessagePayload
+  | ChatTokenPayload
+  | ChatErrorPayload
+  | ChatActionAppliedPayload
+  | ChatResearchStartedPayload
+  | ChatResearchCompletedPayload;
 
 /**
  * Type map for event name to payload type
@@ -129,4 +239,13 @@ export interface SocketEventPayloads {
   [SocketEvents.ORG_MEMBER_ADDED]: OrgMemberAddedPayload;
   [SocketEvents.ORG_MEMBER_REMOVED]: OrgMemberRemovedPayload;
   [SocketEvents.ORG_UPDATED]: OrgUpdatedPayload;
+  [SocketEvents.RESEARCH_NODE_STARTED]: ResearchNodeStartedPayload;
+  [SocketEvents.RESEARCH_NODE_COMPLETED]: ResearchNodeCompletedPayload;
+  [SocketEvents.RESEARCH_JOB_COMPLETED]: ResearchJobCompletedPayload;
+  [SocketEvents.CHAT_MESSAGE]: ChatMessagePayload;
+  [SocketEvents.CHAT_TOKEN]: ChatTokenPayload;
+  [SocketEvents.CHAT_ERROR]: ChatErrorPayload;
+  [SocketEvents.CHAT_ACTION_APPLIED]: ChatActionAppliedPayload;
+  [SocketEvents.CHAT_RESEARCH_STARTED]: ChatResearchStartedPayload;
+  [SocketEvents.CHAT_RESEARCH_COMPLETED]: ChatResearchCompletedPayload;
 }

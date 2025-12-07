@@ -4,8 +4,10 @@ import {
   Post,
   Body,
   Param,
+  Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import {
@@ -14,19 +16,22 @@ import {
   ListResearchRunsResponse,
   GetResearchRunResponse,
   GetResearchRunEvidenceResponse,
+  GetLatestResearchResponse,
+  GetResearchHistoryResponse,
 } from '@listforge/api-types';
 import { QUEUE_AI_WORKFLOW, StartResearchRunJob } from '@listforge/queue-types';
 import { ResearchService } from './research.service';
 import { EvidenceService } from '../evidence/evidence.service';
+import { BadRequestException } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { OrgGuard } from '../common/guards/org.guard';
 import { ReqCtx } from '../common/decorators/req-ctx.decorator';
 import { RequestContext } from '../common/interfaces/request-context.interface';
 
 /**
- * Research Controller - Phase 6 Sub-Phase 8
+ * Research Controller - Phase 6 Sub-Phase 8 + Phase 7 Slice 1 + Slice 4
  *
- * Handles research run operations for items.
+ * Handles research run operations and structured research data for items.
  */
 @Controller()
 @UseGuards(JwtAuthGuard, OrgGuard)
@@ -43,6 +48,7 @@ export class ResearchController {
    *
    * POST /items/:id/research
    */
+  @Throttle({ medium: { limit: 5, ttl: 60000 } }) // 5 requests per minute
   @Post('items/:id/research')
   async triggerResearch(
     @ReqCtx() ctx: RequestContext,
@@ -134,6 +140,100 @@ export class ResearchController {
 
     return {
       evidence: bundle ? this.evidenceService.toDto(bundle) : null,
+    };
+  }
+
+  // ============================================================================
+  // Phase 7 Slice 1: ItemResearch Endpoints
+  // ============================================================================
+
+  /**
+   * Get latest (current) research for an item
+   *
+   * GET /items/:id/research/latest
+   */
+  @Get('items/:id/research/latest')
+  async getLatestResearch(
+    @ReqCtx() ctx: RequestContext,
+    @Param('id') itemId: string,
+  ): Promise<GetLatestResearchResponse> {
+    const research = await this.researchService.findLatestResearch(
+      itemId,
+      ctx.currentOrgId,
+    );
+
+    return {
+      research: research ? this.researchService.toResearchDto(research) : null,
+    };
+  }
+
+  /**
+   * Get research history for an item with pagination
+   *
+   * GET /items/:id/research/history
+   */
+  @Get('items/:id/research/history')
+  async getResearchHistory(
+    @ReqCtx() ctx: RequestContext,
+    @Param('id') itemId: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ): Promise<GetResearchHistoryResponse> {
+    const { researches, total } = await this.researchService.findResearchHistory(
+      itemId,
+      ctx.currentOrgId,
+      {
+        page: page ? parseInt(page, 10) : undefined,
+        pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
+      },
+    );
+
+    return {
+      researches: researches.map((r) => this.researchService.toResearchDto(r)),
+      total,
+    };
+  }
+
+  // ============================================================================
+  // Phase 7 Slice 4: Resume Endpoint
+  // ============================================================================
+
+  /**
+   * Resume a failed or stalled research run
+   *
+   * POST /research-runs/:id/resume
+   */
+  @Throttle({ medium: { limit: 5, ttl: 60000 } }) // 5 requests per minute
+  @Post('research-runs/:id/resume')
+  async resumeResearch(
+    @ReqCtx() ctx: RequestContext,
+    @Param('id') id: string,
+  ): Promise<TriggerResearchResponse> {
+    // Verify research run exists and belongs to org
+    const researchRun = await this.researchService.getResearchRun(id, ctx.currentOrgId);
+
+    // Check if can be resumed
+    const canResume = await this.researchService.canResume(id, ctx.currentOrgId);
+    if (!canResume) {
+      throw new BadRequestException(
+        `Research run ${id} cannot be resumed. It may have completed, exceeded retry limits, or have no checkpoint.`,
+      );
+    }
+
+    // Enqueue resume job
+    const job: StartResearchRunJob = {
+      researchRunId: researchRun.id,
+      itemId: researchRun.itemId,
+      runType: researchRun.runType,
+      orgId: ctx.currentOrgId,
+      userId: ctx.userId,
+    };
+    await this.aiWorkflowQueue.add('start-research-run', job, {
+      jobId: `resume-${researchRun.id}`, // Unique job ID for resume
+    });
+
+    return {
+      researchRun: this.researchService.toDto(researchRun),
     };
   }
 }

@@ -35,6 +35,8 @@ import { ItemsService } from './items.service';
 import { StorageService } from '../storage/storage.service';
 import { EvidenceService } from '../evidence/evidence.service';
 import { MarketplaceListingService } from '../marketplaces/services/marketplace-listing.service';
+import { ChatService } from '../chat/chat.service';
+import { ChatGraphService } from '../ai-workflows/services/chat-graph.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { OrgGuard } from '../common/guards/org.guard';
 import { ReqCtx } from '../common/decorators/req-ctx.decorator';
@@ -54,6 +56,8 @@ export class ItemsController {
     private readonly storageService: StorageService,
     private readonly evidenceService: EvidenceService,
     private readonly marketplaceListingService: MarketplaceListingService,
+    private readonly chatService: ChatService,
+    private readonly chatGraphService: ChatGraphService,
   ) {}
 
   /**
@@ -474,8 +478,8 @@ export class ItemsController {
    *
    * POST /items/:id/chat
    *
-   * Stub implementation - returns a "coming soon" message.
-   * Future implementation will integrate with LLM for context-aware responses.
+   * REST fallback endpoint for when WebSocket is unavailable.
+   * Creates/gets session, saves message, and returns non-streaming response.
    */
   @Post(':id/chat')
   async sendChatMessage(
@@ -486,13 +490,49 @@ export class ItemsController {
     // Verify item exists and belongs to org
     await this.itemsService.getItem(ctx.currentOrgId, id);
 
-    // Return stub response
+    // Get or create session
+    const session = await this.chatService.getOrCreateSession(
+      id,
+      ctx.userId,
+      ctx.currentOrgId,
+    );
+
+    // Save user message
+    await this.chatService.saveMessage(session.id, 'user', body.message);
+
+    // Generate response (non-streaming for REST)
+    let fullResponse = '';
+    await this.chatGraphService.streamResponse({
+      sessionId: session.id,
+      itemId: id,
+      userId: ctx.userId,
+      organizationId: ctx.currentOrgId,
+      userMessage: body.message,
+      onToken: (token: string) => {
+        fullResponse += token;
+      },
+      onComplete: async (response: string) => {
+        fullResponse = response;
+      },
+      onError: async (error: string) => {
+        fullResponse = `Sorry, I encountered an error: ${error}`;
+      },
+    });
+
+    // Save assistant message
+    const assistantMessage = await this.chatService.saveMessage(
+      session.id,
+      'assistant',
+      fullResponse,
+    );
+
+    // Return response in legacy format for backward compatibility
     return {
       message: {
-        id: uuidv4(),
+        id: assistantMessage.id,
         role: 'assistant',
-        content: 'Chat functionality coming soon! This will allow you to ask questions about pricing, condition, and get AI-powered suggestions for your listing.',
-        timestamp: new Date().toISOString(),
+        content: assistantMessage.content,
+        timestamp: assistantMessage.createdAt.toISOString(),
         actions: [],
       },
     };

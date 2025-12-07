@@ -135,4 +135,99 @@ export class EventsService {
       },
     );
   }
+
+  // ============================================================================
+  // Research Events (Phase 7 Slice 3)
+  // ============================================================================
+
+  /**
+   * Emit research node started event
+   */
+  emitResearchNodeStarted(
+    researchRunId: string,
+    itemId: string,
+    organizationId: string,
+    node: string,
+  ): void {
+    const rooms = [
+      Rooms.researchRun(researchRunId),
+      Rooms.item(itemId),
+      Rooms.org(organizationId),
+    ];
+    const payload: SocketEventPayloads[typeof SocketEvents.RESEARCH_NODE_STARTED] = {
+      researchRunId,
+      itemId,
+      node,
+      timestamp: new Date().toISOString(),
+    };
+    rooms.forEach((room) => {
+      this.gateway.server.to(room).emit(SocketEvents.RESEARCH_NODE_STARTED, payload);
+    });
+    this.logger.debug(`Emitted research node started: ${node} for run ${researchRunId}`);
+  }
+
+  /**
+   * Emit research node completed event
+   */
+  emitResearchNodeCompleted(
+    researchRunId: string,
+    itemId: string,
+    organizationId: string,
+    node: string,
+    status: 'success' | 'error',
+    error?: string,
+  ): void {
+    const rooms = [
+      Rooms.researchRun(researchRunId),
+      Rooms.item(itemId),
+      Rooms.org(organizationId),
+    ];
+    const payload: SocketEventPayloads[typeof SocketEvents.RESEARCH_NODE_COMPLETED] = {
+      researchRunId,
+      itemId,
+      node,
+      status,
+      timestamp: new Date().toISOString(),
+      error,
+    };
+    rooms.forEach((room) => {
+      this.gateway.server.to(room).emit(SocketEvents.RESEARCH_NODE_COMPLETED, payload);
+    });
+    this.logger.debug(`Emitted research node completed: ${node} (${status}) for run ${researchRunId}`);
+  }
+
+  /**
+   * Emit research job completed event
+   */
+  emitResearchJobCompleted(
+    researchRunId: string,
+    itemId: string,
+    organizationId: string,
+    status: 'success' | 'error',
+    summary?: string,
+    error?: string,
+  ): void {
+    const rooms = [
+      Rooms.researchRun(researchRunId),
+      Rooms.item(itemId),
+      Rooms.org(organizationId),
+    ];
+    const payload: SocketEventPayloads[typeof SocketEvents.RESEARCH_JOB_COMPLETED] = {
+      researchRunId,
+      itemId,
+      status,
+      summary,
+      error,
+      timestamp: new Date().toISOString(),
+    };
+    rooms.forEach((room) => {
+      this.gateway.server.to(room).emit(SocketEvents.RESEARCH_JOB_COMPLETED, payload);
+    });
+
+    // Note: ChatGateway listens for RESEARCH_JOB_COMPLETED events and notifies chat sessions
+    // The connection is made via ChatGateway tracking item sessions and research jobs
+    // See ChatGateway.notifyResearchCompleted for the implementation
+
+    this.logger.debug(`Emitted research job completed: ${status} for run ${researchRunId}`);
+  }
 }

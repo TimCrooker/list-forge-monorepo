@@ -20,6 +20,21 @@ export const SocketEvents = {
   ORG_MEMBER_ADDED: 'org:member-added',
   ORG_MEMBER_REMOVED: 'org:member-removed',
   ORG_UPDATED: 'org:updated',
+
+  // Research events (Phase 7 Slice 3)
+  RESEARCH_NODE_STARTED: 'research:node-started',
+  RESEARCH_NODE_COMPLETED: 'research:node-completed',
+  RESEARCH_JOB_COMPLETED: 'research:job-completed',
+
+  // Chat events (Phase 7 Slice 5)
+  CHAT_MESSAGE: 'chat:message',
+  CHAT_TOKEN: 'chat:token',
+  CHAT_ERROR: 'chat:error',
+  // Chat events (Phase 7 Slice 6)
+  CHAT_ACTION_APPLIED: 'chat:action_applied',
+  // Chat events (Phase 7 Slice 7)
+  CHAT_RESEARCH_STARTED: 'chat:research_started',
+  CHAT_RESEARCH_COMPLETED: 'chat:research_completed',
 } as const;
 
 /**

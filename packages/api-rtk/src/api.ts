@@ -57,16 +57,21 @@ import {
   ListResearchRunsResponse,
   GetResearchRunResponse,
   GetResearchRunEvidenceResponse,
+  GetLatestResearchResponse,
+  GetResearchHistoryResponse,
   // Chat types
   SendChatMessageRequest,
   SendChatMessageResponse,
+  CreateChatSessionRequest,
+  CreateChatSessionResponse,
+  GetChatMessagesResponse,
 } from '@listforge/api-types';
 import { baseQueryWithErrorHandling } from './baseQueryWithErrorHandling';
 
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithErrorHandling,
-  tagTypes: ['User', 'Org', 'OrgMember', 'MarketplaceAccount', 'MarketplaceListing', 'Item', 'ResearchRun'],
+  tagTypes: ['User', 'Org', 'OrgMember', 'MarketplaceAccount', 'MarketplaceListing', 'Item', 'ResearchRun', 'ChatSession'],
   endpoints: (builder) => ({
     // Auth endpoints
     login: builder.mutation<LoginResponse, LoginRequest>({
@@ -465,7 +470,41 @@ export const api = createApi({
       providesTags: (_result, _error, id) => [{ type: 'ResearchRun', id }],
     }),
 
-    // Chat endpoints - Phase 6 Sub-Phase 9
+    // Phase 7 Slice 1: ItemResearch endpoints
+    getLatestResearch: builder.query<GetLatestResearchResponse, string>({
+      query: (itemId) => `/items/${itemId}/research/latest`,
+      providesTags: (_result, _error, itemId) => [
+        { type: 'Item', id: itemId },
+        'ResearchRun',
+      ],
+    }),
+    getResearchHistory: builder.query<
+      GetResearchHistoryResponse,
+      { itemId: string; page?: number; pageSize?: number }
+    >({
+      query: ({ itemId, page = 1, pageSize = 10 }) => ({
+        url: `/items/${itemId}/research/history`,
+        params: { page, pageSize },
+      }),
+      providesTags: (_result, _error, { itemId }) => [
+        { type: 'Item', id: itemId },
+        'ResearchRun',
+      ],
+    }),
+
+    // Phase 7 Slice 4: Resume research endpoint
+    resumeResearch: builder.mutation<TriggerResearchResponse, string>({
+      query: (runId) => ({
+        url: `/research-runs/${runId}/resume`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_result, _error, runId) => [
+        { type: 'ResearchRun', id: runId },
+        'ResearchRun',
+      ],
+    }),
+
+    // Chat endpoints - Phase 6 Sub-Phase 9 + Phase 7 Slice 5
     sendItemChatMessage: builder.mutation<
       SendChatMessageResponse,
       { itemId: string; data: SendChatMessageRequest }
@@ -475,6 +514,38 @@ export const api = createApi({
         method: 'POST',
         body: data,
       }),
+    }),
+
+    // Phase 7 Slice 5: Chat session endpoints
+    createChatSession: builder.mutation<
+      CreateChatSessionResponse,
+      { itemId: string; data: CreateChatSessionRequest }
+    >({
+      query: ({ itemId, data }) => ({
+        url: `/items/${itemId}/chat/sessions`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { itemId }) => [
+        { type: 'Item', id: itemId },
+      ],
+    }),
+
+    getChatMessages: builder.query<
+      GetChatMessagesResponse,
+      { itemId: string; sessionId: string; page?: number; pageSize?: number }
+    >({
+      query: ({ itemId, sessionId, page, pageSize }) => ({
+        url: `/items/${itemId}/chat/sessions/${sessionId}/messages`,
+        params: {
+          ...(page !== undefined ? { page: String(page) } : {}),
+          ...(pageSize !== undefined ? { pageSize: String(pageSize) } : {}),
+        },
+      }),
+      providesTags: (_result, _error, { itemId, sessionId }) => [
+        { type: 'Item', id: itemId },
+        { type: 'ChatSession', id: sessionId },
+      ],
     }),
   }),
 });
@@ -530,7 +601,15 @@ export const {
   useGetItemResearchRunsQuery,
   useGetResearchRunQuery,
   useGetResearchRunEvidenceQuery,
+  // Phase 7 Slice 1: ItemResearch hooks
+  useGetLatestResearchQuery,
+  useGetResearchHistoryQuery,
+  // Phase 7 Slice 4: Resume research hook
+  useResumeResearchMutation,
   // Chat hooks
   useSendItemChatMessageMutation,
+  // Phase 7 Slice 5: Chat session hooks
+  useCreateChatSessionMutation,
+  useGetChatMessagesQuery,
 } = api;
 

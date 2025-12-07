@@ -50,6 +50,9 @@ export const ErrorCodes = {
   INVALID_STATE: 'INVALID_STATE',
   STATE_EXPIRED: 'STATE_EXPIRED',
 
+  // Rate limiting errors (429)
+  RATE_LIMIT_EXCEEDED: 'RATE_LIMIT_EXCEEDED',
+
   // Conflict errors (409)
   CONFLICT: 'CONFLICT',
   USER_ALREADY_EXISTS: 'USER_ALREADY_EXISTS',
@@ -98,6 +101,9 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   VALIDATION_ERROR: 'Please check your input and try again',
   INVALID_STATE: 'Invalid OAuth state parameter',
   STATE_EXPIRED: 'OAuth state has expired. Please try connecting again',
+
+  // Rate limiting
+  RATE_LIMIT_EXCEEDED: 'Too many requests. Please wait a moment before trying again',
 
   // Conflict
   CONFLICT: 'This action conflicts with existing data',

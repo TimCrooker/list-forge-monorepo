@@ -2,6 +2,8 @@ import { Module, Logger } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { OrganizationsModule } from './organizations/organizations.module';
@@ -15,6 +17,7 @@ import { EvidenceModule } from './evidence/evidence.module';
 import { EventsModule } from './events/events.module';
 import { ItemsModule } from './items/items.module';
 import { ResearchModule } from './research/research.module';
+import { ChatModule } from './chat/chat.module';
 
 const logger = new Logger('AppModule');
 
@@ -69,6 +72,18 @@ function getRedisConfig() {
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'short',
+        ttl: 10000, // 10 seconds
+        limit: 10, // 10 requests per 10 seconds
+      },
+      {
+        name: 'medium',
+        ttl: 60000, // 1 minute
+        limit: 5, // 5 requests per minute
+      },
+    ]),
     TypeOrmModule.forRoot({
       type: 'postgres',
       ...(process.env.DATABASE_URL
@@ -121,6 +136,13 @@ function getRedisConfig() {
     EventsModule,
     ItemsModule,
     ResearchModule,
+    ChatModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
   ],
 })
 export class AppModule {}

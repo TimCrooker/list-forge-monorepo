@@ -28,9 +28,10 @@ This phase also introduces structured research persistence (`ItemResearch`, `Res
 7. [API Surface](#7-api-surface)
 8. [WebSocket Events](#8-websocket-events)
 9. [Frontend Changes](#9-frontend-changes)
-10. [Implementation Sub-Phases](#10-implementation-sub-phases)
-11. [Testing Strategy](#11-testing-strategy)
-12. [Migration Notes](#12-migration-notes)
+10. [Actionable Vertical Slices](#10-actionable-vertical-slices) ⭐ **Start Here**
+11. [Legacy Implementation Sub-Phases](#11-legacy-implementation-sub-phases)
+12. [Testing Strategy](#12-testing-strategy)
+13. [Migration Notes](#13-migration-notes)
 
 ---
 
@@ -1757,7 +1758,474 @@ export function ItemDetailPage() {
 
 ---
 
-## 10. Implementation Sub-Phases
+## 10. Actionable Vertical Slices
+
+Each slice delivers **end-to-end functionality** that can be deployed, tested, and used independently. Complete each slice fully before moving to the next.
+
+### Slice 1: Research Data Display (2-3 days)
+
+**User Story**: As a user, I can view structured pricing research for my items.
+
+**Scope**: Display-only - no new AI processing, just infrastructure to store and show research.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        SLICE 1 SCOPE                            │
+├─────────────────────────────────────────────────────────────────┤
+│  Backend                          │  Frontend                   │
+│  ─────────────────────────────────┼───────────────────────────  │
+│  • ItemResearch entity            │  • Research tab on item     │
+│  • Migration                      │  • PriceBandsCard component │
+│  • ResearchService.findLatest()   │  • DemandSignals component  │
+│  • GET /items/:id/research/latest │  • MissingInfoHints list    │
+│  • API types + RTK query          │  • Empty state UI           │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Deliverables**:
+
+| Layer | Files to Create/Modify |
+|-------|------------------------|
+| Entity | `research/entities/item-research.entity.ts` |
+| Migration | `migrations/XXXX-create-item-research.ts` |
+| Service | `research/research.service.ts` - add `findLatest()`, `findHistory()` |
+| Controller | `research/research.controller.ts` - add GET endpoints |
+| Types | `@listforge/api-types/src/research.ts` - `ItemResearchDto`, `PriceBandDto` |
+| RTK | `@listforge/api-rtk` - `useGetLatestResearchQuery` |
+| Components | `components/research/PriceBandsCard.tsx`, `DemandSignalsCard.tsx` |
+| Page | Update `routes/_authenticated/items/$id.tsx` - add Research tab |
+
+**Acceptance Criteria**:
+
+- [ ] `ItemResearch` table exists in database
+- [ ] API returns research data (or null) for any item
+- [ ] Item detail page shows Research tab
+- [ ] Research tab displays price bands, demand signals, missing info
+- [ ] Empty state shown when no research exists
+
+**Test Seed**: Manually insert a research record to verify display works.
+
+---
+
+### Slice 2: On-Demand Research Execution (3-4 days)
+
+**User Story**: As a user, I can click "Run Research" and the AI analyzes my item.
+
+**Scope**: Full research pipeline, but no real-time progress (polling only), no checkpointing.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        SLICE 2 SCOPE                            │
+├─────────────────────────────────────────────────────────────────┤
+│  Backend                          │  Frontend                   │
+│  ─────────────────────────────────┼───────────────────────────  │
+│  • ResearchGraph (all nodes)      │  • "Run Research" button    │
+│  • Tool implementations           │  • Loading/spinner state    │
+│  • BullMQ processor               │  • Poll for completion      │
+│  • POST /items/:id/research       │  • Refresh on complete      │
+│  • GET /items/:id/research/jobs   │  • Error state display      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Deliverables**:
+
+| Layer | Files to Create/Modify |
+|-------|------------------------|
+| Graph State | `ai-workflows/graphs/research-graph.state.ts` |
+| Graph Builder | `ai-workflows/graphs/research-graph.builder.ts` |
+| Nodes | `ai-workflows/graphs/nodes/*.ts` (all 9 nodes) |
+| Tools | `ai-workflows/tools/research.tools.ts` |
+| Processor | `research/research.processor.ts` (BullMQ) |
+| Controller | `research/research.controller.ts` - POST endpoint |
+| RTK | `useStartResearchMutation`, `useGetResearchJobQuery` |
+| Components | `components/research/RunResearchButton.tsx` |
+| Page | Update item detail - wire up button, polling |
+
+**Acceptance Criteria**:
+
+- [ ] User clicks "Run Research" → job queued
+- [ ] Research completes within 60 seconds for typical items
+- [ ] `ItemResearch` record created with price bands
+- [ ] `EvidenceBundle` created with comps
+- [ ] UI updates to show results after completion
+- [ ] Error state shown if research fails
+
+**Migration Path**: This replaces `ListingAgentService` for new research requests. Keep old service as fallback initially.
+
+---
+
+### Slice 3: Real-Time Research Progress (2-3 days)
+
+**User Story**: As a user, I can see step-by-step progress while research runs.
+
+**Scope**: Add WebSocket for progress events. No checkpointing yet.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        SLICE 3 SCOPE                            │
+├─────────────────────────────────────────────────────────────────┤
+│  Backend                          │  Frontend                   │
+│  ─────────────────────────────────┼───────────────────────────  │
+│  • ResearchGateway (WebSocket)    │  • Socket connection hook   │
+│  • node_complete events           │  • ResearchProgress component│
+│  • job_complete event             │  • Step-by-step animation   │
+│  • Socket authentication          │  • Auto-dismiss on complete │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Deliverables**:
+
+| Layer | Files to Create/Modify |
+|-------|------------------------|
+| Gateway | `research/research.gateway.ts` |
+| Types | `@listforge/socket-types/src/research.ts` |
+| Processor | Update to emit progress events |
+| Hooks | `@listforge/api-rtk/src/useResearchSocket.ts` |
+| Components | `components/research/ResearchProgress.tsx` |
+| Page | Replace polling with WebSocket subscription |
+
+**Acceptance Criteria**:
+
+- [ ] WebSocket connects when research starts
+- [ ] Each node completion shows in UI immediately
+- [ ] Progress component shows current step + completed steps
+- [ ] Automatic transition to results on completion
+- [ ] Graceful degradation if WebSocket fails (fall back to polling)
+
+---
+
+### Slice 4: Research Checkpointing & Resume (2 days)
+
+**User Story**: As a user, if research fails mid-way, I can resume it without starting over.
+
+**Scope**: Add Postgres checkpointing to ResearchGraph.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        SLICE 4 SCOPE                            │
+├─────────────────────────────────────────────────────────────────┤
+│  Backend                          │  Frontend                   │
+│  ─────────────────────────────────┼───────────────────────────  │
+│  • PostgresSaver checkpointer     │  • "Resume" button for      │
+│  • Checkpoint schema migration    │    stalled/failed jobs      │
+│  • Resume logic in processor      │  • Stalled job indicator    │
+│  • Step history tracking          │  • Resume from last step UI │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Deliverables**:
+
+| Layer | Files to Create/Modify |
+|-------|------------------------|
+| Checkpointer | `ai-workflows/checkpointers/postgres.checkpointer.ts` |
+| Migration | Update `ItemResearchRun` with checkpoint columns |
+| Processor | Add resume logic, step history tracking |
+| Controller | POST `/research/jobs/:id/resume` |
+| RTK | `useResumeResearchMutation` |
+| Components | `components/research/StalledJobBanner.tsx` |
+
+**Acceptance Criteria**:
+
+- [ ] Research state persisted after each node
+- [ ] On API restart, in-progress jobs detected
+- [ ] User can click "Resume" → continues from last checkpoint
+- [ ] Step history visible in job status
+- [ ] Max retry limit prevents infinite loops
+
+---
+
+### Slice 5: Basic Chat Q&A (3-4 days)
+
+**User Story**: As a user, I can ask questions about my item and get answers based on research.
+
+**Scope**: Read-only chat - questions only, no actions yet.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        SLICE 5 SCOPE                            │
+├─────────────────────────────────────────────────────────────────┤
+│  Backend                          │  Frontend                   │
+│  ─────────────────────────────────┼───────────────────────────  │
+│  • ChatSession entity             │  • Chat tab on item page    │
+│  • ChatMessage entity             │  • ChatPanel component      │
+│  • ChatGateway (WebSocket)        │  • Message input/display    │
+│  • ChatGraph (question flow only) │  • Streaming token display  │
+│  • send_message handler           │  • Session persistence      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Deliverables**:
+
+| Layer | Files to Create/Modify |
+|-------|------------------------|
+| Entities | `chat/entities/chat-session.entity.ts`, `chat-message.entity.ts` |
+| Migration | `migrations/XXXX-create-chat-tables.ts` |
+| Graph | `ai-workflows/graphs/chat-graph.builder.ts` (question path only) |
+| Gateway | `chat/chat.gateway.ts` |
+| Service | `chat/chat.service.ts` |
+| Types | `@listforge/socket-types/src/chat.ts` |
+| Hooks | `@listforge/api-rtk/src/useChatSocket.ts` |
+| Components | `components/chat/ChatPanel.tsx`, `ChatMessage.tsx` |
+| Page | Add Chat tab to item detail |
+
+**Acceptance Criteria**:
+
+- [ ] Chat tab visible on item detail page
+- [ ] User can type message and send
+- [ ] Response streams in token-by-token
+- [ ] Chat uses item data + research for context
+- [ ] Conversation history persists across page refreshes
+- [ ] Response time < 2 seconds for first token
+
+**Example Interactions**:
+
+- "What price should I list this for?" → Uses research price bands
+- "What condition is this item?" → Uses item attributes
+- "How long will it take to sell?" → Uses demand signals
+
+---
+
+### Slice 6: Chat Actions & Field Updates (2-3 days)
+
+**User Story**: As a user, I can ask chat to update item fields and approve the changes.
+
+**Scope**: Add action suggestion and application to chat.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        SLICE 6 SCOPE                            │
+├─────────────────────────────────────────────────────────────────┤
+│  Backend                          │  Frontend                   │
+│  ─────────────────────────────────┼───────────────────────────  │
+│  • ChatGraph action routing       │  • Action buttons in msgs   │
+│  • updateItemField tool           │  • Confirmation UI          │
+│  • apply_action handler           │  • Applied action indicator │
+│  • Action audit logging           │  • Item refresh on apply    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Deliverables**:
+
+| Layer | Files to Create/Modify |
+|-------|------------------------|
+| Graph | Update chat-graph - add action routing, `handle_action` node |
+| Tools | `ai-workflows/tools/chat.tools.ts` - `updateItemFieldTool` |
+| Gateway | Add `apply_action` handler |
+| Service | `chat.service.ts` - `applyAction()` |
+| Types | `ChatAction` type with `applied` flag |
+| Components | `components/chat/ChatAction.tsx` |
+| Page | Wire up action application |
+
+**Acceptance Criteria**:
+
+- [ ] "Set the price to $150" → Shows action button
+- [ ] User clicks "Apply" → Field updated, item refreshes
+- [ ] Applied actions marked in message history
+- [ ] Rejected actions can be dismissed
+- [ ] Audit log records who approved what change
+
+**Example Interactions**:
+
+- "Change the title to iPhone 13 Pro" → [Apply] button
+- "Mark this as used condition" → [Apply] button
+- "What if I priced it at $200?" → No action (just a question)
+
+---
+
+### Slice 7: Chat-Research Integration (2 days)
+
+**User Story**: As a user, I can trigger new research from chat and reference research data naturally.
+
+**Scope**: Bridge chat and research systems.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        SLICE 7 SCOPE                            │
+├─────────────────────────────────────────────────────────────────┤
+│  Backend                          │  Frontend                   │
+│  ─────────────────────────────────┼───────────────────────────  │
+│  • startResearchJob tool for chat │  • Research status in chat  │
+│  • Stale research detection       │  • "Research running" state │
+│  • Research result notification   │  • Auto-refresh on complete │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Deliverables**:
+
+| Layer | Files to Create/Modify |
+|-------|------------------------|
+| Graph | Update chat-graph - add research intent routing |
+| Tools | Add `startResearchJobTool` to chat tools |
+| Gateway | Notify chat when research completes |
+| Components | `components/chat/ResearchStatus.tsx` |
+
+**Acceptance Criteria**:
+
+- [ ] "Run new research" → Triggers research job
+- [ ] Chat shows "Research running..." during execution
+- [ ] When research completes, chat notifies user
+- [ ] Stale research (>7 days) prompts auto-suggestion
+- [ ] "Why is the price $X?" → References specific evidence
+
+---
+
+### Slice 8: Polish & Edge Cases (2-3 days)
+
+**User Story**: As a user, the experience is smooth with proper error handling and loading states.
+
+**Scope**: UX polish, error states, performance.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        SLICE 8 SCOPE                            │
+├─────────────────────────────────────────────────────────────────┤
+│  Backend                          │  Frontend                   │
+│  ─────────────────────────────────┼───────────────────────────  │
+│  • Rate limiting                  │  • Skeleton loaders         │
+│  • Graceful degradation           │  • Error boundaries         │
+│  • Retry logic tuning             │  • Offline indicators       │
+│  • Logging & monitoring           │  • Keyboard shortcuts       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Deliverables**:
+
+| Area | Tasks |
+|------|-------|
+| Loading States | Skeleton components for research, chat |
+| Error Handling | Error boundaries, retry buttons, user-friendly messages |
+| Offline | Socket reconnection, queued message indicator |
+| Performance | Lazy load chat, virtualize long conversations |
+| Accessibility | Keyboard nav, screen reader support |
+| Documentation | Update README, API docs |
+
+**Acceptance Criteria**:
+
+- [ ] All loading states have skeletons (no spinners)
+- [ ] Network errors show actionable messages
+- [ ] Socket auto-reconnects on disconnect
+- [ ] Chat input has keyboard shortcuts (Enter to send)
+- [ ] Performance: Research list renders 100 items smoothly
+
+---
+
+## Slice Dependency Graph
+
+```
+┌─────────────┐
+│  Slice 1    │ Research Display
+│  (2-3 days) │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│  Slice 2    │ Research Execution
+│  (3-4 days) │
+└──────┬──────┘
+       │
+       ├────────────────────┐
+       ▼                    ▼
+┌─────────────┐      ┌─────────────┐
+│  Slice 3    │      │  Slice 5    │ Chat Q&A (can start in parallel)
+│  (2-3 days) │      │  (3-4 days) │
+└──────┬──────┘      └──────┬──────┘
+       │                    │
+       ▼                    ▼
+┌─────────────┐      ┌─────────────┐
+│  Slice 4    │      │  Slice 6    │
+│  (2 days)   │      │  (2-3 days) │
+└──────┬──────┘      └──────┬──────┘
+       │                    │
+       └────────┬───────────┘
+                ▼
+         ┌─────────────┐
+         │  Slice 7    │ Integration
+         │  (2 days)   │
+         └──────┬──────┘
+                │
+                ▼
+         ┌─────────────┐
+         │  Slice 8    │ Polish
+         │  (2-3 days) │
+         └─────────────┘
+
+Total: 18-24 days (~4-5 weeks)
+```
+
+---
+
+## Slice Checklist
+
+Use this checklist to track progress:
+
+```markdown
+## Phase 7 Progress
+
+### Slice 1: Research Display
+- [ ] Entity created
+- [ ] Migration run
+- [ ] API endpoint working
+- [ ] Frontend component done
+- [ ] Deployed to staging
+- [ ] QA approved
+
+### Slice 2: Research Execution
+- [ ] Graph nodes implemented
+- [ ] Tools working
+- [ ] BullMQ processor running
+- [ ] Frontend trigger working
+- [ ] Deployed to staging
+- [ ] QA approved
+
+### Slice 3: Real-Time Progress
+- [ ] WebSocket gateway created
+- [ ] Events emitting correctly
+- [ ] Frontend receiving events
+- [ ] Progress UI animating
+- [ ] Deployed to staging
+- [ ] QA approved
+
+### Slice 4: Checkpointing
+- [ ] Postgres checkpointer working
+- [ ] Resume logic implemented
+- [ ] Frontend resume button working
+- [ ] Deployed to staging
+- [ ] QA approved
+
+### Slice 5: Chat Q&A
+- [ ] Chat entities created
+- [ ] Chat gateway working
+- [ ] Streaming responses working
+- [ ] Frontend chat panel done
+- [ ] Deployed to staging
+- [ ] QA approved
+
+### Slice 6: Chat Actions
+- [ ] Action tools implemented
+- [ ] Apply flow working
+- [ ] Frontend action buttons done
+- [ ] Deployed to staging
+- [ ] QA approved
+
+### Slice 7: Integration
+- [ ] Research from chat working
+- [ ] Cross-system notifications working
+- [ ] Deployed to staging
+- [ ] QA approved
+
+### Slice 8: Polish
+- [ ] All loading states done
+- [ ] Error handling complete
+- [ ] Performance verified
+- [ ] Documentation updated
+- [ ] Deployed to production
+```
+
+---
+
+## 11. Legacy Implementation Sub-Phases
+
+> **Note**: The following sub-phases are preserved for reference but superseded by the vertical slices above. The vertical slices are the recommended implementation approach.
 
 ### Phase 7.1: Research Infrastructure (Week 1-2)
 
@@ -1867,7 +2335,7 @@ export function ItemDetailPage() {
 
 ---
 
-## 11. Testing Strategy
+## 12. Testing Strategy
 
 ### 11.1 Unit Tests
 
@@ -1970,7 +2438,7 @@ test('user can chat about item pricing', async ({ page }) => {
 
 ---
 
-## 12. Migration Notes
+## 13. Migration Notes
 
 ### 12.1 Database Migrations
 

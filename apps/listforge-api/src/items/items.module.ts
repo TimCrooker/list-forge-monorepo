@@ -8,6 +8,8 @@ import { StorageModule } from '../storage/storage.module';
 import { EventsModule } from '../events/events.module';
 import { EvidenceModule } from '../evidence/evidence.module';
 import { MarketplacesModule } from '../marketplaces/marketplaces.module';
+import { ChatModule } from '../chat/chat.module';
+import { AiWorkflowsModule } from '../ai-workflows/ai-workflows.module';
 import { QUEUE_AI_WORKFLOW } from '@listforge/queue-types';
 
 /**
@@ -26,6 +28,8 @@ import { QUEUE_AI_WORKFLOW } from '@listforge/queue-types';
     EventsModule,
     EvidenceModule,
     MarketplacesModule,
+    ChatModule,
+    AiWorkflowsModule,
   ],
   controllers: [ItemsController],
   providers: [ItemsService],

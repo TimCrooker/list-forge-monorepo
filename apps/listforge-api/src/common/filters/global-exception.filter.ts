@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { ThrottlerException } from '@nestjs/throttler';
 import {
   ApiErrorResponse,
   ErrorCodes,
@@ -63,6 +64,17 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   ): ApiErrorResponse {
     const timestamp = new Date().toISOString();
     const path = request.url;
+
+    // Handle rate limiting (ThrottlerException)
+    if (exception instanceof ThrottlerException) {
+      return {
+        statusCode: HttpStatus.TOO_MANY_REQUESTS,
+        errorCode: ErrorCodes.RATE_LIMIT_EXCEEDED,
+        message: ErrorMessages[ErrorCodes.RATE_LIMIT_EXCEEDED],
+        timestamp,
+        path,
+      };
+    }
 
     // Handle our custom AppException
     if (exception instanceof AppException) {

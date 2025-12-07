@@ -42,6 +42,9 @@ export class ItemResearchRun {
   @Column({ type: 'varchar', length: 50, nullable: true })
   pipelineVersion: string | null;
 
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  currentNode: string | null;
+
   @CreateDateColumn()
   startedAt: Date;
 
@@ -53,4 +56,23 @@ export class ItemResearchRun {
 
   @Column({ type: 'text', nullable: true })
   summary: string | null;
+
+  // ============================================================================
+  // Phase 7 Slice 4: Checkpointing Support
+  // ============================================================================
+
+  @Column({ type: 'jsonb', nullable: true, name: 'checkpoint' })
+  checkpoint: Record<string, unknown> | null;
+
+  @Column({ type: 'int', default: 0, name: 'step_count' })
+  stepCount: number;
+
+  @Column({ type: 'jsonb', nullable: true, name: 'step_history' })
+  stepHistory: Array<{
+    node: string;
+    startedAt: string;
+    completedAt?: string;
+    status: 'running' | 'success' | 'error';
+    error?: string;
+  }> | null;
 }

@@ -13,7 +13,7 @@ export type ChatRole = 'user' | 'assistant' | 'system';
 /**
  * Types of actions the chat agent can suggest
  */
-export type ChatActionType = 'edit_field' | 'trigger_research' | 'suggest_price';
+export type ChatActionType = 'edit_field' | 'trigger_research' | 'suggest_price' | 'update_field';
 
 /**
  * An action that the chat agent can suggest to the user
@@ -23,6 +23,7 @@ export interface ChatAction {
   type: ChatActionType;
   label: string;
   payload: Record<string, unknown>;
+  applied?: boolean; // Phase 7 Slice 6: Track if action has been applied
 }
 
 /**

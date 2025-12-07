@@ -41,4 +41,16 @@ export const Rooms = {
    * Example: user:user456
    */
   user: (userId: string) => `user:${userId}`,
+
+  /**
+   * Room for a specific research run (Phase 7 Slice 3)
+   * Example: research-run:abc123
+   */
+  researchRun: (runId: string) => `research-run:${runId}`,
+
+  /**
+   * Room for a specific chat session (Phase 7 Slice 5)
+   * Example: chat-session:abc123
+   */
+  chatSession: (sessionId: string) => `chat-session:${sessionId}`,
 } as const;
