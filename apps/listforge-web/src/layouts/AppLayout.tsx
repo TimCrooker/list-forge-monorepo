@@ -4,7 +4,7 @@ import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { AppShell, AppSidebar, AppNavbar, useTheme, type NavGroup } from '@listforge/ui';
 import { logout } from '../store/authSlice';
 import { RootState } from '../store/store';
-import { Package, Settings, Users, LayoutDashboard, Camera, ClipboardCheck } from 'lucide-react';
+import { Package, Settings, Users, LayoutDashboard, Camera, ClipboardCheck, Wrench } from 'lucide-react';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -48,6 +48,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
           href: '/review',
           active: location.pathname.startsWith('/review'),
           onClick: () => navigate({ to: '/review' }),
+        },
+        {
+          id: 'needs-work',
+          label: 'Needs Work',
+          icon: Wrench,
+          href: '/needs-work',
+          active: location.pathname.startsWith('/needs-work'),
+          onClick: () => navigate({ to: '/needs-work' }),
         },
         {
           id: 'inventory',

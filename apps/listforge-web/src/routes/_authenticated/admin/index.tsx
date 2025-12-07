@@ -13,7 +13,7 @@ import {
   Button,
   Badge,
 } from '@listforge/ui';
-import { Loader2, Users, Building2, Package, FileText, ShoppingCart, Activity, AlertCircle, CheckCircle } from 'lucide-react';
+import { Loader2, Users, Building2, Package, ShoppingCart, Activity, AlertCircle, CheckCircle } from 'lucide-react';
 
 export const Route = createFileRoute('/_authenticated/admin/')({
   component: AdminDashboard,
@@ -50,12 +50,6 @@ function AdminDashboard() {
           value: metricsData.counts.items,
           description: 'Total items',
           icon: <Package className="h-4 w-4" />,
-        },
-        {
-          title: 'Meta Listings',
-          value: metricsData.counts.metaListings,
-          description: 'AI-generated listings',
-          icon: <FileText className="h-4 w-4" />,
         },
         {
           title: 'Marketplace Accounts',

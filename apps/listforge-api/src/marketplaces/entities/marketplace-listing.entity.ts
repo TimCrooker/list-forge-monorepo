@@ -8,20 +8,27 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { MarketplaceListingStatus } from '@listforge/core-types';
-import { MetaListing } from '../../meta-listings/entities/meta-listing.entity';
+import { Item } from '../../items/entities/item.entity';
 import { MarketplaceAccount } from './marketplace-account.entity';
 
+/**
+ * MarketplaceListing Entity - Phase 6
+ *
+ * Represents how a given Item is configured/listed on a specific marketplace.
+ * Links to unified Item model.
+ * Supports divergence: marketplace-specific overrides are allowed.
+ */
 @Entity('marketplace_listings')
 export class MarketplaceListing {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column()
-  metaListingId: string;
+  itemId: string;
 
-  @ManyToOne(() => MetaListing)
-  @JoinColumn({ name: 'metaListingId' })
-  metaListing: MetaListing;
+  @ManyToOne(() => Item)
+  @JoinColumn({ name: 'itemId' })
+  item: Item;
 
   @Column()
   marketplaceAccountId: string;
@@ -39,8 +46,8 @@ export class MarketplaceListing {
 
   @Column({
     type: 'enum',
-    enum: ['draft', 'pending', 'live', 'ended', 'sold', 'error'],
-    default: 'pending',
+    enum: ['not_listed', 'listing_pending', 'listed', 'ended', 'sold', 'error'],
+    default: 'not_listed',
   })
   status: MarketplaceListingStatus;
 
@@ -51,14 +58,51 @@ export class MarketplaceListing {
   })
   url: string | null;
 
+  // ============================================================================
+  // Divergence Fields (Marketplace-specific overrides)
+  // ============================================================================
+
+  @Column({
+    type: 'text',
+    nullable: true,
+    comment: 'Marketplace-specific title override',
+  })
+  title: string | null;
+
+  @Column({
+    type: 'text',
+    nullable: true,
+    comment: 'Marketplace-specific description override',
+  })
+  description: string | null;
+
   @Column({
     type: 'decimal',
     precision: 10,
     scale: 2,
     nullable: true,
-    comment: 'Current price on marketplace',
+    comment: 'Marketplace-specific price (can diverge from Item.defaultPrice)',
   })
   price: number | null;
+
+  @Column({
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+    comment: 'Marketplace-specific category ID',
+  })
+  marketplaceCategoryId: string | null;
+
+  @Column({
+    type: 'jsonb',
+    nullable: true,
+    comment: 'Marketplace-specific attributes mapping',
+  })
+  marketplaceAttributes: Record<string, string | number | boolean> | null;
+
+  // ============================================================================
+  // Sync & Error Tracking
+  // ============================================================================
 
   @Column({
     type: 'timestamp',

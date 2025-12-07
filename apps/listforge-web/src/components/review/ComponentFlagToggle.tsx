@@ -7,8 +7,9 @@ import {
 } from '@listforge/ui';
 import { CheckCircle, AlertTriangle, XCircle, ChevronDown, Loader2 } from 'lucide-react';
 import { useState } from 'react';
-import type { ComponentStatus } from '@listforge/core-types';
 import { cn } from '@listforge/ui';
+
+type ComponentStatus = 'ok' | 'needs_review' | 'flagged';
 
 interface ComponentFlagToggleProps {
   status: ComponentStatus;

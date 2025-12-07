@@ -559,16 +559,16 @@ export class AmazonAdapter implements MarketplaceAdapter {
       switch (result.status?.toUpperCase()) {
         case 'BUYABLE':
         case 'ACTIVE':
-          return 'live';
+          return 'listed';
         case 'DISCOVERABLE':
-          return 'live';
+          return 'listed';
         case 'DELETED':
           return 'ended';
         case 'INCOMPLETE':
         case 'INVALID':
           return 'error';
         default:
-          return 'pending';
+          return 'listing_pending';
       }
     } catch (error) {
       console.error('Error getting Amazon listing status:', error);

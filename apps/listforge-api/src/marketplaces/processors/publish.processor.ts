@@ -4,19 +4,23 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  ForbiddenException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { PublishListingJob, QUEUE_MARKETPLACE_PUBLISH } from '@listforge/queue-types';
+import { PublishItemListingJob, QUEUE_MARKETPLACE_PUBLISH } from '@listforge/queue-types';
 import { MarketplaceListing } from '../entities/marketplace-listing.entity';
-import { MarketplaceListingStatus } from '@listforge/core-types';
 import { MarketplaceAccount } from '../entities/marketplace-account.entity';
-import { MetaListing } from '../../meta-listings/entities/meta-listing.entity';
+import { Item } from '../../items/entities/item.entity';
 import { MarketplaceAccountService } from '../services/marketplace-account.service';
 import { CanonicalListing } from '@listforge/marketplace-adapters';
 
+/**
+ * PublishProcessor - Phase 6 Sub-Phase 7
+ *
+ * Updated to work with unified Item model instead of ListingDraft.
+ * Syncs Item.lifecycleStatus when listing goes live.
+ */
 @Processor(QUEUE_MARKETPLACE_PUBLISH)
 @Injectable()
 export class PublishProcessor extends WorkerHost {
@@ -27,30 +31,24 @@ export class PublishProcessor extends WorkerHost {
     private listingRepo: Repository<MarketplaceListing>,
     @InjectRepository(MarketplaceAccount)
     private accountRepo: Repository<MarketplaceAccount>,
-    @InjectRepository(MetaListing)
-    private metaListingRepo: Repository<MetaListing>,
+    @InjectRepository(Item)
+    private itemRepo: Repository<Item>,
     private accountService: MarketplaceAccountService,
   ) {
     super();
   }
 
-  async process(job: Job<PublishListingJob>): Promise<void> {
-    const { metaListingId, marketplaceAccountId, orgId } = job.data;
-    this.logger.log(`Processing publish job: ${metaListingId} to account ${marketplaceAccountId}`);
+  async process(job: Job<PublishItemListingJob>): Promise<void> {
+    const { itemId, marketplaceAccountId, orgId } = job.data;
+    this.logger.log(`Processing publish job: Item ${itemId} to account ${marketplaceAccountId}`);
 
-    // Load meta listing with item and photos
-    const metaListing = await this.metaListingRepo.findOne({
-      where: { id: metaListingId },
-      relations: ['item', 'item.photos'],
+    // Load item
+    const item = await this.itemRepo.findOne({
+      where: { id: itemId, organizationId: orgId },
     });
 
-    if (!metaListing) {
-      throw new NotFoundException(`Meta listing not found: ${metaListingId}`);
-    }
-
-    // Verify org match
-    if (metaListing.item.orgId !== orgId) {
-      throw new ForbiddenException('Organization mismatch - cannot publish listing from another organization');
+    if (!item) {
+      throw new NotFoundException(`Item not found: ${itemId}`);
     }
 
     // Load marketplace account
@@ -69,19 +67,19 @@ export class PublishProcessor extends WorkerHost {
     // Create or get existing listing record
     let listing = await this.listingRepo.findOne({
       where: {
-        metaListingId,
+        itemId,
         marketplaceAccountId,
       },
     });
 
     if (!listing) {
       listing = this.listingRepo.create({
-        metaListingId,
+        itemId,
         marketplaceAccountId,
-        status: 'pending',
+        status: 'listing_pending',
       });
     } else {
-      listing.status = 'pending';
+      listing.status = 'listing_pending';
       listing.errorMessage = null;
     }
 
@@ -91,32 +89,34 @@ export class PublishProcessor extends WorkerHost {
       // Get adapter with credentials
       const adapter = await this.accountService.getAdapter(account.id);
 
-      // Extract primitive attributes for the listing (exclude researchSnapshot)
+      // Extract primitive attributes
       const listingAttributes: Record<string, string | number | boolean | undefined> = {};
-      if (metaListing.attributes) {
-        for (const [key, value] of Object.entries(metaListing.attributes)) {
-          // Only include primitive values, exclude complex objects like researchSnapshot
-          if (key !== 'researchSnapshot' &&
-              (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')) {
-            listingAttributes[key] = value;
-          }
+      for (const attr of item.attributes || []) {
+        if (attr.key && attr.value !== undefined && attr.value !== null) {
+          listingAttributes[attr.key] = attr.value as string | number | boolean;
         }
       }
 
-      // Convert meta listing to canonical format
+      // Use marketplace-specific overrides if present, otherwise fall back to Item fields
+      const finalTitle = listing.title || item.title || item.userTitleHint || 'Untitled Item';
+      const finalDescription = listing.description || item.description || '';
+      const finalPrice = listing.price || item.defaultPrice || 0;
+      const finalCategoryId = listing.marketplaceCategoryId || item.categoryId || undefined;
+
+      // Convert item to canonical format
       const canonicalListing: CanonicalListing = {
-        title: metaListing.generatedTitle || metaListing.item.title || 'Untitled Item',
-        description: metaListing.generatedDescription || '',
-        bulletPoints: metaListing.bulletPoints || [],
-        categoryId: metaListing.attributes?.categoryId as string | undefined,
-        brand: metaListing.brand || undefined,
-        model: metaListing.model || undefined,
-        condition: metaListing.attributes?.condition as string || 'used',
-        price: metaListing.priceSuggested ? Number(metaListing.priceSuggested) : 0,
-        currency: 'USD',
-        quantity: 1,
-        images: metaListing.item.photos?.map((p) => p.storagePath) || [],
-        shipping: metaListing.shippingOptions || undefined,
+        title: finalTitle,
+        description: finalDescription,
+        bulletPoints: [],
+        categoryId: finalCategoryId,
+        brand: item.attributes.find(a => a.key === 'Brand')?.value,
+        model: item.attributes.find(a => a.key === 'Model')?.value,
+        condition: item.condition || 'used',
+        price: Number(finalPrice),
+        currency: item.currency || 'USD',
+        quantity: item.quantity || 1,
+        images: item.media?.map((m) => m.url) || [],
+        shipping: undefined,
         attributes: Object.keys(listingAttributes).length > 0 ? listingAttributes : undefined,
       };
 
@@ -124,18 +124,26 @@ export class PublishProcessor extends WorkerHost {
       const result = await adapter.createListing(canonicalListing);
 
       if (result.success && result.remoteListingId) {
-        listing.status = 'live';
+        listing.status = 'listed';
         listing.remoteListingId = result.remoteListingId;
         listing.url = result.url || null;
         listing.price = canonicalListing.price;
         listing.lastSyncedAt = new Date();
         listing.errorMessage = null;
+
+        await this.listingRepo.save(listing);
+
+        // Sync Item lifecycle status: set to 'listed' when any marketplace listing goes live
+        if (item.lifecycleStatus === 'ready') {
+          item.lifecycleStatus = 'listed';
+          await this.itemRepo.save(item);
+          this.logger.log(`Updated Item ${itemId} lifecycle status to 'listed'`);
+        }
       } else {
         listing.status = 'error';
         listing.errorMessage = result.error || 'Unknown error';
+        await this.listingRepo.save(listing);
       }
-
-      await this.listingRepo.save(listing);
     } catch (error) {
       listing.status = 'error';
       listing.errorMessage = error instanceof Error ? error.message : String(error);

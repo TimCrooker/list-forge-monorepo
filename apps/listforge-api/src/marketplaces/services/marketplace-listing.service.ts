@@ -9,10 +9,15 @@ import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
 import { MarketplaceListing } from '../entities/marketplace-listing.entity';
 import { MarketplaceAccount } from '../entities/marketplace-account.entity';
-import { MetaListing } from '../../meta-listings/entities/meta-listing.entity';
-import { QUEUE_MARKETPLACE_PUBLISH, PublishListingJob } from '@listforge/queue-types';
+import { Item } from '../../items/entities/item.entity';
+import { QUEUE_MARKETPLACE_PUBLISH, PublishItemListingJob } from '@listforge/queue-types';
 import { RequestContext } from '../../common/interfaces/request-context.interface';
 
+/**
+ * MarketplaceListingService - Phase 6 Sub-Phase 7
+ *
+ * Updated to work with unified Item model instead of ListingDraft.
+ */
 @Injectable()
 export class MarketplaceListingService {
   constructor(
@@ -20,36 +25,34 @@ export class MarketplaceListingService {
     private listingRepo: Repository<MarketplaceListing>,
     @InjectRepository(MarketplaceAccount)
     private accountRepo: Repository<MarketplaceAccount>,
-    @InjectRepository(MetaListing)
-    private metaListingRepo: Repository<MetaListing>,
+    @InjectRepository(Item)
+    private itemRepo: Repository<Item>,
     @InjectQueue(QUEUE_MARKETPLACE_PUBLISH)
-    private publishQueue: Queue<PublishListingJob>,
+    private publishQueue: Queue<PublishItemListingJob>,
   ) {}
 
   /**
-   * Publish a meta listing to one or more marketplace accounts
+   * Publish an item to one or more marketplace accounts
    */
   async publish(
-    metaListingId: string,
+    itemId: string,
     accountIds: string[],
     ctx: RequestContext,
   ): Promise<void> {
-    // Verify meta listing exists and belongs to org
-    const metaListing = await this.metaListingRepo.findOne({
-      where: { id: metaListingId },
-      relations: ['item'],
+    // Verify item exists and belongs to org
+    const item = await this.itemRepo.findOne({
+      where: { id: itemId, organizationId: ctx.currentOrgId },
     });
 
-    if (!metaListing) {
-      throw new NotFoundException('Meta listing not found');
+    if (!item) {
+      throw new NotFoundException('Item not found');
     }
 
-    if (metaListing.item.orgId !== ctx.currentOrgId) {
-      throw new NotFoundException('Meta listing not found');
-    }
-
-    if (metaListing.aiStatus !== 'complete') {
-      throw new UnprocessableEntityException('Listing is not ready for publishing. AI processing must be complete.');
+    // Validate item lifecycle status (must be 'ready' or 'listed')
+    if (item.lifecycleStatus !== 'ready' && item.lifecycleStatus !== 'listed') {
+      throw new UnprocessableEntityException(
+        `Item must be in 'ready' or 'listed' status to publish. Current status: ${item.lifecycleStatus}`,
+      );
     }
 
     // Verify all accounts belong to org and are active
@@ -66,8 +69,8 @@ export class MarketplaceListingService {
 
     // Enqueue publish jobs
     for (const account of accounts) {
-      await this.publishQueue.add('publish-listing', {
-        metaListingId,
+      await this.publishQueue.add('publish-item-listing', {
+        itemId,
         marketplaceAccountId: account.id,
         orgId: ctx.currentOrgId,
         userId: ctx.userId,
@@ -76,28 +79,14 @@ export class MarketplaceListingService {
   }
 
   /**
-   * Get all marketplace listings for a meta listing
+   * Get all marketplace listings for an item
    */
   async getListings(
-    metaListingId: string,
+    itemId: string,
     ctx: RequestContext,
   ): Promise<MarketplaceListing[]> {
-    // Verify meta listing belongs to org
-    const metaListing = await this.metaListingRepo.findOne({
-      where: { id: metaListingId },
-      relations: ['item'],
-    });
-
-    if (!metaListing) {
-      throw new NotFoundException('Meta listing not found');
-    }
-
-    if (metaListing.item.orgId !== ctx.currentOrgId) {
-      throw new NotFoundException('Meta listing not found');
-    }
-
     return await this.listingRepo.find({
-      where: { metaListingId },
+      where: { itemId },
       relations: ['marketplaceAccount'],
       order: { createdAt: 'DESC' },
     });
@@ -109,7 +98,7 @@ export class MarketplaceListingService {
   async syncStatus(listingId: string, ctx: RequestContext): Promise<MarketplaceListing> {
     const listing = await this.listingRepo.findOne({
       where: { id: listingId },
-      relations: ['marketplaceAccount', 'metaListing'],
+      relations: ['marketplaceAccount', 'item'],
     });
 
     if (!listing) {

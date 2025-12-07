@@ -23,7 +23,7 @@ function DashboardPage() {
 
   const { data: itemsData, isLoading: itemsLoading } = useListItemsQuery({
     page: 1,
-    pageSize: 1, // Just need count
+    pageSize: 100,
   });
 
   const { data: accountsData, isLoading: accountsLoading } =
@@ -38,39 +38,44 @@ function DashboardPage() {
     (acc) => acc.status === 'expired' || acc.status === 'error'
   ).length || 0;
 
-  // Count items by AI status
-  const itemsWithMetaListing = itemsData?.items?.filter(
-    (item) => item.metaListing
-  ) || [];
-  const completedListings = itemsWithMetaListing.filter(
-    (item) => item.metaListing?.aiStatus === 'complete'
-  ).length;
-  const processingListings = itemsWithMetaListing.filter(
-    (item) =>
-      item.metaListing?.aiStatus === 'pending' ||
-      item.metaListing?.aiStatus === 'in_progress'
-  ).length;
+  // Count items by status
+  const readyItems =
+    itemsData?.items?.filter((item) => item.lifecycleStatus === 'ready').length || 0;
+  const listedItems =
+    itemsData?.items?.filter((item) => item.lifecycleStatus === 'listed').length || 0;
+  const pendingReviewItems =
+    itemsData?.items?.filter(
+      (item) => item.lifecycleStatus === 'draft' && item.aiReviewState === 'pending',
+    ).length || 0;
 
   const overviewCards = [
     {
       title: 'Total Items',
       value: totalItems,
-      description: 'Items in inventory',
+      description: 'Items in your inventory',
       icon: <Package className="h-4 w-4" />,
       href: '/items',
     },
     {
-      title: 'Ready to Publish',
-      value: completedListings,
-      description: 'AI processing complete',
+      title: 'Ready to List',
+      value: readyItems,
+      description: 'Inventory-ready items',
       icon: <CheckCircle2 className="h-4 w-4 text-green-600" />,
       href: '/items',
     },
     {
-      title: 'Processing',
-      value: processingListings,
-      description: 'AI workflows running',
-      icon: <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />,
+      title: 'Listed',
+      value: listedItems,
+      description: 'Currently listed items',
+      icon: <TrendingUp className="h-4 w-4 text-blue-600" />,
+      href: '/items',
+    },
+    {
+      title: 'Pending Review',
+      value: pendingReviewItems,
+      description: 'Awaiting AI review',
+      icon: <Loader2 className="h-4 w-4 text-yellow-600" />,
+      href: '/review',
     },
     {
       title: 'Marketplace Accounts',
@@ -134,8 +139,8 @@ function DashboardPage() {
             <>
               <OverviewMetricCard
                 title="Inventory Status"
-                value={`${completedListings}/${totalItems}`}
-                description="Ready to publish"
+                value={`${readyItems + listedItems}/${totalItems}`}
+                description="Ready or listed"
                 icon={<CheckCircle2 className="h-4 w-4" />}
               />
               <OverviewMetricCard
@@ -146,10 +151,10 @@ function DashboardPage() {
                 trend={expiredAccounts > 0 ? 'down' : 'neutral'}
               />
               <OverviewMetricCard
-                title="Processing"
-                value={processingListings}
-                description="AI workflows active"
-                icon={<Loader2 className="h-4 w-4 animate-spin" />}
+                title="Pending Review"
+                value={pendingReviewItems}
+                description="Awaiting AI approval"
+                icon={<Loader2 className="h-4 w-4" />}
               />
             </>
           )}

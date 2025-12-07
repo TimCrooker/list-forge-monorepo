@@ -7,15 +7,14 @@ import { UsersModule } from './users/users.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { AdminModule } from './admin/admin.module';
 import { CommonModule } from './common/common.module';
-import { ItemsModule } from './items/items.module';
-import { MetaListingsModule } from './meta-listings/meta-listings.module';
 import { AiWorkflowsModule } from './ai-workflows/ai-workflows.module';
 import { StorageModule } from './storage/storage.module';
 import { MarketplacesModule } from './marketplaces/marketplaces.module';
 import { HealthModule } from './health/health.module';
-import { ListingDraftsModule } from './listing-drafts/listing-drafts.module';
 import { EvidenceModule } from './evidence/evidence.module';
-import { ReviewModule } from './review/review.module';
+import { EventsModule } from './events/events.module';
+import { ItemsModule } from './items/items.module';
+import { ResearchModule } from './research/research.module';
 
 const logger = new Logger('AppModule');
 
@@ -101,7 +100,7 @@ function getRedisConfig() {
           }),
       autoLoadEntities: true,
       synchronize: true,
-      logging: process.env.NODE_ENV === 'development' || process.env.DB_LOGGING === 'true',
+      logging: process.env.DB_LOGGING === 'true' ? true : ['error'],
       retryAttempts: 3,
       retryDelay: 3000,
       keepConnectionAlive: true,
@@ -109,8 +108,6 @@ function getRedisConfig() {
     BullModule.forRoot({
       connection: getRedisConfig(),
     }),
-    ItemsModule,
-    MetaListingsModule,
     AiWorkflowsModule,
     MarketplacesModule,
     AdminModule,
@@ -120,9 +117,10 @@ function getRedisConfig() {
     AuthModule,
     UsersModule,
     OrganizationsModule,
-    ListingDraftsModule,
     EvidenceModule,
-    ReviewModule,
+    EventsModule,
+    ItemsModule,
+    ResearchModule,
   ],
 })
 export class AppModule {}

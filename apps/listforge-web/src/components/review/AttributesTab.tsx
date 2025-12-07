@@ -6,10 +6,10 @@ import {
   Badge,
 } from '@listforge/ui';
 import { List, Sparkles, User, FileInput } from 'lucide-react';
-import type { ListingDraftAttribute } from '@listforge/core-types';
+import type { ItemAttribute } from '@listforge/core-types';
 
 interface AttributesTabProps {
-  attributes: ListingDraftAttribute[];
+  attributes: ItemAttribute[];
 }
 
 export function AttributesTab({ attributes }: AttributesTabProps) {
@@ -50,7 +50,7 @@ export function AttributesTab({ attributes }: AttributesTabProps) {
     return 'bg-orange-500';
   };
 
-  const renderAttributeRow = (attr: ListingDraftAttribute, idx: number) => (
+  const renderAttributeRow = (attr: ItemAttribute, idx: number) => (
     <div
       key={idx}
       className="flex items-center justify-between py-2 border-b last:border-0"

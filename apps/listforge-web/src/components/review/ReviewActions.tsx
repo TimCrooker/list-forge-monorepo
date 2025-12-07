@@ -9,11 +9,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@listforge/ui';
-import { Check, X, AlertTriangle, Loader2 } from 'lucide-react';
-import type { ReviewAction } from '@listforge/api-types';
+import { Check, X, Loader2 } from 'lucide-react';
 
 interface ReviewActionsProps {
-  onAction: (action: ReviewAction, comment?: string) => Promise<void>;
+  onAction: (action: 'approve' | 'reject', comment?: string) => Promise<void>;
   isLoading: boolean;
 }
 
@@ -23,10 +22,6 @@ export function ReviewActions({ onAction, isLoading }: ReviewActionsProps) {
 
   const handleApprove = () => {
     onAction('approve');
-  };
-
-  const handleNeedsManual = () => {
-    onAction('needs_manual');
   };
 
   const handleRejectConfirm = () => {
@@ -44,7 +39,7 @@ export function ReviewActions({ onAction, isLoading }: ReviewActionsProps) {
           size="lg"
           onClick={() => setShowRejectDialog(true)}
           disabled={isLoading}
-          className="gap-2 min-w-[120px]"
+          className="gap-2 min-w-[140px]"
         >
           {isLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -54,29 +49,13 @@ export function ReviewActions({ onAction, isLoading }: ReviewActionsProps) {
           Reject
         </Button>
 
-        {/* Needs Manual Button */}
-        <Button
-          variant="outline"
-          size="lg"
-          onClick={handleNeedsManual}
-          disabled={isLoading}
-          className="gap-2 min-w-[140px] border-yellow-500 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-700"
-        >
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <AlertTriangle className="h-4 w-4" />
-          )}
-          Needs Manual
-        </Button>
-
         {/* Approve Button */}
         <Button
           variant="default"
           size="lg"
           onClick={handleApprove}
           disabled={isLoading}
-          className="gap-2 min-w-[120px] bg-green-600 hover:bg-green-700"
+          className="gap-2 min-w-[140px] bg-green-600 hover:bg-green-700"
         >
           {isLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -90,7 +69,6 @@ export function ReviewActions({ onAction, isLoading }: ReviewActionsProps) {
       {/* Keyboard shortcut hints */}
       <div className="flex justify-center gap-6 mt-3 text-xs text-muted-foreground">
         <span>← or R: Reject</span>
-        <span>↓ or S: Skip</span>
         <span>→ or A: Approve</span>
       </div>
 

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "scripts": {
     "build": "tsc",
     "type-check": "tsc --noEmit",
@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "@listforge/api-types": "workspace:*",
-    "@reduxjs/toolkit": "^2.0.1"
+    "@listforge/socket-types": "workspace:*",
+    "@reduxjs/toolkit": "^2.0.1",
+    "socket.io-client": "^4.7.2"
   },
   "devDependencies": {
     "@listforge/config": "workspace:*",

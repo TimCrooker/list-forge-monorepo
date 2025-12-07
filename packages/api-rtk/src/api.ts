@@ -26,11 +26,6 @@ import {
   AdminUpdateOrgStatusResponse,
   AdminListMarketplaceAccountsQuery,
   AdminListMarketplaceAccountsResponse,
-  CreateItemResponse,
-  ListItemsResponse,
-  GetItemResponse,
-  UpdateItemRequest,
-  UpdateItemResponse,
   GetEbayAuthUrlResponse,
   ExchangeEbayCodeRequest,
   ExchangeEbayCodeResponse,
@@ -39,33 +34,39 @@ import {
   ExchangeAmazonCodeResponse,
   ListMarketplaceAccountsResponse,
   DeleteMarketplaceAccountResponse,
-  PublishMetaListingRequest,
-  PublishMetaListingResponse,
-  GetMarketplaceListingsResponse,
   SystemMetricsResponse,
-  // Listing Draft types
-  CreateListingDraftResponse,
-  ListListingDraftsResponse,
-  GetListingDraftResponse,
-  UpdateListingDraftRequest,
-  UpdateListingDraftResponse,
-  DeleteListingDraftResponse,
   GetEvidenceResponse,
-  RerunAiResponse,
-  AssignReviewerRequest,
-  AssignReviewerResponse,
-  // Review types
-  ReviewQueueResponse,
-  ReviewQueueFilters,
-  ApplyReviewRequest,
-  ApplyReviewResponse,
+  // Item types
+  CreateItemResponse,
+  GetItemResponse,
+  UpdateItemRequest,
+  UpdateItemResponse,
+  ListItemsResponse,
+  ItemReviewQueueResponse,
+  ApproveItemResponse,
+  RejectItemResponse,
+  NeedsWorkQueueResponse,
+  MarkItemReadyResponse,
+  // Item marketplace types
+  GetItemMarketplaceListingsResponse,
+  PublishItemListingRequest,
+  PublishItemListingResponse,
+  // Research types
+  TriggerResearchRequest,
+  TriggerResearchResponse,
+  ListResearchRunsResponse,
+  GetResearchRunResponse,
+  GetResearchRunEvidenceResponse,
+  // Chat types
+  SendChatMessageRequest,
+  SendChatMessageResponse,
 } from '@listforge/api-types';
 import { baseQueryWithErrorHandling } from './baseQueryWithErrorHandling';
 
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithErrorHandling,
-  tagTypes: ['User', 'Org', 'OrgMember', 'Item', 'MarketplaceAccount', 'MarketplaceListing', 'ListingDraft'],
+  tagTypes: ['User', 'Org', 'OrgMember', 'MarketplaceAccount', 'MarketplaceListing', 'Item', 'ResearchRun'],
   endpoints: (builder) => ({
     // Auth endpoints
     login: builder.mutation<LoginResponse, LoginRequest>({
@@ -119,7 +120,7 @@ export const api = createApi({
     }),
     getOrg: builder.query<OrgDetailResponse, string>({
       query: (orgId) => `/orgs/${orgId}`,
-      providesTags: (result, error, orgId) => [{ type: 'Org', id: orgId }],
+      providesTags: (_result, _error, orgId) => [{ type: 'Org', id: orgId }],
     }),
     addOrgMember: builder.mutation<AddOrgMemberResponse, { orgId: string; data: AddOrgMemberRequest }>({
       query: ({ orgId, data }) => ({
@@ -127,7 +128,7 @@ export const api = createApi({
         method: 'POST',
         body: data,
       }),
-      invalidatesTags: (result, error, { orgId }) => [
+      invalidatesTags: (_result, _error, { orgId }) => [
         { type: 'Org', id: orgId },
         'OrgMember',
       ],
@@ -141,7 +142,7 @@ export const api = createApi({
         method: 'PATCH',
         body: data,
       }),
-      invalidatesTags: (result, error, { orgId }) => [
+      invalidatesTags: (_result, _error, { orgId }) => [
         { type: 'Org', id: orgId },
         'OrgMember',
       ],
@@ -154,14 +155,14 @@ export const api = createApi({
     }),
     getUserAdmin: builder.query<AdminGetUserDetailResponse, string>({
       query: (userId) => `/admin/users/${userId}`,
-      providesTags: (result, error, userId) => [{ type: 'User', id: userId }],
+      providesTags: (_result, _error, userId) => [{ type: 'User', id: userId }],
     }),
     disableUser: builder.mutation<AdminUpdateUserResponse, string>({
       query: (userId) => ({
         url: `/admin/users/${userId}/disable`,
         method: 'POST',
       }),
-      invalidatesTags: (result, error, userId) => [
+      invalidatesTags: (_result, _error, userId) => [
         { type: 'User', id: userId },
         'User',
       ],
@@ -171,7 +172,7 @@ export const api = createApi({
         url: `/admin/users/${userId}/enable`,
         method: 'POST',
       }),
-      invalidatesTags: (result, error, userId) => [
+      invalidatesTags: (_result, _error, userId) => [
         { type: 'User', id: userId },
         'User',
       ],
@@ -185,7 +186,7 @@ export const api = createApi({
         method: 'PATCH',
         body: data,
       }),
-      invalidatesTags: (result, error, { userId }) => [
+      invalidatesTags: (_result, _error, { userId }) => [
         { type: 'User', id: userId },
         'User',
       ],
@@ -196,7 +197,7 @@ export const api = createApi({
     }),
     getOrgAdmin: builder.query<AdminGetOrgDetailResponse, string>({
       query: (orgId) => `/admin/orgs/${orgId}`,
-      providesTags: (result, error, orgId) => [{ type: 'Org', id: orgId }],
+      providesTags: (_result, _error, orgId) => [{ type: 'Org', id: orgId }],
     }),
     updateOrgStatus: builder.mutation<
       AdminUpdateOrgStatusResponse,
@@ -207,7 +208,7 @@ export const api = createApi({
         method: 'PATCH',
         body: data,
       }),
-      invalidatesTags: (result, error, { orgId }) => [
+      invalidatesTags: (_result, _error, { orgId }) => [
         { type: 'Org', id: orgId },
         'Org',
       ],
@@ -228,50 +229,6 @@ export const api = createApi({
         method: 'POST',
       }),
       invalidatesTags: ['MarketplaceAccount'],
-    }),
-
-    // Item endpoints
-    createItem: builder.mutation<CreateItemResponse, FormData>({
-      query: (formData) => ({
-        url: '/items',
-        method: 'POST',
-        body: formData,
-      }),
-      invalidatesTags: ['Item'],
-    }),
-    listItems: builder.query<
-      ListItemsResponse,
-      { page?: number; pageSize?: number }
-    >({
-      query: ({ page = 1, pageSize = 20 }) => ({
-        url: '/items',
-        params: { page, pageSize },
-      }),
-      providesTags: ['Item'],
-    }),
-    getItem: builder.query<GetItemResponse, string>({
-      query: (itemId) => `/items/${itemId}`,
-      providesTags: (result, error, itemId) => [{ type: 'Item', id: itemId }],
-    }),
-    updateItem: builder.mutation<
-      UpdateItemResponse,
-      { itemId: string; data: UpdateItemRequest }
-    >({
-      query: ({ itemId, data }) => ({
-        url: `/items/${itemId}`,
-        method: 'PATCH',
-        body: data,
-      }),
-      invalidatesTags: (result, error, { itemId }) => [
-        { type: 'Item', id: itemId },
-      ],
-    }),
-    deleteItem: builder.mutation<void, string>({
-      query: (itemId) => ({
-        url: `/items/${itemId}`,
-        method: 'DELETE',
-      }),
-      invalidatesTags: ['Item'],
     }),
 
     // Marketplace endpoints - eBay
@@ -311,154 +268,213 @@ export const api = createApi({
       }),
       invalidatesTags: ['MarketplaceAccount'],
     }),
-    publishMetaListing: builder.mutation<
-      PublishMetaListingResponse,
-      { metaListingId: string; data: PublishMetaListingRequest }
-    >({
-      query: ({ metaListingId, data }) => ({
-        url: `/meta-listings/${metaListingId}/publish`,
-        method: 'POST',
-        body: data,
-      }),
-      invalidatesTags: ['MarketplaceListing', 'Item'],
-    }),
-    getMarketplaceListings: builder.query<
-      GetMarketplaceListingsResponse,
-      string
-    >({
-      query: (metaListingId) => `/meta-listings/${metaListingId}/marketplace-listings`,
-      providesTags: ['MarketplaceListing'],
-    }),
 
     // Admin endpoints - metrics
     getSystemMetrics: builder.query<SystemMetricsResponse, void>({
       query: () => '/admin/system/metrics',
     }),
 
-    // Listing Draft endpoints - Ingestion
-    createListingDraft: builder.mutation<CreateListingDraftResponse, FormData>({
+    // Item endpoints - Phase 6
+    createAiCaptureItem: builder.mutation<CreateItemResponse, FormData>({
       query: (formData) => ({
-        url: '/ingestion/listings',
+        url: '/items/ai-capture',
         method: 'POST',
         body: formData,
       }),
-      invalidatesTags: ['ListingDraft'],
+      invalidatesTags: ['Item'],
     }),
-    listIngestionDrafts: builder.query<
-      ListListingDraftsResponse,
-      { page?: number; pageSize?: number }
-    >({
-      query: ({ page = 1, pageSize = 20 }) => ({
-        url: '/ingestion/listings',
-        params: { page, pageSize },
+    createManualItem: builder.mutation<CreateItemResponse, FormData>({
+      query: (formData) => ({
+        url: '/items/manual',
+        method: 'POST',
+        body: formData,
       }),
-      providesTags: ['ListingDraft'],
+      invalidatesTags: ['Item'],
     }),
+    listItems: builder.query<
+      ListItemsResponse,
+      {
+        lifecycleStatus?: string[];
+        aiReviewState?: string[];
+        source?: string[];
+        search?: string;
+        page?: number;
+        pageSize?: number;
+        sortBy?: string;
+        sortOrder?: string;
+      }
+    >({
+      query: (params) => {
+        const queryParams: Record<string, string> = {};
+        if (params.lifecycleStatus?.length) queryParams.lifecycleStatus = params.lifecycleStatus.join(',');
+        if (params.aiReviewState?.length) queryParams.aiReviewState = params.aiReviewState.join(',');
+        if (params.source?.length) queryParams.source = params.source.join(',');
+        if (params.search) queryParams.search = params.search;
+        if (params.page) queryParams.page = String(params.page);
+        if (params.pageSize) queryParams.pageSize = String(params.pageSize);
+        if (params.sortBy) queryParams.sortBy = params.sortBy;
+        if (params.sortOrder) queryParams.sortOrder = params.sortOrder;
 
-    // Listing Draft endpoints - CRUD
-    listListingDrafts: builder.query<
-      ListListingDraftsResponse,
-      { page?: number; pageSize?: number }
-    >({
-      query: ({ page = 1, pageSize = 20 }) => ({
-        url: '/listings/drafts',
-        params: { page, pageSize },
-      }),
-      providesTags: ['ListingDraft'],
+        return {
+          url: '/items',
+          params: queryParams,
+        };
+      },
+      providesTags: ['Item'],
     }),
-    getListingDraft: builder.query<GetListingDraftResponse, string>({
-      query: (id) => `/listings/drafts/${id}`,
-      providesTags: (result, error, id) => [{ type: 'ListingDraft', id }],
+    getItem: builder.query<GetItemResponse, string>({
+      query: (id) => `/items/${id}`,
+      providesTags: (_result, _error, id) => [{ type: 'Item', id }],
     }),
-    getListingDraftEvidence: builder.query<GetEvidenceResponse, string>({
-      query: (id) => `/listings/drafts/${id}/evidence`,
-      providesTags: (result, error, id) => [{ type: 'ListingDraft', id }],
-    }),
-    updateListingDraft: builder.mutation<
-      UpdateListingDraftResponse,
-      { id: string; data: UpdateListingDraftRequest }
+    updateItem: builder.mutation<
+      UpdateItemResponse,
+      { id: string; data: UpdateItemRequest }
     >({
       query: ({ id, data }) => ({
-        url: `/listings/drafts/${id}`,
+        url: `/items/${id}`,
         method: 'PATCH',
         body: data,
       }),
-      invalidatesTags: (result, error, { id }) => [
-        { type: 'ListingDraft', id },
-        'ListingDraft',
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'Item', id },
+        'Item',
       ],
     }),
-    deleteListingDraft: builder.mutation<DeleteListingDraftResponse, string>({
+    deleteItem: builder.mutation<{ success: boolean }, string>({
       query: (id) => ({
-        url: `/listings/drafts/${id}`,
+        url: `/items/${id}`,
         method: 'DELETE',
       }),
-      invalidatesTags: ['ListingDraft'],
+      invalidatesTags: ['Item'],
     }),
-    rerunListingDraftAi: builder.mutation<RerunAiResponse, string>({
+
+    // Item Review endpoints - Phase 6 Sub-Phase 3
+    getItemAiReviewQueue: builder.query<
+      ItemReviewQueueResponse,
+      { page?: number; pageSize?: number }
+    >({
+      query: ({ page = 1, pageSize = 20 }) => ({
+        url: '/items/review/ai-queue',
+        params: { page, pageSize },
+      }),
+      providesTags: ['Item'],
+    }),
+    approveItem: builder.mutation<ApproveItemResponse, string>({
       query: (id) => ({
-        url: `/listings/drafts/${id}/ai-run`,
+        url: `/items/${id}/review/ai-approve`,
         method: 'POST',
       }),
-      invalidatesTags: (result, error, id) => [
-        { type: 'ListingDraft', id },
-        'ListingDraft',
+      invalidatesTags: (_result, _error, id) => [
+        { type: 'Item', id },
+        'Item',
       ],
     }),
-    assignReviewer: builder.mutation<
-      AssignReviewerResponse,
-      { id: string; data: AssignReviewerRequest }
-    >({
-      query: ({ id, data }) => ({
-        url: `/listings/drafts/${id}/assign`,
+    rejectItem: builder.mutation<RejectItemResponse, { id: string; comment?: string }>({
+      query: ({ id, comment }) => ({
+        url: `/items/${id}/review/ai-reject`,
         method: 'POST',
-        body: data,
+        body: { comment },
       }),
-      invalidatesTags: (result, error, { id }) => [
-        { type: 'ListingDraft', id },
-        'ListingDraft',
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'Item', id },
+        'Item',
+      ],
+    }),
+    getItemEvidence: builder.query<GetEvidenceResponse, string>({
+      query: (id) => `/items/${id}/evidence`,
+      providesTags: (_result, _error, id) => [{ type: 'Item', id }],
+    }),
+
+    // Needs Work Queue endpoints - Phase 6 Sub-Phase 4
+    getNeedsWorkQueue: builder.query<
+      NeedsWorkQueueResponse,
+      { page?: number; pageSize?: number }
+    >({
+      query: ({ page = 1, pageSize = 20 }) => ({
+        url: '/items/review/needs-work',
+        params: { page, pageSize },
+      }),
+      providesTags: ['Item'],
+    }),
+    markItemReady: builder.mutation<MarkItemReadyResponse, string>({
+      query: (id) => ({
+        url: `/items/${id}/mark-ready`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_result, _error, id) => [
+        { type: 'Item', id },
+        'Item',
       ],
     }),
 
-    // Review endpoints
-    getReviewQueue: builder.query<
-      ReviewQueueResponse,
-      { page?: number; pageSize?: number; filters?: ReviewQueueFilters }
+    // Item Marketplace endpoints - Phase 6 Sub-Phase 7
+    getItemMarketplaceListings: builder.query<
+      GetItemMarketplaceListingsResponse,
+      string
     >({
-      query: ({ page = 1, pageSize = 20, filters }) => {
-        const params: Record<string, string> = {
-          page: String(page),
-          pageSize: String(pageSize),
-        };
-        if (filters?.category) params.category = filters.category;
-        if (filters?.assignedTo) params.assignedTo = filters.assignedTo;
-        if (filters?.dateFrom) params.dateFrom = filters.dateFrom;
-        if (filters?.dateTo) params.dateTo = filters.dateTo;
-        if (filters?.minConfidence !== undefined)
-          params.minConfidence = String(filters.minConfidence);
-        if (filters?.maxConfidence !== undefined)
-          params.maxConfidence = String(filters.maxConfidence);
-
-        return {
-          url: '/review/queue',
-          params,
-        };
-      },
-      providesTags: ['ListingDraft'],
+      query: (itemId) => `/items/${itemId}/marketplace-listings`,
+      providesTags: (_result, _error, itemId) => [
+        { type: 'Item', id: itemId },
+        'MarketplaceListing',
+      ],
     }),
-    applyReviewDecision: builder.mutation<
-      ApplyReviewResponse,
-      { id: string; data: ApplyReviewRequest }
+    publishItemToMarketplaces: builder.mutation<
+      PublishItemListingResponse,
+      { itemId: string; data: PublishItemListingRequest }
     >({
-      query: ({ id, data }) => ({
-        url: `/review/drafts/${id}/decision`,
+      query: ({ itemId, data }) => ({
+        url: `/items/${itemId}/publish`,
         method: 'POST',
         body: data,
       }),
-      invalidatesTags: (result, error, { id }) => [
-        { type: 'ListingDraft', id },
-        'ListingDraft',
+      invalidatesTags: (_result, _error, { itemId }) => [
+        { type: 'Item', id: itemId },
+        'Item',
+        'MarketplaceListing',
       ],
+    }),
+
+    // Research endpoints - Phase 6 Sub-Phase 8
+    triggerItemResearch: builder.mutation<
+      TriggerResearchResponse,
+      { itemId: string; data?: TriggerResearchRequest }
+    >({
+      query: ({ itemId, data = {} }) => ({
+        url: `/items/${itemId}/research`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { itemId }) => [
+        { type: 'Item', id: itemId },
+        'ResearchRun',
+      ],
+    }),
+    getItemResearchRuns: builder.query<ListResearchRunsResponse, string>({
+      query: (itemId) => `/items/${itemId}/research-runs`,
+      providesTags: (_result, _error, itemId) => [
+        { type: 'Item', id: itemId },
+        'ResearchRun',
+      ],
+    }),
+    getResearchRun: builder.query<GetResearchRunResponse, string>({
+      query: (id) => `/research-runs/${id}`,
+      providesTags: (_result, _error, id) => [{ type: 'ResearchRun', id }],
+    }),
+    getResearchRunEvidence: builder.query<GetResearchRunEvidenceResponse, string>({
+      query: (id) => `/research-runs/${id}/evidence`,
+      providesTags: (_result, _error, id) => [{ type: 'ResearchRun', id }],
+    }),
+
+    // Chat endpoints - Phase 6 Sub-Phase 9
+    sendItemChatMessage: builder.mutation<
+      SendChatMessageResponse,
+      { itemId: string; data: SendChatMessageRequest }
+    >({
+      query: ({ itemId, data }) => ({
+        url: `/items/${itemId}/chat`,
+        method: 'POST',
+        body: data,
+      }),
     }),
   }),
 });
@@ -484,32 +500,37 @@ export const {
   useUpdateOrgStatusMutation,
   useListMarketplaceAccountsAdminQuery,
   useDisableMarketplaceAccountMutation,
-  useCreateItemMutation,
-  useListItemsQuery,
-  useGetItemQuery,
-  useUpdateItemMutation,
-  useDeleteItemMutation,
   useGetEbayAuthUrlQuery,
   useExchangeEbayCodeMutation,
   useGetAmazonAuthUrlQuery,
   useExchangeAmazonCodeMutation,
   useListMarketplaceAccountsQuery,
   useDeleteMarketplaceAccountMutation,
-  usePublishMetaListingMutation,
-  useGetMarketplaceListingsQuery,
   useGetSystemMetricsQuery,
-  // Listing Draft hooks
-  useCreateListingDraftMutation,
-  useListIngestionDraftsQuery,
-  useListListingDraftsQuery,
-  useGetListingDraftQuery,
-  useGetListingDraftEvidenceQuery,
-  useUpdateListingDraftMutation,
-  useDeleteListingDraftMutation,
-  useRerunListingDraftAiMutation,
-  useAssignReviewerMutation,
-  // Review hooks
-  useGetReviewQueueQuery,
-  useApplyReviewDecisionMutation,
+  // Item hooks
+  useCreateAiCaptureItemMutation,
+  useCreateManualItemMutation,
+  useListItemsQuery,
+  useGetItemQuery,
+  useUpdateItemMutation,
+  useDeleteItemMutation,
+  // Item review hooks
+  useGetItemAiReviewQueueQuery,
+  useApproveItemMutation,
+  useRejectItemMutation,
+  useGetItemEvidenceQuery,
+  // Needs Work hooks
+  useGetNeedsWorkQueueQuery,
+  useMarkItemReadyMutation,
+  // Item marketplace hooks
+  useGetItemMarketplaceListingsQuery,
+  usePublishItemToMarketplacesMutation,
+  // Research hooks
+  useTriggerItemResearchMutation,
+  useGetItemResearchRunsQuery,
+  useGetResearchRunQuery,
+  useGetResearchRunEvidenceQuery,
+  // Chat hooks
+  useSendItemChatMessageMutation,
 } = api;
 

@@ -8,21 +8,35 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { ListingDraft } from '../../listing-drafts/entities/listing-draft.entity';
+import { Item } from '../../items/entities/item.entity';
+import { ItemResearchRun } from '../../research/entities/item-research-run.entity';
 import { EvidenceItem } from './evidence-item.entity';
 
+/**
+ * EvidenceBundle Entity
+ *
+ * Phase 6: Links to Item and ItemResearchRun for proper research history tracking.
+ */
 @Entity('evidence_bundles')
-@Index(['listingDraftId'])
+@Index(['itemId'])
+@Index(['researchRunId'])
 export class EvidenceBundle {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
-  listingDraftId: string;
+  @Column({ nullable: true })
+  itemId: string | null;
 
-  @ManyToOne(() => ListingDraft, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'listingDraftId' })
-  listingDraft: ListingDraft;
+  @ManyToOne(() => Item, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'itemId' })
+  item: Item | null;
+
+  @Column({ nullable: true })
+  researchRunId: string | null;
+
+  @ManyToOne(() => ItemResearchRun, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'researchRunId' })
+  researchRun: ItemResearchRun;
 
   @OneToMany(() => EvidenceItem, (item) => item.bundle, { cascade: true })
   items: EvidenceItem[];

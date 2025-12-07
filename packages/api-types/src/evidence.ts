@@ -14,11 +14,13 @@ export interface EvidenceItemDto {
 }
 
 /**
- * DTO for an evidence bundle (collection of evidence for a draft)
+ * DTO for an evidence bundle (collection of evidence for an item)
+ * Phase 6: Links to Item and ItemResearchRun
  */
 export interface EvidenceBundleDto {
   id: string;
-  listingDraftId: string;
+  itemId: string | null;
+  researchRunId: string | null;
   generatedAt: string;
   items: EvidenceItemDto[];
 }

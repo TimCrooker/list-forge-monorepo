@@ -17,12 +17,18 @@ export interface MarketplaceAccountDto {
 
 export interface MarketplaceListingDto {
   id: string;
-  metaListingId: string;
+  itemId: string;
   marketplaceAccountId: string;
+  marketplace: MarketplaceType;
   remoteListingId: string | null;
   status: MarketplaceListingStatus;
   url: string | null;
+  // Divergence fields (marketplace-specific overrides)
+  title: string | null;
+  description: string | null;
   price: number | null;
+  marketplaceCategoryId: string | null;
+  marketplaceAttributes: Record<string, string | number | boolean> | null;
   lastSyncedAt: string | null;
   errorMessage: string | null;
   createdAt: string;
@@ -87,18 +93,6 @@ export interface DeleteMarketplaceAccountResponse {
   success: boolean;
 }
 
-export interface PublishMetaListingRequest {
-  accountIds: string[];
-}
-
-export interface PublishMetaListingResponse {
-  success: boolean;
-}
-
-export interface GetMarketplaceListingsResponse {
-  listings: MarketplaceListingDto[];
-}
-
 export interface SystemMetricsResponse {
   queues: {
     aiWorkflow: {
@@ -121,7 +115,6 @@ export interface SystemMetricsResponse {
     users: number;
     organizations: number;
     items: number;
-    metaListings: number;
     marketplaceAccounts: number;
   };
   recentWorkflowRuns: Array<{
@@ -134,5 +127,31 @@ export interface SystemMetricsResponse {
     completedAt: string | null;
     error: string | null;
   }>;
+}
+
+// Item-based marketplace listing types (Phase 6 Sub-Phase 7)
+export interface CreateMarketplaceListingRequest {
+  marketplaceAccountId: string;
+  title?: string;  // Override Item title
+  description?: string;  // Override Item description
+  price?: number;  // Override Item price
+  marketplaceCategoryId?: string;
+  marketplaceAttributes?: Record<string, string | number | boolean>;
+}
+
+export interface CreateMarketplaceListingResponse {
+  listing: MarketplaceListingDto;
+}
+
+export interface GetItemMarketplaceListingsResponse {
+  listings: MarketplaceListingDto[];
+}
+
+export interface PublishItemListingRequest {
+  accountIds: string[];
+}
+
+export interface PublishItemListingResponse {
+  success: boolean;
 }
 

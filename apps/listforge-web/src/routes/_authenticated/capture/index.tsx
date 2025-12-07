@@ -2,8 +2,10 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import {
-  useCreateListingDraftMutation,
-  useListIngestionDraftsQuery,
+  useCreateAiCaptureItemMutation,
+  useListItemsQuery,
+  useOrgRoom,
+  useMeQuery,
 } from '@listforge/api-rtk';
 import {
   Button,
@@ -39,11 +41,21 @@ export const Route = createFileRoute('/_authenticated/capture/')({
 
 function CapturePage() {
   const navigate = useNavigate();
-  const [createDraft, { isLoading: isCreating }] = useCreateListingDraftMutation();
-  const { data: recentDrafts, isLoading: isLoadingDrafts } = useListIngestionDraftsQuery({
+  const [createItem, { isLoading: isCreating }] = useCreateAiCaptureItemMutation();
+  const { data: recentItems, isLoading: isLoadingItems } = useListItemsQuery({
+    source: ['ai_capture'],
+    sortBy: 'createdAt',
+    sortOrder: 'desc',
     page: 1,
     pageSize: 10,
   });
+
+  // Get current org for socket subscription
+  const { data: meData } = useMeQuery();
+  const currentOrgId = meData?.currentOrg?.id;
+
+  // Subscribe to org room for real-time updates on new items and status changes
+  useOrgRoom(currentOrgId);
 
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
@@ -113,7 +125,7 @@ function CapturePage() {
         formData.append('userDescriptionHint', descriptionHint.trim());
       }
 
-      await createDraft(formData).unwrap();
+      await createItem(formData).unwrap();
 
       // Clear form
       previews.forEach((p) => URL.revokeObjectURL(p));
@@ -128,28 +140,36 @@ function CapturePage() {
     }
   };
 
-  const getStatusBadge = (ingestionStatus: string, reviewStatus: string) => {
-    if (ingestionStatus === 'ai_error') {
+  const getStatusBadge = (lifecycleStatus: string, aiReviewState: string) => {
+    if (lifecycleStatus === 'ready' && aiReviewState === 'approved') {
       return (
-        <Badge variant="destructive" className="gap-1">
-          <AlertCircle className="h-3 w-3" />
-          Error
+        <Badge variant="default" className="gap-1 bg-green-600">
+          <CheckCircle className="h-3 w-3" />
+          Ready
         </Badge>
       );
     }
-    if (ingestionStatus === 'ai_complete') {
-      if (reviewStatus === 'approved' || reviewStatus === 'auto_approved') {
-        return (
-          <Badge variant="default" className="gap-1 bg-green-600">
-            <CheckCircle className="h-3 w-3" />
-            Ready
-          </Badge>
-        );
-      }
+    if (lifecycleStatus === 'draft' && aiReviewState === 'rejected') {
+      return (
+        <Badge variant="destructive" className="gap-1">
+          <AlertCircle className="h-3 w-3" />
+          Needs Work
+        </Badge>
+      );
+    }
+    if (lifecycleStatus === 'draft' && aiReviewState === 'pending') {
       return (
         <Badge variant="secondary" className="gap-1">
           <Sparkles className="h-3 w-3" />
           Ready for Review
+        </Badge>
+      );
+    }
+    if (lifecycleStatus === 'listed') {
+      return (
+        <Badge variant="default" className="gap-1">
+          <CheckCircle className="h-3 w-3" />
+          Listed
         </Badge>
       );
     }
@@ -318,13 +338,13 @@ function CapturePage() {
       {/* Recent Captures */}
       <div className="space-y-3">
         <h2 className="text-lg font-semibold">Recent Captures</h2>
-        {isLoadingDrafts ? (
+        {isLoadingItems ? (
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
               <Skeleton key={i} className="h-20 w-full rounded-lg" />
             ))}
           </div>
-        ) : recentDrafts?.drafts.length === 0 ? (
+        ) : recentItems?.items.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-muted-foreground">
               <Camera className="h-12 w-12 mx-auto mb-3 opacity-50" />
@@ -334,19 +354,19 @@ function CapturePage() {
           </Card>
         ) : (
           <div className="space-y-2">
-            {recentDrafts?.drafts.map((draft) => (
+            {recentItems?.items.map((item) => (
               <Card
-                key={draft.id}
+                key={item.id}
                 className="hover:bg-muted/50 transition-colors cursor-pointer"
-                onClick={() => navigate({ to: '/capture/$id', params: { id: draft.id } })}
+                onClick={() => navigate({ to: '/items/$id', params: { id: item.id } })}
               >
                 <CardContent className="p-3">
                   <div className="flex items-center gap-3">
                     {/* Thumbnail */}
                     <div className="h-14 w-14 rounded-lg bg-muted overflow-hidden flex-shrink-0">
-                      {draft.primaryImageUrl ? (
+                      {item.primaryImageUrl ? (
                         <img
-                          src={draft.primaryImageUrl}
+                          src={item.primaryImageUrl}
                           alt=""
                           className="h-full w-full object-cover"
                         />
@@ -359,13 +379,13 @@ function CapturePage() {
                     {/* Info */}
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">
-                        {draft.title || draft.userTitleHint || 'Untitled Item'}
+                        {item.title || 'Untitled Item'}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
-                        {getStatusBadge(draft.ingestionStatus, draft.reviewStatus)}
-                        {draft.suggestedPrice && (
+                        {getStatusBadge(item.lifecycleStatus, item.aiReviewState)}
+                        {item.defaultPrice && (
                           <span className="text-sm text-muted-foreground">
-                            ${draft.suggestedPrice.toFixed(2)}
+                            ${item.defaultPrice.toFixed(2)}
                           </span>
                         )}
                       </div>

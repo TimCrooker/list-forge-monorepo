@@ -16,14 +16,31 @@ export class EvidenceService {
   ) {}
 
   /**
-   * Create a new evidence bundle for a listing draft
+   * Create a new evidence bundle for an item
    */
-  async createBundle(listingDraftId: string): Promise<EvidenceBundle> {
-    // Delete any existing bundle for this draft (one bundle per draft)
-    await this.bundleRepo.delete({ listingDraftId });
+  async createBundleForItem(itemId: string): Promise<EvidenceBundle> {
+    // Delete any existing bundle for this item (one bundle per item)
+    await this.bundleRepo.delete({ itemId });
 
     const bundle = this.bundleRepo.create({
-      listingDraftId,
+      itemId,
+      items: [],
+    });
+
+    return this.bundleRepo.save(bundle);
+  }
+
+  /**
+   * Create a new evidence bundle for a research run
+   * Phase 6 Sub-Phase 8
+   */
+  async createBundleForResearchRun(
+    itemId: string,
+    researchRunId: string,
+  ): Promise<EvidenceBundle> {
+    const bundle = this.bundleRepo.create({
+      itemId,
+      researchRunId,
       items: [],
     });
 
@@ -66,11 +83,11 @@ export class EvidenceService {
   }
 
   /**
-   * Get the evidence bundle for a listing draft
+   * Get the evidence bundle for an item
    */
-  async getBundleForDraft(listingDraftId: string): Promise<EvidenceBundle | null> {
+  async getBundleForItem(itemId: string): Promise<EvidenceBundle | null> {
     return this.bundleRepo.findOne({
-      where: { listingDraftId },
+      where: { itemId },
       relations: ['items'],
       order: {
         items: {
@@ -81,10 +98,36 @@ export class EvidenceService {
   }
 
   /**
-   * Delete evidence bundle for a listing draft
+   * Get the evidence bundle for a research run
+   * Phase 6 Sub-Phase 8
    */
-  async deleteBundleForDraft(listingDraftId: string): Promise<void> {
-    await this.bundleRepo.delete({ listingDraftId });
+  async getBundleForResearchRun(researchRunId: string): Promise<EvidenceBundle | null> {
+    return this.bundleRepo.findOne({
+      where: { researchRunId },
+      relations: ['items'],
+      order: {
+        items: {
+          createdAt: 'ASC',
+        },
+      },
+    });
+  }
+
+  /**
+   * List all evidence bundles for an item
+   * Phase 6 Sub-Phase 8
+   */
+  async listBundlesForItem(itemId: string): Promise<EvidenceBundle[]> {
+    return this.bundleRepo.find({
+      where: { itemId },
+      relations: ['items'],
+      order: {
+        generatedAt: 'DESC',
+        items: {
+          createdAt: 'ASC',
+        },
+      },
+    });
   }
 
   /**
@@ -93,7 +136,8 @@ export class EvidenceService {
   toDto(bundle: EvidenceBundle): EvidenceBundleDto {
     return {
       id: bundle.id,
-      listingDraftId: bundle.listingDraftId,
+      itemId: bundle.itemId,
+      researchRunId: bundle.researchRunId,
       generatedAt: bundle.generatedAt.toISOString(),
       items: bundle.items.map((item) => ({
         id: item.id,

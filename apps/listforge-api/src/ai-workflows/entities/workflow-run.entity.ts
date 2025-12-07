@@ -15,8 +15,11 @@ export class WorkflowRun {
   @Column()
   type: string;
 
-  @Column()
-  itemId: string;
+  @Column({ nullable: true })
+  listingDraftId: string | null;
+
+  @Column({ nullable: true })
+  itemId: string | null;
 
   @Column()
   orgId: string;

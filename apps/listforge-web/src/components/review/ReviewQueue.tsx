@@ -1,44 +1,44 @@
 import { cn } from '@listforge/ui';
 import { Badge } from '@listforge/ui';
 import { Clock, CheckCircle, AlertCircle, Sparkles } from 'lucide-react';
-import type { ListingDraftSummaryDto } from '@listforge/api-types';
+import type { ItemSummaryDto } from '@listforge/api-types';
 
 interface ReviewQueueProps {
-  items: ListingDraftSummaryDto[];
+  items: ItemSummaryDto[];
   selectedId: string | null;
   onSelect: (id: string) => void;
 }
 
 export function ReviewQueue({ items, selectedId, onSelect }: ReviewQueueProps) {
-  const getStatusBadge = (ingestionStatus: string, reviewStatus: string) => {
-    if (ingestionStatus === 'ai_error') {
-      return (
-        <Badge variant="destructive" className="gap-1 text-xs">
-          <AlertCircle className="h-3 w-3" />
-          Error
-        </Badge>
-      );
-    }
-    if (reviewStatus === 'auto_approved') {
-      return (
-        <Badge variant="default" className="gap-1 text-xs bg-green-600">
-          <CheckCircle className="h-3 w-3" />
-          Auto
-        </Badge>
-      );
-    }
-    if (reviewStatus === 'needs_review') {
+  const getStatusBadge = (lifecycleStatus: string, aiReviewState: string) => {
+    if (aiReviewState === 'pending') {
       return (
         <Badge variant="secondary" className="gap-1 text-xs">
           <Sparkles className="h-3 w-3" />
-          Review
+          Pending Review
+        </Badge>
+      );
+    }
+    if (lifecycleStatus === 'ready' && aiReviewState === 'approved') {
+      return (
+        <Badge variant="default" className="gap-1 text-xs bg-green-600">
+          <CheckCircle className="h-3 w-3" />
+          Ready
+        </Badge>
+      );
+    }
+    if (lifecycleStatus === 'draft' && aiReviewState === 'rejected') {
+      return (
+        <Badge variant="destructive" className="gap-1 text-xs">
+          <AlertCircle className="h-3 w-3" />
+          Rejected
         </Badge>
       );
     }
     return (
       <Badge variant="outline" className="gap-1 text-xs">
         <Clock className="h-3 w-3" />
-        Pending
+        Processing
       </Badge>
     );
   };
@@ -73,15 +73,15 @@ export function ReviewQueue({ items, selectedId, onSelect }: ReviewQueueProps) {
             {/* Content */}
             <div className="flex-1 min-w-0">
               <p className="font-medium text-sm truncate">
-                {item.title || item.userTitleHint || 'Untitled Item'}
+                {item.title || 'Untitled Item'}
               </p>
-              {item.suggestedPrice && (
+              {item.defaultPrice && (
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  ${item.suggestedPrice.toFixed(2)} {item.currency}
+                  ${item.defaultPrice.toFixed(2)} {item.currency}
                 </p>
               )}
               <div className="flex items-center gap-2 mt-1.5">
-                {getStatusBadge(item.ingestionStatus, item.reviewStatus)}
+                {getStatusBadge(item.lifecycleStatus, item.aiReviewState)}
               </div>
             </div>
           </div>

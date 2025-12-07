@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useGetListingDraftQuery } from '@listforge/api-rtk';
+import { useGetItemQuery } from '@listforge/api-rtk';
 import {
   Button,
   Card,
@@ -19,36 +19,44 @@ import {
 } from 'lucide-react';
 
 export const Route = createFileRoute('/_authenticated/capture/$id')({
-  component: ListingDraftDetailPage,
+  component: ItemDetailPage,
 });
 
-function ListingDraftDetailPage() {
+function ItemDetailPage() {
   const navigate = useNavigate();
   const { id } = Route.useParams();
-  const { data, isLoading, error } = useGetListingDraftQuery(id);
+  const { data, isLoading, error } = useGetItemQuery(id);
 
-  const getStatusBadge = (ingestionStatus: string, reviewStatus: string) => {
-    if (ingestionStatus === 'ai_error') {
+  const getStatusBadge = (lifecycleStatus: string, aiReviewState: string) => {
+    if (lifecycleStatus === 'ready' && aiReviewState === 'approved') {
       return (
-        <Badge variant="destructive" className="gap-1">
-          <AlertCircle className="h-3 w-3" />
-          Error
+        <Badge variant="default" className="gap-1 bg-green-600">
+          <CheckCircle className="h-3 w-3" />
+          Ready
         </Badge>
       );
     }
-    if (ingestionStatus === 'ai_complete') {
-      if (reviewStatus === 'approved' || reviewStatus === 'auto_approved') {
-        return (
-          <Badge variant="default" className="gap-1 bg-green-600">
-            <CheckCircle className="h-3 w-3" />
-            Ready
-          </Badge>
-        );
-      }
+    if (lifecycleStatus === 'draft' && aiReviewState === 'rejected') {
+      return (
+        <Badge variant="destructive" className="gap-1">
+          <AlertCircle className="h-3 w-3" />
+          Needs Work
+        </Badge>
+      );
+    }
+    if (lifecycleStatus === 'draft' && aiReviewState === 'pending') {
       return (
         <Badge variant="secondary" className="gap-1">
           <Sparkles className="h-3 w-3" />
           Ready for Review
+        </Badge>
+      );
+    }
+    if (lifecycleStatus === 'listed') {
+      return (
+        <Badge variant="default" className="gap-1">
+          <CheckCircle className="h-3 w-3" />
+          Listed
         </Badge>
       );
     }
@@ -82,7 +90,7 @@ function ListingDraftDetailPage() {
     );
   }
 
-  if (error || !data?.draft) {
+  if (error || !data?.item) {
     return (
       <div className="space-y-6 max-w-4xl mx-auto pb-20">
         <div className="flex items-center gap-4">
@@ -93,12 +101,12 @@ function ListingDraftDetailPage() {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-2xl font-bold">Draft Not Found</h1>
+          <h1 className="text-2xl font-bold">Item Not Found</h1>
         </div>
         <Card>
           <CardContent className="pt-6">
             <p className="text-muted-foreground">
-              The listing draft you're looking for doesn't exist or you don't have access to it.
+              The item you're looking for doesn't exist or you don't have access to it.
             </p>
           </CardContent>
         </Card>
@@ -106,7 +114,7 @@ function ListingDraftDetailPage() {
     );
   }
 
-  const draft = data.draft;
+  const item = data.item;
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-20">
@@ -121,13 +129,13 @@ function ListingDraftDetailPage() {
         </Button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold">
-            {draft.title || draft.userTitleHint || 'Untitled Item'}
+            {item.title || item.userTitleHint || 'Untitled Item'}
           </h1>
           <div className="flex items-center gap-2 mt-1">
-            {getStatusBadge(draft.ingestionStatus, draft.reviewStatus)}
-            {draft.suggestedPrice && (
+            {getStatusBadge(item.lifecycleStatus, item.aiReviewState)}
+            {item.defaultPrice && (
               <span className="text-sm text-muted-foreground">
-                ${draft.suggestedPrice.toFixed(2)} {draft.currency}
+                ${item.defaultPrice.toFixed(2)} {item.currency}
               </span>
             )}
           </div>
@@ -135,14 +143,14 @@ function ListingDraftDetailPage() {
       </div>
 
       {/* Media Gallery */}
-      {draft.media.length > 0 && (
+      {item.media.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Photos</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {draft.media.map((media, index) => (
+              {item.media.map((media, index) => (
                 <div
                   key={media.id}
                   className="aspect-square rounded-lg overflow-hidden bg-muted relative"
@@ -165,34 +173,34 @@ function ListingDraftDetailPage() {
       )}
 
       {/* User Hints */}
-      {(draft.userTitleHint || draft.userDescriptionHint || draft.userNotes) && (
+      {(item.userTitleHint || item.userDescriptionHint || item.userNotes) && (
         <Card>
           <CardHeader>
             <CardTitle>Your Notes</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {draft.userTitleHint && (
+            {item.userTitleHint && (
               <div>
                 <p className="text-sm font-medium text-muted-foreground mb-1">
                   What is this?
                 </p>
-                <p>{draft.userTitleHint}</p>
+                <p>{item.userTitleHint}</p>
               </div>
             )}
-            {draft.userDescriptionHint && (
+            {item.userDescriptionHint && (
               <div>
                 <p className="text-sm font-medium text-muted-foreground mb-1">
                   Additional details
                 </p>
-                <p>{draft.userDescriptionHint}</p>
+                <p>{item.userDescriptionHint}</p>
               </div>
             )}
-            {draft.userNotes && (
+            {item.userNotes && (
               <div>
                 <p className="text-sm font-medium text-muted-foreground mb-1">
                   Notes
                 </p>
-                <p>{draft.userNotes}</p>
+                <p>{item.userNotes}</p>
               </div>
             )}
           </CardContent>
@@ -200,61 +208,59 @@ function ListingDraftDetailPage() {
       )}
 
       {/* AI-Generated Content */}
-      {draft.ingestionStatus === 'ai_complete' && (
-        <>
-          {draft.title && (
+      {item.title && (item.lifecycleStatus === 'ready' || item.lifecycleStatus === 'listed' || item.aiReviewState === 'pending') && (
             <Card>
               <CardHeader>
-                <CardTitle>AI-Generated Listing</CardTitle>
+            <CardTitle>{item.source === 'ai_capture' ? 'AI-Generated Listing' : 'Item Details'}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {draft.title && (
+            {item.title && (
                   <div>
                     <p className="text-sm font-medium text-muted-foreground mb-1">
                       Title
                     </p>
-                    <p className="text-lg">{draft.title}</p>
+                <p className="text-lg">{item.title}</p>
                   </div>
                 )}
-                {draft.subtitle && (
+            {item.subtitle && (
                   <div>
                     <p className="text-sm font-medium text-muted-foreground mb-1">
                       Subtitle
                     </p>
-                    <p>{draft.subtitle}</p>
+                <p>{item.subtitle}</p>
                   </div>
                 )}
-                {draft.description && (
+            {item.description && (
                   <div>
                     <p className="text-sm font-medium text-muted-foreground mb-1">
                       Description
                     </p>
-                    <p className="whitespace-pre-wrap">{draft.description}</p>
+                <p className="whitespace-pre-wrap">{item.description}</p>
                   </div>
                 )}
-                {draft.condition && (
+            {item.condition && (
                   <div>
                     <p className="text-sm font-medium text-muted-foreground mb-1">
                       Condition
                     </p>
-                    <p>{draft.condition}</p>
+                <p>{item.condition}</p>
                   </div>
                 )}
-                {draft.categoryPath && draft.categoryPath.length > 0 && (
+            {item.categoryPath && item.categoryPath.length > 0 && (
                   <div>
                     <p className="text-sm font-medium text-muted-foreground mb-1">
                       Category
                     </p>
-                    <p>{draft.categoryPath.join(' > ')}</p>
+                <p>{item.categoryPath.join(' > ')}</p>
                   </div>
                 )}
-                {draft.attributes && draft.attributes.length > 0 && (
+            {item.attributes && item.attributes.length > 0 && (
                   <div>
                     <p className="text-sm font-medium text-muted-foreground mb-1">
                       Attributes
                     </p>
                     <div className="space-y-1">
-                      {draft.attributes.map((attr, idx) => (
+                  {item.attributes.map((attr, idx) => (
                         <div key={idx} className="flex gap-2">
                           <span className="font-medium">{attr.key}:</span>
                           <span>{attr.value}</span>
@@ -265,12 +271,10 @@ function ListingDraftDetailPage() {
                 )}
               </CardContent>
             </Card>
-          )}
-        </>
       )}
 
       {/* AI Processing Status */}
-      {draft.ingestionStatus !== 'ai_complete' && draft.ingestionStatus !== 'ai_error' && (
+      {item.lifecycleStatus === 'draft' && item.aiReviewState === 'pending' && !item.title && (
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3 text-muted-foreground">
@@ -282,13 +286,13 @@ function ListingDraftDetailPage() {
       )}
 
       {/* Error State */}
-      {draft.ingestionStatus === 'ai_error' && draft.aiErrorMessage && (
+      {item.aiLastRunError && (
         <Card>
           <CardHeader>
             <CardTitle className="text-destructive">Processing Error</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">{draft.aiErrorMessage}</p>
+            <p className="text-sm text-muted-foreground">{item.aiLastRunError}</p>
           </CardContent>
         </Card>
       )}

@@ -4,6 +4,7 @@ import {
   useListMarketplaceAccountsQuery,
   useExchangeEbayCodeMutation,
   useExchangeAmazonCodeMutation,
+  useDeleteMarketplaceAccountMutation,
   api,
 } from '@listforge/api-rtk';
 import { useAppDispatch } from '@/store/store';
@@ -14,9 +15,18 @@ import {
   CardHeader,
   CardTitle,
   Badge,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
 } from '@listforge/ui';
-import { ArrowLeft, Store, CheckCircle2, XCircle, AlertCircle, Loader2 } from 'lucide-react';
-import { showSuccess } from '@/utils/toast';
+import { ArrowLeft, Store, CheckCircle2, XCircle, AlertCircle, Loader2, Trash2 } from 'lucide-react';
+import { showSuccess, showError } from '@/utils/toast';
 
 export const Route = createFileRoute('/_authenticated/settings/marketplaces')({
   component: MarketplacesPage,
@@ -39,8 +49,10 @@ function MarketplacesPage() {
   const { data, isLoading, refetch } = useListMarketplaceAccountsQuery();
   const [exchangeEbayCode, { isLoading: isExchangingEbay }] = useExchangeEbayCodeMutation();
   const [exchangeAmazonCode, { isLoading: isExchangingAmazon }] = useExchangeAmazonCodeMutation();
+  const [deleteAccount] = useDeleteMarketplaceAccountMutation();
   const [isGettingEbayUrl, setIsGettingEbayUrl] = useState(false);
   const [isGettingAmazonUrl, setIsGettingAmazonUrl] = useState(false);
+  const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
 
   const isExchanging = isExchangingEbay || isExchangingAmazon;
 
@@ -133,6 +145,20 @@ function MarketplacesPage() {
       handleConnectEbay();
     } else if (marketplace === 'AMAZON') {
       handleConnectAmazon();
+    }
+  };
+
+  const handleDeleteAccount = async (accountId: string) => {
+    try {
+      setDeletingAccountId(accountId);
+      await deleteAccount(accountId).unwrap();
+      await refetch();
+      showSuccess('Marketplace account disconnected');
+    } catch (err) {
+      showError('Failed to disconnect account');
+      console.error('Failed to delete account:', err);
+    } finally {
+      setDeletingAccountId(null);
     }
   };
 
@@ -300,15 +326,51 @@ function MarketplacesPage() {
                       )}
                     </div>
                   </div>
-                  {account.status === 'expired' && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleReconnect(account.marketplace)}
-                    >
-                      Reconnect
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {account.status === 'expired' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleReconnect(account.marketplace)}
+                      >
+                        Reconnect
+                      </Button>
+                    )}
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive"
+                          disabled={deletingAccountId === account.id}
+                        >
+                          {deletingAccountId === account.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Disconnect Account</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to disconnect your {getMarketplaceName(account.marketplace)} account?
+                            This will not affect any listings already published.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDeleteAccount(account.id)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Disconnect
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </div>
               ))}
             </div>

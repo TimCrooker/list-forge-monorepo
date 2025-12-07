@@ -3,7 +3,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
 import { MarketplaceAccount } from './entities/marketplace-account.entity';
 import { MarketplaceListing } from './entities/marketplace-listing.entity';
-import { MetaListing } from '../meta-listings/entities/meta-listing.entity';
 import { Item } from '../items/entities/item.entity';
 import { MarketplaceConnectionController } from './marketplace-connection.controller';
 import { MarketplaceWebhookController } from './marketplace-webhook.controller';
@@ -20,7 +19,6 @@ import { QUEUE_MARKETPLACE_PUBLISH, QUEUE_MARKETPLACE_SYNC } from '@listforge/qu
     TypeOrmModule.forFeature([
       MarketplaceAccount,
       MarketplaceListing,
-      MetaListing,
       Item,
     ]),
     BullModule.registerQueue({

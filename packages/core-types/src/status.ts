@@ -1,5 +1,3 @@
-export type ItemStatus = 'draft' | 'ready' | 'listed' | 'sold' | 'archived';
-
 export type MetaListingAiStatus =
   | 'pending'
   | 'in_progress'
@@ -8,12 +6,12 @@ export type MetaListingAiStatus =
   | 'needs_review';
 
 export type MarketplaceListingStatus =
-  | 'draft'
-  | 'pending'
-  | 'live'
-  | 'ended'
-  | 'sold'
-  | 'error';
+  | 'not_listed'      // Configuration exists but not published
+  | 'listing_pending' // In process of being created
+  | 'listed'          // Live on marketplace
+  | 'sold'            // Sold on this marketplace
+  | 'ended'           // Ended/cancelled
+  | 'error';          // Error in publish/update
 
 export type WorkflowRunStatus = 'pending' | 'running' | 'completed' | 'failed';
 

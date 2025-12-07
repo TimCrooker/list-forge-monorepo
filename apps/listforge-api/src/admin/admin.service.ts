@@ -28,7 +28,6 @@ import { User } from '../users/entities/user.entity';
 import { Organization } from '../organizations/entities/organization.entity';
 import { UserOrganization } from '../organizations/entities/user-organization.entity';
 import { Item } from '../items/entities/item.entity';
-import { MetaListing } from '../meta-listings/entities/meta-listing.entity';
 import { MarketplaceAccount } from '../marketplaces/entities/marketplace-account.entity';
 import { WorkflowRun } from '../ai-workflows/entities/workflow-run.entity';
 import { QUEUE_AI_WORKFLOW, QUEUE_MARKETPLACE_PUBLISH, QUEUE_MARKETPLACE_SYNC } from '@listforge/queue-types';
@@ -44,8 +43,6 @@ export class AdminService {
     private userOrgRepo: Repository<UserOrganization>,
     @InjectRepository(Item)
     private itemRepo: Repository<Item>,
-    @InjectRepository(MetaListing)
-    private metaListingRepo: Repository<MetaListing>,
     @InjectRepository(MarketplaceAccount)
     private marketplaceAccountRepo: Repository<MarketplaceAccount>,
     @InjectRepository(WorkflowRun)
@@ -220,7 +217,7 @@ export class AdminService {
     });
 
     const itemCount = await this.itemRepo.count({
-      where: { orgId: org.id },
+      where: { organizationId: org.id },
     });
 
     const marketplaceAccountCount = await this.marketplaceAccountRepo.count({
@@ -245,7 +242,7 @@ export class AdminService {
         status: org.status as OrgStatus,
         createdAt: org.createdAt.toISOString(),
         memberCount,
-        itemCount,
+        itemCount: itemCount,
         marketplaceAccountCount,
         members,
       },
@@ -346,7 +343,6 @@ export class AdminService {
     const userCount = await this.userRepo.count();
     const orgCount = await this.orgRepo.count();
     const itemCount = await this.itemRepo.count();
-    const metaListingCount = await this.metaListingRepo.count();
     const marketplaceAccountCount = await this.marketplaceAccountRepo.count();
 
     // Get recent workflow runs
@@ -377,7 +373,6 @@ export class AdminService {
         users: userCount,
         organizations: orgCount,
         items: itemCount,
-        metaListings: metaListingCount,
         marketplaceAccounts: marketplaceAccountCount,
       },
       recentWorkflowRuns: recentWorkflowRuns.map((run) => ({

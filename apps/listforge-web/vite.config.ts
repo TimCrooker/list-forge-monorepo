@@ -20,12 +20,12 @@ export default defineConfig({
   },
   build: {
     commonjsOptions: {
-      include: [/api-types/, /api-rtk/, /node_modules/],
+      include: [/api-types/, /api-rtk/, /socket-types/, /node_modules/],
     },
   },
   optimizeDeps: {
     include: ['sonner', '@listforge/api-types'],
-    exclude: ['@listforge/api-rtk'], // Exclude from pre-bundling to always use latest workspace version
+    exclude: ['@listforge/api-rtk', '@listforge/socket-types'], // Exclude workspace packages from pre-bundling
   },
   server: {
     port: 3000,

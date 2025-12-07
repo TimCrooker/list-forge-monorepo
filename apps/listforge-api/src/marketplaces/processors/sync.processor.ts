@@ -2,7 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan, In } from 'typeorm';
+import { Repository } from 'typeorm';
 import {
   SyncListingStatusJob,
   SyncAllListingsJob,
@@ -10,9 +10,15 @@ import {
 } from '@listforge/queue-types';
 import { MarketplaceListing } from '../entities/marketplace-listing.entity';
 import { MarketplaceAccount } from '../entities/marketplace-account.entity';
-import { MarketplaceAccountService } from '../services/marketplace-account.service';
 import { Item } from '../../items/entities/item.entity';
+import { MarketplaceAccountService } from '../services/marketplace-account.service';
 
+/**
+ * SyncProcessor - Phase 6 Sub-Phase 7
+ *
+ * Updated to work with unified Item model.
+ * Syncs Item.lifecycleStatus when listing is sold and quantity hits 0.
+ */
 @Processor(QUEUE_MARKETPLACE_SYNC)
 @Injectable()
 export class SyncProcessor extends WorkerHost {
@@ -47,7 +53,7 @@ export class SyncProcessor extends WorkerHost {
 
     const listing = await this.listingRepo.findOne({
       where: { id: marketplaceListingId },
-      relations: ['metaListing', 'metaListing.item'],
+      relations: ['item'],
     });
 
     if (!listing) {
@@ -89,9 +95,17 @@ export class SyncProcessor extends WorkerHost {
         `Synced listing ${marketplaceListingId}: ${previousStatus} -> ${status}`
       );
 
-      // If listing is sold, update the item status
-      if (status === 'sold' && previousStatus !== 'sold') {
-        await this.checkAndUpdateItemStatus(listing.metaListing.item.id);
+      // If listing is sold, update Item lifecycle status
+      if (status === 'sold' && listing.item) {
+        const item = await this.itemRepo.findOne({
+          where: { id: listing.item.id },
+        });
+
+        if (item && item.quantity === 0 && item.lifecycleStatus !== 'sold') {
+          item.lifecycleStatus = 'sold';
+          await this.itemRepo.save(item);
+          this.logger.log(`Updated Item ${item.id} lifecycle status to 'sold' (quantity = 0)`);
+        }
       }
     } catch (error) {
       this.logger.error(
@@ -115,7 +129,7 @@ export class SyncProcessor extends WorkerHost {
       .createQueryBuilder('listing')
       .leftJoinAndSelect('listing.marketplaceAccount', 'account')
       .where('listing.status IN (:...statuses)', {
-        statuses: ['live', 'pending'],
+        statuses: ['listed', 'listing_pending'],
       })
       .andWhere('listing.remoteListingId IS NOT NULL')
       .andWhere('account.status = :accountStatus', { accountStatus: 'active' })
@@ -148,45 +162,5 @@ export class SyncProcessor extends WorkerHost {
     }
 
     this.logger.log(`Completed syncing ${listings.length} listings`);
-  }
-
-  /**
-   * Check if all marketplace listings for an item are sold/ended and update item status
-   */
-  private async checkAndUpdateItemStatus(itemId: string): Promise<void> {
-    const item = await this.itemRepo.findOne({
-      where: { id: itemId },
-      relations: ['metaListing'],
-    });
-
-    if (!item || !item.metaListing) {
-      return;
-    }
-
-    // Get all marketplace listings for this item
-    const listings = await this.listingRepo.find({
-      where: { metaListingId: item.metaListing.id },
-    });
-
-    if (listings.length === 0) {
-      return;
-    }
-
-    // Check if all listings are sold or ended
-    const allSoldOrEnded = listings.every(
-      (l) => l.status === 'sold' || l.status === 'ended'
-    );
-
-    const anySold = listings.some((l) => l.status === 'sold');
-
-    if (anySold) {
-      item.status = 'sold';
-      await this.itemRepo.save(item);
-      this.logger.log(`Updated item ${itemId} status to sold`);
-    } else if (allSoldOrEnded) {
-      item.status = 'archived';
-      await this.itemRepo.save(item);
-      this.logger.log(`Updated item ${itemId} status to archived`);
-    }
   }
 }

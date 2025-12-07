@@ -1,44 +1,50 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { QUEUE_AI_WORKFLOW, StartWorkflowJob } from '@listforge/queue-types';
-import { PhotoIntakeWorkflow } from './workflows/photo-intake.workflow';
-import { ListingIntakeWorkflow } from './workflows/listing-intake.workflow';
+import { QUEUE_AI_WORKFLOW, StartItemWorkflowJob, StartResearchRunJob } from '@listforge/queue-types';
+import { ItemIntakeWorkflow } from './workflows/item-intake.workflow';
 
+/**
+ * AI Workflows Processor
+ *
+ * Phase 6: Handles Item intake workflows and research runs.
+ */
 @Processor(QUEUE_AI_WORKFLOW)
 @Injectable()
 export class AiWorkflowsProcessor extends WorkerHost {
   private readonly logger = new Logger(AiWorkflowsProcessor.name);
 
   constructor(
-    private photoIntakeWorkflow: PhotoIntakeWorkflow,
-    private listingIntakeWorkflow: ListingIntakeWorkflow,
+    private itemIntakeWorkflow: ItemIntakeWorkflow,
   ) {
     super();
   }
 
-  async process(job: Job<StartWorkflowJob>): Promise<void> {
-    const { workflowType, itemId, listingDraftId, orgId, userId } = job.data;
-    this.logger.log(
-      `Processing workflow: ${workflowType} for ${listingDraftId ? 'draft ' + listingDraftId : 'item ' + itemId}`,
-    );
+  async process(job: Job<StartItemWorkflowJob | StartResearchRunJob>): Promise<void> {
+    // Handle StartResearchRunJob
+    if ('researchRunId' in job.data) {
+      const { researchRunId, itemId, runType, orgId, userId } = job.data;
+      this.logger.log(`Processing research run ${researchRunId} for item ${itemId}, type: ${runType}`);
 
-    switch (workflowType) {
-      case 'photo-intake-v1':
-        if (!itemId) {
-          throw new BadRequestException('itemId required for photo-intake-v1 workflow');
-        }
-        await this.photoIntakeWorkflow.execute(itemId, orgId, userId);
-        break;
-      case 'listing-intake-v1':
-        if (!listingDraftId) {
-          throw new BadRequestException('listingDraftId required for listing-intake-v1 workflow');
-        }
-        await this.listingIntakeWorkflow.execute(listingDraftId, orgId, userId);
-        break;
-      default:
-        this.logger.error(`Unknown workflow type: ${workflowType}`);
-        throw new BadRequestException(`Unsupported workflow type: ${workflowType}`);
+      // Execute item intake workflow with research run ID
+      await this.itemIntakeWorkflow.execute(itemId, orgId, userId, researchRunId);
+      return;
+    }
+
+    // Handle StartItemWorkflowJob
+    const { workflowType, itemId, orgId, userId } = job.data;
+      this.logger.log(`Processing workflow: ${workflowType} for item ${itemId}`);
+
+      switch (workflowType) {
+        case 'item-intake-v1':
+          if (!itemId) {
+            throw new BadRequestException('itemId required for item-intake-v1 workflow');
+          }
+          await this.itemIntakeWorkflow.execute(itemId, orgId, userId);
+          break;
+        default:
+          this.logger.error(`Unknown workflow type: ${workflowType}`);
+          throw new BadRequestException(`Unsupported workflow type: ${workflowType}`);
     }
   }
 }

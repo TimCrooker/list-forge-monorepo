@@ -350,13 +350,13 @@ export class EbayAdapter implements MarketplaceAdapter {
         return 'sold';
       }
       if (listingStatus === 'Active') {
-        return 'live';
+        return 'listed';
       }
       if (listingStatus === 'Ended') {
         return 'ended';
       }
 
-      return 'live';
+      return 'listed';
     } catch (error) {
       console.error('Error getting eBay listing status:', error);
       return 'error';
