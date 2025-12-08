@@ -16,7 +16,6 @@ import { withRetry } from '../utils/error-handling';
 import { ItemResearchData, ResearchEvidenceRecord } from '@listforge/core-types';
 import { CompResult, MarketplaceAdapter } from '@listforge/marketplace-adapters';
 import { StartResearchRunJob } from '@listforge/queue-types';
-import { Inject, Optional, forwardRef } from '@nestjs/common';
 
 /**
  * Research Graph Service
@@ -41,10 +40,6 @@ export class ResearchGraphService {
     private readonly eventsService: EventsService,
     private readonly checkpointerService: PostgresCheckpointerService,
     private readonly llmConfigService: LLMConfigService,
-    // ChatGateway will be injected via module imports if available
-    // Using a simpler approach: check for chatGateway via a getter method
-    // This avoids circular dependency issues
-    private chatGateway?: any,
   ) {}
 
   /**
