@@ -67,7 +67,7 @@ jobs:
           image-name: listforge-web
           ecr-registry: ${{ steps.login-ecr.outputs.registry }}
           build-args: |
-            VITE_API_URL=https://${{ secrets.APP_RUNNER_API_URL }}/api
+            VITE_API_URL=https://api.list-forge.ai
 
   # ============================================================================
   # DEPLOY JOBS - Run after respective builds complete

@@ -12,6 +12,7 @@ import {
   useListMarketplaceAccountsQuery,
 } from '@listforge/api-rtk';
 import { Package, Store, TrendingUp, Loader2, CheckCircle2 } from 'lucide-react';
+import { useOrgFeatures } from '@/hooks';
 
 export const Route = createFileRoute('/_authenticated/')({
   component: DashboardPage,
@@ -21,6 +22,7 @@ function DashboardPage() {
   const navigate = useNavigate();
   const user = useSelector((state: RootState) => state.auth.user);
   const currentOrg = useSelector((state: RootState) => state.auth.currentOrg);
+  const { isTeam, dashboardTitle, itemsLabel } = useOrgFeatures();
 
   const { data: itemsData, isLoading: itemsLoading } = useListItemsQuery({
     page: 1,
@@ -51,9 +53,9 @@ function DashboardPage() {
 
   const overviewCards = [
     {
-      title: 'Total Items',
+      title: `Total ${itemsLabel}`,
       value: totalItems,
-      description: 'Items in your inventory',
+      description: isTeam ? 'Items in your inventory' : 'Items in your collection',
       icon: <Package className="h-4 w-4" />,
       href: '/items',
     },
@@ -71,13 +73,14 @@ function DashboardPage() {
       icon: <TrendingUp className="h-4 w-4 text-blue-600" />,
       href: '/items',
     },
-    {
+    // Pending Review card only for team orgs (dual approval workflow)
+    ...(isTeam ? [{
       title: 'Pending Review',
       value: pendingReviewItems,
       description: 'Awaiting AI review',
       icon: <Loader2 className="h-4 w-4 text-yellow-600" />,
       href: '/review',
-    },
+    }] : []),
     {
       title: 'Marketplace Accounts',
       value: activeAccounts,
@@ -92,7 +95,7 @@ function DashboardPage() {
     {
       id: 'new-item',
       label: 'New Item',
-      description: 'Add a new item to inventory',
+      description: isTeam ? 'Add a new item to inventory' : 'Add a new item',
       icon: <Package className="h-5 w-5" />,
       onClick: () => navigate({ to: '/items/new' }),
       variant: 'default' as const,
@@ -107,7 +110,7 @@ function DashboardPage() {
     },
     {
       id: 'view-inventory',
-      label: 'View Inventory',
+      label: `View ${itemsLabel}`,
       description: 'Browse all items',
       icon: <TrendingUp className="h-5 w-5" />,
       onClick: () => navigate({ to: '/items' }),
@@ -117,26 +120,26 @@ function DashboardPage() {
 
   return (
     <AppContent
-      title="Dashboard"
-      description={`Welcome back, ${user?.name}! You're in ${currentOrg?.name || 'no organization'}.`}
-      fullWidth
+      title={dashboardTitle}
+      description={`Welcome back, ${user?.name}!${isTeam ? ` Managing ${currentOrg?.name}.` : ''}`}
+      maxWidth="full"
     >
-      <OverviewCards cards={overviewCards} columns={4} />
+      <OverviewCards cards={overviewCards} columns={isTeam ? 5 : 4} />
 
       <QuickActions actions={quickActions} />
 
       {/* Recent Activity Section */}
       <div className="mt-8">
         <h2 className="text-xl font-semibold mb-4">Quick Stats</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className={`grid grid-cols-1 md:grid-cols-${isTeam ? '3' : '2'} gap-4`}>
           {itemsLoading || accountsLoading ? (
-            <div className="col-span-3 flex items-center justify-center py-8">
+            <div className={`col-span-${isTeam ? '3' : '2'} flex items-center justify-center py-8`}>
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : (
             <>
               <OverviewMetricCard
-                title="Inventory Status"
+                title={`${itemsLabel} Status`}
                 value={`${readyItems + listedItems}/${totalItems}`}
                 description="Ready or listed"
                 icon={<CheckCircle2 className="h-4 w-4" />}
@@ -148,12 +151,15 @@ function DashboardPage() {
                 icon={<Store className="h-4 w-4" />}
                 trend={expiredAccounts > 0 ? 'down' : 'neutral'}
               />
-              <OverviewMetricCard
-                title="Pending Review"
-                value={pendingReviewItems}
-                description="Awaiting AI approval"
-                icon={<Loader2 className="h-4 w-4" />}
-              />
+              {/* Pending Review metric only for team orgs */}
+              {isTeam && (
+                <OverviewMetricCard
+                  title="Pending Review"
+                  value={pendingReviewItems}
+                  description="Awaiting AI approval"
+                  icon={<Loader2 className="h-4 w-4" />}
+                />
+              )}
             </>
           )}
         </div>

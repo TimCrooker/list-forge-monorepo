@@ -1,4 +1,4 @@
-import { GlobalRole, OrgRole } from '@listforge/core-types';
+import { GlobalRole, OrgRole, OrgType } from '@listforge/core-types';
 
 export interface LoginRequest {
   email: string;
@@ -15,7 +15,7 @@ export interface RegisterRequest {
   email: string;
   password: string;
   name: string;
-  orgName: string;
+  orgName?: string; // Optional - defaults to "{name}'s Workspace"
 }
 
 export interface RegisterResponse {
@@ -51,6 +51,7 @@ export interface UserDto {
 export interface OrgDto {
   id: string;
   name: string;
+  type: OrgType;
   status: string;
   createdAt: string;
   role?: OrgRole;

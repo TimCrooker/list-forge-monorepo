@@ -1,8 +1,10 @@
 import {
   Controller,
+  Get,
   Post,
   Body,
   Headers,
+  Query,
   Logger,
   BadRequestException,
   RawBodyRequest,
@@ -123,6 +125,129 @@ export class MarketplaceWebhookController {
       .digest('hex');
 
     return { challengeResponse: hash };
+  }
+
+  // ============ Facebook Webhook Endpoints ============
+
+  /**
+   * Facebook webhook verification endpoint (GET)
+   * Facebook sends a challenge that must be echoed back to verify ownership
+   * https://developers.facebook.com/docs/graph-api/webhooks/getting-started
+   */
+  @Get('facebook')
+  verifyFacebookWebhook(
+    @Query('hub.mode') mode: string,
+    @Query('hub.verify_token') verifyToken: string,
+    @Query('hub.challenge') challenge: string,
+  ) {
+    const expectedToken = this.configService.get<string>('FACEBOOK_VERIFY_TOKEN');
+
+    if (!expectedToken) {
+      this.logger.error('Facebook webhook verification token not configured');
+      throw new BadRequestException('Webhook not configured');
+    }
+
+    // Facebook sends these params for verification
+    if (mode === 'subscribe' && verifyToken === expectedToken) {
+      this.logger.log('Facebook webhook verified successfully');
+      // Must return the challenge as plain text (integer)
+      return parseInt(challenge, 10);
+    }
+
+    this.logger.warn(`Facebook webhook verification failed: mode=${mode}, token match=${verifyToken === expectedToken}`);
+    throw new BadRequestException('Webhook verification failed');
+  }
+
+  /**
+   * Handle Facebook webhook events (POST)
+   * Facebook sends notifications for product catalog changes, etc.
+   *
+   * Webhook signature verification:
+   * https://developers.facebook.com/docs/graph-api/webhooks/getting-started#verification-requests
+   */
+  @Post('facebook')
+  async handleFacebookWebhook(
+    @Req() req: RawBodyRequest<Request>,
+    @Body() payload: any,
+    @Headers('x-hub-signature-256') signature: string | undefined,
+    @Ip() ipAddress: string,
+  ) {
+    // Get raw body for signature verification
+    const rawBody = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(payload);
+
+    // Verify HMAC SHA256 signature
+    const verification = this.verifyFacebookSignature(rawBody, signature);
+
+    if (!verification.valid) {
+      this.logger.warn(`Facebook webhook verification failed: ${verification.error}`);
+
+      // Audit log: Webhook rejected
+      await this.auditService.logWebhookReceived({
+        orgId: 'unknown',
+        marketplace: 'FACEBOOK',
+        webhookType: payload?.object || 'unknown',
+        verified: false,
+        ipAddress,
+      }).catch(err => {
+        this.logger.error('Failed to log rejected Facebook webhook audit', err);
+      });
+
+      throw new BadRequestException(verification.error || 'Webhook verification failed');
+    }
+
+    this.logger.log(`Received valid Facebook webhook: ${payload?.object || 'unknown'}`);
+
+    // Process webhook event
+    try {
+      await this.webhookService.processFacebookWebhook(payload, ipAddress);
+      return { received: true, processed: true };
+    } catch (error) {
+      this.logger.error('Error processing Facebook webhook', error);
+      return { received: true, processed: false };
+    }
+  }
+
+  /**
+   * Verify Facebook webhook signature
+   * Facebook signs webhooks with HMAC SHA256 using the app secret
+   */
+  private verifyFacebookSignature(
+    rawBody: string,
+    signature: string | undefined,
+  ): { valid: boolean; error?: string } {
+    if (!signature) {
+      return { valid: false, error: 'Missing x-hub-signature-256 header' };
+    }
+
+    const appSecret = this.configService.get<string>('FACEBOOK_APP_SECRET');
+    if (!appSecret) {
+      this.logger.error('Facebook app secret not configured');
+      return { valid: false, error: 'Webhook not configured' };
+    }
+
+    // Signature format: sha256=<hex_digest>
+    const [algorithm, providedHash] = signature.split('=');
+    if (algorithm !== 'sha256' || !providedHash) {
+      return { valid: false, error: 'Invalid signature format' };
+    }
+
+    // Calculate expected signature
+    const expectedHash = crypto
+      .createHmac('sha256', appSecret)
+      .update(rawBody)
+      .digest('hex');
+
+    // Timing-safe comparison
+    const isValid = crypto.timingSafeEqual(
+      Buffer.from(providedHash, 'hex'),
+      Buffer.from(expectedHash, 'hex'),
+    );
+
+    if (!isValid) {
+      return { valid: false, error: 'Invalid signature' };
+    }
+
+    return { valid: true };
   }
 }
 

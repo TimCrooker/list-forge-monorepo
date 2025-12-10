@@ -5,18 +5,26 @@
     "jsx": "react-native",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@listforge/core-types": ["../../packages/core-types/src"],
-      "@listforge/api-types": ["../../packages/api-types/src"],
-      "@listforge/socket-types": ["../../packages/socket-types/src"],
-      "@listforge/api-rtk": ["../../packages/api-rtk/src"]
+      "@/*": [
+        "src/*"
+      ],
+      "@listforge/core-types": [
+        "../../packages/core-types/src"
+      ],
+      "@listforge/api-types": [
+        "../../packages/api-types/src"
+      ],
+      "@listforge/socket-types": [
+        "../../packages/socket-types/src"
+      ],
+      "@listforge/api-rtk": [
+        "../../packages/api-rtk/src"
+      ]
     }
   },
   "include": [
     "**/*.ts",
-    "**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
+    "**/*.tsx"
   ],
   "exclude": [
     "node_modules"

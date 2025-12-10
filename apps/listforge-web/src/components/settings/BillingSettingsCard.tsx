@@ -3,8 +3,8 @@ import {
   useGetBillingSettingsQuery,
   useUpdateBillingSettingsMutation,
 } from '@listforge/api-rtk';
-import { BillingSettings } from '@listforge/core-types';
-import { Loader2, CreditCard, Save } from 'lucide-react';
+import { Loader2, CreditCard, Save, History } from 'lucide-react';
+import { SettingsVersionHistory } from './SettingsVersionHistory';
 import {
   Card,
   CardContent,
@@ -26,6 +26,7 @@ interface BillingSettingsCardProps {
 export function BillingSettingsCard({ orgId }: BillingSettingsCardProps) {
   const { data, isLoading } = useGetBillingSettingsQuery(orgId);
   const [updateSettings, { isLoading: isUpdating }] = useUpdateBillingSettingsMutation();
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const [billingEmail, setBillingEmail] = useState('');
 
@@ -80,16 +81,25 @@ export function BillingSettingsCard({ orgId }: BillingSettingsCardProps) {
   const settings = data?.settings;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <CreditCard className="h-5 w-5" />
-          Billing Settings
-        </CardTitle>
-        <CardDescription>
-          View your current plan and manage billing preferences.
-        </CardDescription>
-      </CardHeader>
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <CreditCard className="h-5 w-5" />
+                Billing Settings
+              </CardTitle>
+              <CardDescription>
+                View your current plan and manage billing preferences.
+              </CardDescription>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
+              <History className="h-4 w-4 mr-1" />
+              History
+            </Button>
+          </div>
+        </CardHeader>
       <CardContent className="space-y-6">
         {/* Current Plan */}
         <div className="space-y-2">
@@ -172,6 +182,14 @@ export function BillingSettingsCard({ orgId }: BillingSettingsCardProps) {
           </Button>
         </div>
       </CardContent>
-    </Card>
+      </Card>
+
+      <SettingsVersionHistory
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        orgId={orgId}
+        settingsType="billing"
+      />
+    </>
   );
 }

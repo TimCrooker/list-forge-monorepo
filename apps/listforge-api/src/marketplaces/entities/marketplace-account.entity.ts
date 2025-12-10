@@ -13,7 +13,7 @@ import { User } from '../../users/entities/user.entity';
 import { MarketplaceListing } from './marketplace-listing.entity';
 import { MarketplaceAccountSettings } from '@listforge/core-types';
 
-export type MarketplaceType = 'EBAY' | 'AMAZON';
+export type MarketplaceType = 'EBAY' | 'AMAZON' | 'FACEBOOK';
 
 export type MarketplaceAccountStatus = 'active' | 'expired' | 'revoked' | 'error';
 
@@ -38,7 +38,7 @@ export class MarketplaceAccount {
 
   @Column({
     type: 'enum',
-    enum: ['EBAY', 'AMAZON'],
+    enum: ['EBAY', 'AMAZON', 'FACEBOOK'],
   })
   marketplace: MarketplaceType;
 

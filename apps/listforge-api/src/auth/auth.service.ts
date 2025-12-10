@@ -95,9 +95,10 @@ export class AuthService {
       });
       const savedUser = await queryRunner.manager.save(user);
 
-      // Create organization
+      // Create personal workspace (type='personal' by default)
       const org = this.orgRepo.create({
-        name: req.orgName,
+        name: req.orgName || `${req.name}'s Workspace`,
+        type: 'personal',
         status: 'active',
       });
       const savedOrg = await queryRunner.manager.save(org);
@@ -208,6 +209,7 @@ export class AuthService {
     return {
       id: org.id,
       name: org.name,
+      type: org.type,
       status: org.status,
       createdAt: org.createdAt.toISOString(),
       role,

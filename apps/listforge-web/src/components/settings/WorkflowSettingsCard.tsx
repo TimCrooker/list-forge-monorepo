@@ -4,7 +4,8 @@ import {
   useUpdateWorkflowSettingsMutation,
 } from '@listforge/api-rtk';
 import { WorkflowSettings } from '@listforge/core-types';
-import { Loader2, Cpu, Save } from 'lucide-react';
+import { Loader2, Cpu, Save, History } from 'lucide-react';
+import { SettingsVersionHistory } from './SettingsVersionHistory';
 import {
   Card,
   CardContent,
@@ -32,6 +33,7 @@ interface WorkflowSettingsCardProps {
 export function WorkflowSettingsCard({ orgId }: WorkflowSettingsCardProps) {
   const { data, isLoading } = useGetWorkflowSettingsQuery(orgId);
   const [updateSettings, { isLoading: isUpdating }] = useUpdateWorkflowSettingsMutation();
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const [formData, setFormData] = useState<WorkflowSettings>({
     aiProvider: 'openai',
@@ -79,16 +81,25 @@ export function WorkflowSettingsCard({ orgId }: WorkflowSettingsCardProps) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Cpu className="h-5 w-5" />
-          Workflow Settings
-        </CardTitle>
-        <CardDescription>
-          Configure AI-powered research and workflow automation settings.
-        </CardDescription>
-      </CardHeader>
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Cpu className="h-5 w-5" />
+                Workflow Settings
+              </CardTitle>
+              <CardDescription>
+                Configure AI-powered research and workflow automation settings.
+              </CardDescription>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
+              <History className="h-4 w-4 mr-1" />
+              History
+            </Button>
+          </div>
+        </CardHeader>
       <CardContent className="space-y-6">
         {/* AI Provider */}
         <div className="grid grid-cols-2 gap-4">
@@ -250,6 +261,14 @@ export function WorkflowSettingsCard({ orgId }: WorkflowSettingsCardProps) {
           </Button>
         </div>
       </CardContent>
-    </Card>
+      </Card>
+
+      <SettingsVersionHistory
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        orgId={orgId}
+        settingsType="workflow"
+      />
+    </>
   );
 }

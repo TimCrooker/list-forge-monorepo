@@ -1,5 +1,10 @@
 import { ResearchGraphState, ResearchWarning } from '../research-graph.state';
-import { ResearchEvidenceRecord, AmazonProductMatch } from '@listforge/core-types';
+import {
+  ResearchEvidenceRecord,
+  AmazonProductMatch,
+  CompMatchType,
+  COMP_MATCH_TYPE_WEIGHTS,
+} from '@listforge/core-types';
 import { CompResult } from '@listforge/marketplace-adapters';
 import { ResearchActivityLoggerService } from '../../../../research/services/research-activity-logger.service';
 import { createApiFailureWarning, createDataMissingWarning } from '../../../utils/warnings';
@@ -21,12 +26,16 @@ export interface CompSearchTools {
 
 /**
  * Convert CompResult to ResearchEvidenceRecord
+ * Slice 3: Added matchType parameter for tracking how comp was found
  */
 function toEvidenceRecord(
   comp: CompResult,
   type: 'sold_listing' | 'active_listing',
   source: 'ebay' | 'amazon' = 'ebay',
+  matchType: CompMatchType = 'GENERIC_KEYWORD',
 ): ResearchEvidenceRecord {
+  const baseConfidence = COMP_MATCH_TYPE_WEIGHTS[matchType];
+
   return {
     id: comp.listingId,
     type,
@@ -38,20 +47,42 @@ function toEvidenceRecord(
     currency: comp.currency,
     soldDate: comp.soldDate?.toISOString(),
     condition: comp.condition || undefined,
-    relevanceScore: 0.5, // Will be scored in analyze_comps
+    imageUrl: comp.imageUrl,
+    relevanceScore: baseConfidence, // Start with match type confidence, refined in analyze_comps
     extractedData: {
       ...comp.attributes,
       // Include ASIN for Amazon items
       asin: source === 'amazon' ? comp.listingId : undefined,
     },
     fetchedAt: new Date().toISOString(),
+    // Slice 3: Match type tracking
+    matchType,
+    baseConfidence,
   };
 }
 
 /**
  * Convert Amazon product match to evidence record
+ * Slice 3: Determine match type based on how the product was matched
  */
-function amazonMatchToEvidenceRecord(match: AmazonProductMatch): ResearchEvidenceRecord {
+function amazonMatchToEvidenceRecord(
+  match: AmazonProductMatch,
+  searchType: 'amazon_upc' | 'amazon_asin' | 'amazon_keyword',
+): ResearchEvidenceRecord {
+  // Determine match type based on how this Amazon result was found
+  let matchType: CompMatchType;
+  if (searchType === 'amazon_upc') {
+    matchType = 'UPC_EXACT';
+  } else if (searchType === 'amazon_asin') {
+    matchType = 'ASIN_EXACT';
+  } else {
+    // Keyword search - check if we have brand+model info
+    const hasBrandModel = match.brand && match.matchedBy?.includes('brand');
+    matchType = hasBrandModel ? 'BRAND_MODEL_KEYWORD' : 'GENERIC_KEYWORD';
+  }
+
+  const baseConfidence = COMP_MATCH_TYPE_WEIGHTS[matchType];
+
   return {
     id: match.asin,
     type: 'active_listing',
@@ -61,7 +92,8 @@ function amazonMatchToEvidenceRecord(match: AmazonProductMatch): ResearchEvidenc
     title: match.title,
     price: match.price,
     currency: 'USD',
-    relevanceScore: match.confidence,
+    imageUrl: match.imageUrl,
+    relevanceScore: Math.max(match.confidence, baseConfidence), // Use higher of match confidence or base
     extractedData: {
       asin: match.asin,
       brand: match.brand,
@@ -70,6 +102,10 @@ function amazonMatchToEvidenceRecord(match: AmazonProductMatch): ResearchEvidenc
       matchedBy: match.matchedBy,
     },
     fetchedAt: new Date().toISOString(),
+    // Slice 3: Match type tracking
+    matchType,
+    baseConfidence,
+    asin: match.asin,
   };
 }
 
@@ -200,21 +236,48 @@ export async function searchCompsNode(
     }
 
     // Track search sources for metadata
+    // Slice 3: Added matchType to promiseMeta for proper comp tagging
     type SearchSource = 'ebay_sold' | 'ebay_active' | 'ebay_image' | 'amazon_keyword' | 'amazon_upc' | 'amazon_asin';
     const searchPromises: Promise<CompResult | CompResult[] | AmazonProductMatch | null>[] = [];
-    const promiseMeta: Array<{ type: 'sold_listing' | 'active_listing'; source: 'ebay' | 'amazon'; searchType: SearchSource }> = [];
+    const promiseMeta: Array<{
+      type: 'sold_listing' | 'active_listing';
+      source: 'ebay' | 'amazon';
+      searchType: SearchSource;
+      matchType: CompMatchType; // Slice 3: How was this comp found?
+    }> = [];
+
+    // Slice 3: Determine if we have brand+model info for better match type tagging
+    const hasBrandModel = !!(
+      (state.productIdentification?.brand && state.productIdentification?.model) ||
+      (state.mediaAnalysis?.brand && state.mediaAnalysis?.model)
+    );
 
     // eBay searches
     for (const query of queries.slice(0, 3)) { // Limit to 3 queries
+      // Slice 3: Determine match type based on query content
+      const ebayKeywordMatchType: CompMatchType = hasBrandModel
+        ? 'BRAND_MODEL_KEYWORD'
+        : 'GENERIC_KEYWORD';
+
       searchPromises.push(
         tools.searchSoldListings({ query, source: 'ebay', limit: 20 }),
       );
-      promiseMeta.push({ type: 'sold_listing', source: 'ebay', searchType: 'ebay_sold' });
+      promiseMeta.push({
+        type: 'sold_listing',
+        source: 'ebay',
+        searchType: 'ebay_sold',
+        matchType: ebayKeywordMatchType,
+      });
 
       searchPromises.push(
         tools.searchActiveListings({ query, source: 'ebay', limit: 10 }),
       );
-      promiseMeta.push({ type: 'active_listing', source: 'ebay', searchType: 'ebay_active' });
+      promiseMeta.push({
+        type: 'active_listing',
+        source: 'ebay',
+        searchType: 'ebay_active',
+        matchType: ebayKeywordMatchType,
+      });
     }
 
     // eBay image search if item has images
@@ -224,18 +287,32 @@ export async function searchCompsNode(
         searchPromises.push(
           tools.searchByImage({ imageUrl: firstImage.url, source: 'ebay', limit: 15 }),
         );
-        promiseMeta.push({ type: 'active_listing', source: 'ebay', searchType: 'ebay_image' });
+        promiseMeta.push({
+          type: 'active_listing',
+          source: 'ebay',
+          searchType: 'ebay_image',
+          matchType: 'IMAGE_SIMILARITY', // Slice 3: Image-based matches
+        });
       }
     }
 
     // Amazon searches
     if (tools.searchAmazonProducts) {
       // Keyword search on Amazon
+      const amazonKeywordMatchType: CompMatchType = hasBrandModel
+        ? 'BRAND_MODEL_KEYWORD'
+        : 'GENERIC_KEYWORD';
+
       for (const query of queries.slice(0, 2)) { // Limit to 2 Amazon keyword searches
         searchPromises.push(
           tools.searchAmazonProducts({ keywords: query, limit: 15 }),
         );
-        promiseMeta.push({ type: 'active_listing', source: 'amazon', searchType: 'amazon_keyword' });
+        promiseMeta.push({
+          type: 'active_listing',
+          source: 'amazon',
+          searchType: 'amazon_keyword',
+          matchType: amazonKeywordMatchType,
+        });
       }
     }
 
@@ -244,7 +321,12 @@ export async function searchCompsNode(
       searchPromises.push(
         tools.lookupAmazonByUpc({ upc }),
       );
-      promiseMeta.push({ type: 'active_listing', source: 'amazon', searchType: 'amazon_upc' });
+      promiseMeta.push({
+        type: 'active_listing',
+        source: 'amazon',
+        searchType: 'amazon_upc',
+        matchType: 'UPC_EXACT', // Slice 3: Highest confidence match type
+      });
     }
 
     // Amazon ASIN lookup (if we already have an ASIN from earlier)
@@ -252,7 +334,12 @@ export async function searchCompsNode(
       searchPromises.push(
         tools.lookupAmazonByAsin({ asin }),
       );
-      promiseMeta.push({ type: 'active_listing', source: 'amazon', searchType: 'amazon_asin' });
+      promiseMeta.push({
+        type: 'active_listing',
+        source: 'amazon',
+        searchType: 'amazon_asin',
+        matchType: 'ASIN_EXACT', // Slice 3: Very high confidence
+      });
     }
 
     const results = await Promise.allSettled(searchPromises);
@@ -279,7 +366,8 @@ export async function searchCompsNode(
           const match = result.value as AmazonProductMatch | null;
           if (match) {
             amazonMatches.push(match);
-            comps.push(amazonMatchToEvidenceRecord(match));
+            // Slice 3: Pass searchType for match type determination
+            comps.push(amazonMatchToEvidenceRecord(match, meta.searchType));
             amazonCount++;
             if (!availableDataSources.includes('amazon_identifier')) {
               availableDataSources.push('amazon_identifier');
@@ -289,7 +377,8 @@ export async function searchCompsNode(
           // Single CompResult from ASIN lookup
           const comp = result.value as CompResult | null;
           if (comp) {
-            comps.push(toEvidenceRecord(comp, meta.type, meta.source));
+            // Slice 3: Pass matchType from meta
+            comps.push(toEvidenceRecord(comp, meta.type, meta.source, meta.matchType));
             amazonCount++;
             if (!availableDataSources.includes('amazon_identifier')) {
               availableDataSources.push('amazon_identifier');
@@ -299,7 +388,10 @@ export async function searchCompsNode(
           // Array of CompResults
           const compResults = result.value as CompResult[];
           if (compResults.length > 0) {
-            const compsForQuery = compResults.map((comp) => toEvidenceRecord(comp, meta.type, meta.source));
+            // Slice 3: Pass matchType from meta to each comp
+            const compsForQuery = compResults.map((comp) =>
+              toEvidenceRecord(comp, meta.type, meta.source, meta.matchType)
+            );
             comps.push(...compsForQuery);
 
             if (meta.source === 'ebay') {

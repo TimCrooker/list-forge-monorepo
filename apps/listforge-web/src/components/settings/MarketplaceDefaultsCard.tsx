@@ -4,7 +4,8 @@ import {
   useUpdateMarketplaceDefaultSettingsMutation,
 } from '@listforge/api-rtk';
 import { MarketplaceDefaultSettings } from '@listforge/core-types';
-import { Loader2, Store, Save } from 'lucide-react';
+import { Loader2, Store, Save, History } from 'lucide-react';
+import { SettingsVersionHistory } from './SettingsVersionHistory';
 import {
   Card,
   CardContent,
@@ -35,6 +36,7 @@ interface MarketplaceDefaultsCardProps {
 export function MarketplaceDefaultsCard({ orgId }: MarketplaceDefaultsCardProps) {
   const { data, isLoading } = useGetMarketplaceDefaultSettingsQuery(orgId);
   const [updateSettings, { isLoading: isUpdating }] = useUpdateMarketplaceDefaultSettingsMutation();
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const [formData, setFormData] = useState<MarketplaceDefaultSettings>({
     ebay: {
@@ -46,6 +48,11 @@ export function MarketplaceDefaultsCard({ orgId }: MarketplaceDefaultsCardProps)
     amazon: {
       fulfillmentChannel: 'FBM',
       defaultCondition: 'New',
+    },
+    facebook: {
+      defaultCondition: 'used_good',
+      autoRenew: true,
+      defaultCategory: undefined,
     },
   });
 
@@ -86,16 +93,25 @@ export function MarketplaceDefaultsCard({ orgId }: MarketplaceDefaultsCardProps)
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Store className="h-5 w-5" />
-          Marketplace Defaults
-        </CardTitle>
-        <CardDescription>
-          Configure default settings for each marketplace.
-        </CardDescription>
-      </CardHeader>
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Store className="h-5 w-5" />
+                Marketplace Defaults
+              </CardTitle>
+              <CardDescription>
+                Configure default settings for each marketplace.
+              </CardDescription>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
+              <History className="h-4 w-4 mr-1" />
+              History
+            </Button>
+          </div>
+        </CardHeader>
       <CardContent>
         <Tabs defaultValue="ebay" className="w-full">
           <TabsList className="mb-4">
@@ -256,6 +272,14 @@ export function MarketplaceDefaultsCard({ orgId }: MarketplaceDefaultsCardProps)
           </Button>
         </div>
       </CardContent>
-    </Card>
+      </Card>
+
+      <SettingsVersionHistory
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        orgId={orgId}
+        settingsType="marketplaceDefaults"
+      />
+    </>
   );
 }

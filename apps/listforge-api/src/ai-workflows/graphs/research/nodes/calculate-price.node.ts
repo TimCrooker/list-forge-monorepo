@@ -1,5 +1,14 @@
 import { ResearchGraphState } from '../research-graph.state';
-import { PriceBand, DemandSignal } from '@listforge/core-types';
+import {
+  PriceBand,
+  DemandSignal,
+  TieredPricingAnalysis,
+  PricingConfidenceTier,
+  PRICING_CONFIDENCE_THRESHOLDS,
+  PRICING_CONFIDENCE_LABELS,
+  CompMatchType,
+  COMP_MATCH_TYPE_WEIGHTS,
+} from '@listforge/core-types';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { withTimeout, LLM_CALL_TIMEOUT_MS } from '../../../utils/timeout';
@@ -99,26 +108,98 @@ function calculateDemandSignals(comps: ResearchGraphState['comps']): DemandSigna
 }
 
 /**
- * Calculate overall confidence from price bands and comp count
+ * Slice 5: Determine pricing confidence tier based on validated comp count
+ * Thresholds: 0-2 = insufficient, 3-4 = low, 5-9 = recommended, 10+ = high
  */
-function calculateOverallConfidence(priceBands: PriceBand[], compCount: number): number {
-  if (compCount === 0) {
-    return 0.1;
+function determinePricingConfidenceTier(validatedCompCount: number): PricingConfidenceTier {
+  if (validatedCompCount >= PRICING_CONFIDENCE_THRESHOLDS.high) {
+    return 'high';
+  } else if (validatedCompCount >= PRICING_CONFIDENCE_THRESHOLDS.recommended) {
+    return 'recommended';
+  } else if (validatedCompCount >= PRICING_CONFIDENCE_THRESHOLDS.low) {
+    return 'low';
   }
-
-  // Base confidence from comp count
-  let confidence = Math.min(0.7, compCount / 20);
-
-  // Boost confidence if price bands have high confidence
-  const avgBandConfidence = priceBands.reduce((sum, band) => sum + band.confidence, 0) / priceBands.length;
-  confidence = (confidence + avgBandConfidence) / 2;
-
-  return Math.min(1.0, confidence);
+  return 'insufficient';
 }
 
 /**
- * Calculate price node
- * Generates price bands and demand signals
+ * Calculate overall confidence from validated comps and their match types
+ * Slice 5: Weighted by comp quality (match type) and count
+ */
+function calculateOverallConfidence(
+  validatedComps: ResearchGraphState['comps'],
+  priceBands: PriceBand[],
+): number {
+  if (validatedComps.length === 0) {
+    return 0.1;
+  }
+
+  // Calculate average weighted confidence based on match types
+  let weightedSum = 0;
+  let totalWeight = 0;
+
+  for (const comp of validatedComps) {
+    const matchType = comp.matchType || 'GENERIC_KEYWORD';
+    const baseWeight = COMP_MATCH_TYPE_WEIGHTS[matchType] || 0.30;
+    const relevanceWeight = comp.relevanceScore || 0.5;
+
+    // Combine match type confidence with relevance score
+    const compWeight = (baseWeight + relevanceWeight) / 2;
+    weightedSum += compWeight;
+    totalWeight += 1;
+  }
+
+  const avgCompConfidence = totalWeight > 0 ? weightedSum / totalWeight : 0;
+
+  // Factor in comp count (diminishing returns after 10)
+  const countFactor = Math.min(1.0, validatedComps.length / 10);
+
+  // Factor in price band confidence
+  const avgBandConfidence = priceBands.length > 0
+    ? priceBands.reduce((sum, band) => sum + band.confidence, 0) / priceBands.length
+    : 0.5;
+
+  // Weighted average: 40% comp quality, 30% count factor, 30% price band confidence
+  const overallConfidence = (avgCompConfidence * 0.4) + (countFactor * 0.3) + (avgBandConfidence * 0.3);
+
+  return Math.min(1.0, Math.max(0.1, overallConfidence));
+}
+
+/**
+ * Count comps by match type for breakdown
+ */
+function countCompsByMatchType(
+  comps: ResearchGraphState['comps'],
+): Record<CompMatchType, number> {
+  const counts: Record<CompMatchType, number> = {
+    UPC_EXACT: 0,
+    ASIN_EXACT: 0,
+    EBAY_ITEM_ID: 0,
+    BRAND_MODEL_IMAGE: 0,
+    BRAND_MODEL_KEYWORD: 0,
+    IMAGE_SIMILARITY: 0,
+    GENERIC_KEYWORD: 0,
+  };
+
+  for (const comp of comps) {
+    const matchType = comp.matchType || 'GENERIC_KEYWORD';
+    if (matchType in counts) {
+      counts[matchType]++;
+    }
+  }
+
+  return counts;
+}
+
+/**
+ * Minimum relevance score for a comp to be considered "validated"
+ * Slice 5: Used for tiered confidence calculation
+ */
+const VALIDATED_COMP_THRESHOLD = 0.60;
+
+/**
+ * Calculate price node - Slice 5 Enhanced
+ * Generates price bands, demand signals, and tiered pricing analysis
  */
 export async function calculatePriceNode(
   state: ResearchGraphState,
@@ -129,14 +210,32 @@ export async function calculatePriceNode(
     throw new Error('LLM not provided in config.configurable.llm');
   }
 
-  // Filter to highly relevant comps
+  // Slice 5: Filter to validated comps (score >= 0.60) for tiered confidence
+  const validatedComps = state.comps.filter((c) => c.relevanceScore >= VALIDATED_COMP_THRESHOLD);
+
+  // For pricing calculation, use higher threshold (0.70) for quality
   const relevantComps = state.comps.filter((c) => c.relevanceScore >= 0.7);
 
   if (relevantComps.length === 0) {
+    // Slice 5: Return insufficient tier when no relevant comps
+    const tieredPricing: TieredPricingAnalysis = {
+      suggestedPrice: 0,
+      priceRange: { low: 0, high: 0 },
+      currency: 'USD',
+      confidenceTier: 'insufficient',
+      confidence: 0.1,
+      validatedCompCount: validatedComps.length,
+      averageCompConfidence: 0,
+      compsByMatchType: countCompsByMatchType(validatedComps),
+      strategy: 'market_value',
+      reasoning: PRICING_CONFIDENCE_LABELS['insufficient'].description,
+    };
+
     return {
       priceBands: [],
       demandSignals: [],
       overallConfidence: 0.1,
+      tieredPricing,
     };
   }
 
@@ -224,13 +323,69 @@ export async function calculatePriceNode(
   // Calculate demand signals
   const demandSignals = calculateDemandSignals(state.comps);
 
-  // Calculate overall confidence
-  const overallConfidence = calculateOverallConfidence(priceBands, relevantComps.length);
+  // Slice 5: Calculate tiered pricing analysis
+  const overallConfidence = calculateOverallConfidence(validatedComps, priceBands);
+  const confidenceTier = determinePricingConfidenceTier(validatedComps.length);
+  const compsByMatchType = countCompsByMatchType(validatedComps);
+
+  // Calculate average comp confidence
+  const avgCompConfidence = validatedComps.length > 0
+    ? validatedComps.reduce((sum, c) => sum + c.relevanceScore, 0) / validatedComps.length
+    : 0;
+
+  // Find suggested price (target band or median fallback)
+  const targetBand = priceBands.find((b) => b.label === 'target');
+  const suggestedPrice = targetBand?.amount || stats.median || 0;
+
+  // Build tiered pricing analysis
+  const tieredPricing: TieredPricingAnalysis = {
+    suggestedPrice,
+    priceRange: {
+      low: priceBands.find((b) => b.label === 'floor')?.amount || stats.min || 0,
+      high: priceBands.find((b) => b.label === 'ceiling')?.amount || stats.max || 0,
+    },
+    currency: 'USD',
+    confidenceTier,
+    confidence: overallConfidence,
+    validatedCompCount: validatedComps.length,
+    averageCompConfidence: avgCompConfidence,
+    compsByMatchType,
+    strategy: 'market_value', // Default strategy
+    reasoning: generatePricingReasoning(confidenceTier, validatedComps.length, compsByMatchType),
+  };
 
   return {
     priceBands,
     demandSignals,
     overallConfidence,
+    tieredPricing,
     messages: [response],
   };
+}
+
+/**
+ * Generate human-readable reasoning for the pricing recommendation
+ */
+function generatePricingReasoning(
+  tier: PricingConfidenceTier,
+  compCount: number,
+  compsByMatchType: Record<CompMatchType, number>,
+): string {
+  const tierLabel = PRICING_CONFIDENCE_LABELS[tier].label;
+  const tierDesc = PRICING_CONFIDENCE_LABELS[tier].description;
+
+  // Count high-quality matches
+  const highQualityCount = compsByMatchType.UPC_EXACT +
+    compsByMatchType.ASIN_EXACT +
+    compsByMatchType.EBAY_ITEM_ID +
+    compsByMatchType.BRAND_MODEL_IMAGE;
+
+  let reasoning = `${tierLabel}: ${tierDesc} `;
+  reasoning += `Based on ${compCount} validated comparable${compCount !== 1 ? 's' : ''}.`;
+
+  if (highQualityCount > 0) {
+    reasoning += ` ${highQualityCount} high-confidence match${highQualityCount !== 1 ? 'es' : ''} (UPC/ASIN/image verified).`;
+  }
+
+  return reasoning;
 }

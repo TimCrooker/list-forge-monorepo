@@ -18,12 +18,13 @@ import {
   SecuritySettings,
   DEFAULT_SECURITY_SETTINGS,
 } from '@listforge/core-types';
+import { SettingsAuditService, AuditContext } from './settings-audit.service';
 
 /**
  * Organization Settings Service
  *
  * Unified service for managing all organization-level settings.
- * Handles validation and persistence for:
+ * Handles validation, persistence, and audit logging for:
  * - Workflow Settings
  * - Notification Settings
  * - Team Settings
@@ -37,6 +38,7 @@ export class OrganizationSettingsService {
   constructor(
     @InjectRepository(Organization)
     private orgRepo: Repository<Organization>,
+    private auditService: SettingsAuditService,
   ) {}
 
   // ============================================================================
@@ -51,6 +53,7 @@ export class OrganizationSettingsService {
   async updateWorkflowSettings(
     orgId: string,
     updates: Partial<WorkflowSettings>,
+    context: AuditContext = {},
   ): Promise<WorkflowSettings> {
     const org = await this.getOrg(orgId);
     const current = org.workflowSettings ?? DEFAULT_WORKFLOW_SETTINGS;
@@ -75,6 +78,16 @@ export class OrganizationSettingsService {
 
     org.workflowSettings = updated;
     await this.orgRepo.save(org);
+
+    // Record audit
+    await this.auditService.recordSettingsChange({
+      orgId,
+      settingsType: 'workflow',
+      previousSettings: current as unknown as Record<string, unknown>,
+      newSettings: updated as unknown as Record<string, unknown>,
+      context,
+    });
+
     return updated;
   }
 
@@ -93,6 +106,7 @@ export class OrganizationSettingsService {
       emailNotifications?: Partial<NotificationSettings['emailNotifications']>;
       webhooks?: Partial<NotificationSettings['webhooks']>;
     },
+    context: AuditContext = {},
   ): Promise<NotificationSettings> {
     const org = await this.getOrg(orgId);
     const current = org.notificationSettings ?? DEFAULT_NOTIFICATION_SETTINGS;
@@ -125,6 +139,16 @@ export class OrganizationSettingsService {
 
     org.notificationSettings = updated;
     await this.orgRepo.save(org);
+
+    // Record audit
+    await this.auditService.recordSettingsChange({
+      orgId,
+      settingsType: 'notification',
+      previousSettings: current as unknown as Record<string, unknown>,
+      newSettings: updated as unknown as Record<string, unknown>,
+      context,
+    });
+
     return updated;
   }
 
@@ -140,6 +164,7 @@ export class OrganizationSettingsService {
   async updateTeamSettings(
     orgId: string,
     updates: Partial<TeamSettings>,
+    context: AuditContext = {},
   ): Promise<TeamSettings> {
     const org = await this.getOrg(orgId);
     const current = org.teamSettings ?? DEFAULT_TEAM_SETTINGS;
@@ -152,6 +177,16 @@ export class OrganizationSettingsService {
 
     org.teamSettings = updated;
     await this.orgRepo.save(org);
+
+    // Record audit
+    await this.auditService.recordSettingsChange({
+      orgId,
+      settingsType: 'team',
+      previousSettings: current as unknown as Record<string, unknown>,
+      newSettings: updated as unknown as Record<string, unknown>,
+      context,
+    });
+
     return updated;
   }
 
@@ -167,6 +202,7 @@ export class OrganizationSettingsService {
   async updateInventorySettings(
     orgId: string,
     updates: Partial<InventorySettings>,
+    context: AuditContext = {},
   ): Promise<InventorySettings> {
     const org = await this.getOrg(orgId);
     const current = org.inventorySettings ?? DEFAULT_INVENTORY_SETTINGS;
@@ -194,6 +230,16 @@ export class OrganizationSettingsService {
 
     org.inventorySettings = updated;
     await this.orgRepo.save(org);
+
+    // Record audit
+    await this.auditService.recordSettingsChange({
+      orgId,
+      settingsType: 'inventory',
+      previousSettings: current as unknown as Record<string, unknown>,
+      newSettings: updated as unknown as Record<string, unknown>,
+      context,
+    });
+
     return updated;
   }
 
@@ -212,6 +258,7 @@ export class OrganizationSettingsService {
       ebay?: Partial<MarketplaceDefaultSettings['ebay']>;
       amazon?: Partial<MarketplaceDefaultSettings['amazon']>;
     },
+    context: AuditContext = {},
   ): Promise<MarketplaceDefaultSettings> {
     const org = await this.getOrg(orgId);
     const current = org.marketplaceDefaultSettings ?? DEFAULT_MARKETPLACE_SETTINGS;
@@ -225,6 +272,7 @@ export class OrganizationSettingsService {
         ...current.amazon,
         ...(updates.amazon || {}),
       },
+      facebook: current.facebook,
     };
 
     // Validation
@@ -238,6 +286,16 @@ export class OrganizationSettingsService {
 
     org.marketplaceDefaultSettings = updated;
     await this.orgRepo.save(org);
+
+    // Record audit
+    await this.auditService.recordSettingsChange({
+      orgId,
+      settingsType: 'marketplaceDefaults',
+      previousSettings: current as unknown as Record<string, unknown>,
+      newSettings: updated as unknown as Record<string, unknown>,
+      context,
+    });
+
     return updated;
   }
 
@@ -257,6 +315,7 @@ export class OrganizationSettingsService {
   async updateBillingSettings(
     orgId: string,
     updates: { billingEmail?: string | null },
+    context: AuditContext = {},
   ): Promise<BillingSettings> {
     const org = await this.getOrg(orgId);
     const current = org.billingSettings ?? DEFAULT_BILLING_SETTINGS;
@@ -277,6 +336,16 @@ export class OrganizationSettingsService {
 
     org.billingSettings = updated;
     await this.orgRepo.save(org);
+
+    // Record audit
+    await this.auditService.recordSettingsChange({
+      orgId,
+      settingsType: 'billing',
+      previousSettings: current as unknown as Record<string, unknown>,
+      newSettings: updated as unknown as Record<string, unknown>,
+      context,
+    });
+
     return updated;
   }
 
@@ -286,6 +355,7 @@ export class OrganizationSettingsService {
   async adminUpdateBillingSettings(
     orgId: string,
     updates: Partial<BillingSettings>,
+    context: AuditContext = {},
   ): Promise<BillingSettings> {
     const org = await this.getOrg(orgId);
     const current = org.billingSettings ?? DEFAULT_BILLING_SETTINGS;
@@ -301,6 +371,16 @@ export class OrganizationSettingsService {
 
     org.billingSettings = updated;
     await this.orgRepo.save(org);
+
+    // Record audit with admin flag
+    await this.auditService.recordSettingsChange({
+      orgId,
+      settingsType: 'billing',
+      previousSettings: current as unknown as Record<string, unknown>,
+      newSettings: updated as unknown as Record<string, unknown>,
+      context: { ...context, isAdmin: true },
+    });
+
     return updated;
   }
 
@@ -316,6 +396,7 @@ export class OrganizationSettingsService {
   async updateSecuritySettings(
     orgId: string,
     updates: Partial<SecuritySettings>,
+    context: AuditContext = {},
   ): Promise<SecuritySettings> {
     const org = await this.getOrg(orgId);
     const current = org.securitySettings ?? DEFAULT_SECURITY_SETTINGS;
@@ -341,6 +422,16 @@ export class OrganizationSettingsService {
 
     org.securitySettings = updated;
     await this.orgRepo.save(org);
+
+    // Record audit
+    await this.auditService.recordSettingsChange({
+      orgId,
+      settingsType: 'security',
+      previousSettings: current as unknown as Record<string, unknown>,
+      newSettings: updated as unknown as Record<string, unknown>,
+      context,
+    });
+
     return updated;
   }
 

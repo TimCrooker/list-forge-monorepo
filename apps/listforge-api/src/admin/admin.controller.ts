@@ -8,6 +8,10 @@ import {
   AdminUpdateOrgStatusResponse,
   AdminListMarketplaceAccountsQuery,
   AdminListMarketplaceAccountsResponse,
+  GetAdminSettingsAuditLogsRequest,
+  GetSettingsAuditLogsResponse,
+  GetSettingsVersionsResponse,
+  SettingsType,
 } from '@listforge/api-types';
 import { AdminService } from './admin.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -103,6 +107,32 @@ export class AdminController {
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
     });
+  }
+
+  // ============================================================================
+  // Settings Audit
+  // ============================================================================
+
+  /**
+   * Get settings audit logs across all orgs
+   * Supports filtering by organization, settings type, event type, user, and date range
+   */
+  @Get('settings-audit-logs')
+  async getSettingsAuditLogs(
+    @Query() query: GetAdminSettingsAuditLogsRequest,
+  ): Promise<GetSettingsAuditLogsResponse> {
+    return this.adminService.getSettingsAuditLogs(query);
+  }
+
+  /**
+   * Get settings version history for a specific org and settings type
+   */
+  @Get('orgs/:orgId/settings/:type/versions')
+  async getSettingsVersionHistory(
+    @Param('orgId') orgId: string,
+    @Param('type') settingsType: SettingsType,
+  ): Promise<GetSettingsVersionsResponse> {
+    return this.adminService.getSettingsVersionHistory(orgId, settingsType);
   }
 }
 

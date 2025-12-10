@@ -32,7 +32,8 @@ import {
 import {
   getResearchDataTool,
   searchCompsTool,
-  triggerResearchTool
+  triggerResearchTool,
+  researchFieldTool
 } from './research.tools';
 import { suggestActionTool } from './action.tools';
 import { searchItemsTool, searchResearchTool, searchEvidenceTool } from './search.tools';
@@ -113,6 +114,7 @@ export function getChatTools(deps: ChatToolDependencies): StructuredTool[] {
     getResearchDataTool(deps),
     searchCompsTool(deps),
     triggerResearchTool(deps),
+    researchFieldTool(deps),
 
     // Action tools
     suggestActionTool(deps),
@@ -279,6 +281,20 @@ export interface ChatToolDependencies {
 
   // Action emission (for suggest_action)
   emitAction?: (sessionId: string, action: unknown) => void;
+
+  // Field-driven research (optional - falls back to full research if not provided)
+  researchField?: (params: {
+    itemId: string;
+    organizationId: string;
+    fieldName: string;
+    researchMode: 'fast' | 'balanced' | 'thorough';
+    hint?: string;
+  }) => Promise<{
+    value: unknown;
+    confidence?: number;
+    source?: string;
+    costUsd?: number;
+  }>;
 }
 
 /**
@@ -325,6 +341,13 @@ export const toolDisplayInfo: Record<string, { displayName: string; icon?: strin
     progressMessages: {
       starting: 'Starting research job...',
       completed: 'Research job started',
+    },
+  },
+  research_field: {
+    displayName: 'Field Research',
+    progressMessages: {
+      starting: 'Researching field...',
+      completed: 'Field research complete',
     },
   },
   suggest_action: {

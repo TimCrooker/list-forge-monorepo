@@ -1,6 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSwipeable } from 'react-swipeable';
+import { RootState } from '@/store/store';
 import {
   useGetItemAiReviewQueueQuery,
   useGetItemQuery,
@@ -25,6 +26,18 @@ import { cn } from '@listforge/ui';
 
 export const Route = createFileRoute('/_authenticated/review/')({
   component: ReviewPage,
+  beforeLoad: ({ context }) => {
+    // Review queue is team-only feature
+    const state = (context as any).store?.getState() as RootState | undefined;
+    const currentOrg = state?.auth?.currentOrg;
+
+    if (currentOrg?.type === 'personal') {
+      throw redirect({
+        to: '/',
+        search: {},
+      });
+    }
+  },
 });
 
 function ReviewPage() {
@@ -32,7 +45,6 @@ function ReviewPage() {
   const [isMobile, setIsMobile] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
   const [showQueue, setShowQueue] = useState(false);
-  const [showEvidence, setShowEvidence] = useState(false);
 
   // Get current user
   useMeQuery();

@@ -4,7 +4,8 @@ import {
   useUpdateSecuritySettingsMutation,
 } from '@listforge/api-rtk';
 import { SecuritySettings } from '@listforge/core-types';
-import { Loader2, ShieldCheck, Save, AlertTriangle } from 'lucide-react';
+import { Loader2, ShieldCheck, Save, AlertTriangle, History } from 'lucide-react';
+import { SettingsVersionHistory } from './SettingsVersionHistory';
 import {
   Card,
   CardContent,
@@ -29,6 +30,7 @@ interface SecuritySettingsCardProps {
 export function SecuritySettingsCard({ orgId, isAdmin }: SecuritySettingsCardProps) {
   const { data, isLoading } = useGetSecuritySettingsQuery(orgId);
   const [updateSettings, { isLoading: isUpdating }] = useUpdateSecuritySettingsMutation();
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const [formData, setFormData] = useState<SecuritySettings>({
     mfaRequired: false,
@@ -83,16 +85,25 @@ export function SecuritySettingsCard({ orgId, isAdmin }: SecuritySettingsCardPro
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ShieldCheck className="h-5 w-5" />
-          Security Settings
-        </CardTitle>
-        <CardDescription>
-          Configure security policies for your organization.
-        </CardDescription>
-      </CardHeader>
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5" />
+                Security Settings
+              </CardTitle>
+              <CardDescription>
+                Configure security policies for your organization.
+              </CardDescription>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
+              <History className="h-4 w-4 mr-1" />
+              History
+            </Button>
+          </div>
+        </CardHeader>
       <CardContent className="space-y-6">
         {!isAdmin && (
           <Alert>
@@ -209,6 +220,14 @@ export function SecuritySettingsCard({ orgId, isAdmin }: SecuritySettingsCardPro
           </div>
         )}
       </CardContent>
-    </Card>
+      </Card>
+
+      <SettingsVersionHistory
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        orgId={orgId}
+        settingsType="security"
+      />
+    </>
   );
 }

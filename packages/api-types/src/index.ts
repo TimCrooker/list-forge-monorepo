@@ -8,3 +8,4 @@ export * from './evidence';
 export * from './items';
 export * from './research';
 export * from './chat';
+export * from './settings-audit';

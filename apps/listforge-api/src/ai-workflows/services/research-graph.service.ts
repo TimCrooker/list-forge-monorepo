@@ -3,8 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ChatOpenAI } from '@langchain/openai';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { buildResearchGraph } from '../graphs/research/research-graph.builder';
+import { buildFieldDrivenResearchGraph } from '../graphs/research/research-graph.builder';
 import { ResearchGraphState, ItemSnapshot } from '../graphs/research/research-graph.state';
+import { FieldStateManagerService } from './field-state-manager.service';
+import { ResearchPlannerService } from './research-planner.service';
+import { FieldResearchService } from './field-research.service';
 import { Item } from '../../items/entities/item.entity';
 import { ItemResearchRun } from '../../research/entities/item-research-run.entity';
 import { ResearchService } from '../../research/research.service';
@@ -69,6 +72,10 @@ export class ResearchGraphService {
     // Amazon/Keepa Integration
     private readonly amazonCatalogService: AmazonCatalogService,
     private readonly keepaService: KeepaService,
+    // Field-driven research services
+    private readonly fieldStateManager: FieldStateManagerService,
+    private readonly researchPlanner: ResearchPlannerService,
+    private readonly fieldResearchService: FieldResearchService,
   ) {}
 
   /**
@@ -155,9 +162,10 @@ export class ResearchGraphService {
       const checkpointer = this.checkpointerService.getCheckpointer();
       this.logger.debug('Checkpointer initialized', { researchRunId });
 
-      // Build graph with checkpointer
-      const graph = buildResearchGraph(checkpointer);
-      this.logger.debug('Graph built with checkpointer', { researchRunId });
+      // Build field-driven research graph with checkpointer
+      // This replaces the old generic pipeline with adaptive field-driven research
+      const graph = buildFieldDrivenResearchGraph(checkpointer);
+      this.logger.debug('Field-driven research graph built with checkpointer', { researchRunId });
 
       // Initial state (or resume from checkpoint)
       const initialState: Partial<ResearchGraphState> = isResume
@@ -184,19 +192,21 @@ export class ResearchGraphService {
       // Track node execution for event emission and step history
       let finalResult: ResearchGraphState | null = null;
       let previousNode: string | null = null;
+      // Field-driven research graph node order
       const nodeOrder = [
+        // Phase 0: Setup
         'load_context',
-        'analyze_media',
-        'extract_identifiers', // Slice 2: OCR + UPC lookup
-        'deep_identify',
-        'update_item',
-        'detect_marketplace_schema', // Slice 4: Marketplace Schema Awareness
-        'search_comps',
-        'analyze_comps',
-        'calculate_price',
-        'assemble_listing', // Slice 6: Full Listing Assembly
-        'assess_missing',
-        'refine_search',
+        'detect_marketplace_schema',
+        'initialize_field_states',
+        // Phase 1: Fast Extraction
+        'extract_from_images',
+        'quick_lookups',
+        // Phase 2: Adaptive Research Loop
+        'evaluate_fields',
+        'plan_next_research',
+        'execute_research',
+        // Phase 3: Validation and Persistence
+        'validate_readiness',
         'persist_results',
       ];
 
@@ -1230,6 +1240,80 @@ export class ResearchGraphService {
         }
 
         return { success: updatedFields.length > 0, updatedFields };
+      },
+
+      // ========================================================================
+      // Field-Driven Research Tools
+      // ========================================================================
+
+      /**
+       * Field state manager service for field-driven research nodes
+       */
+      fieldStateManager: this.fieldStateManager,
+
+      /**
+       * Research planner service for adaptive research
+       */
+      researchPlanner: this.researchPlanner,
+
+      /**
+       * Field research service for executing research tasks
+       */
+      fieldResearchService: this.fieldResearchService,
+
+      /**
+       * Save field states to research run
+       */
+      saveFieldStates: async ({
+        itemId,
+        researchRunId,
+        fieldStates,
+        researchCostUsd,
+        researchMode,
+        researchConstraints,
+      }: {
+        itemId: string;
+        researchRunId: string;
+        fieldStates: any;
+        researchCostUsd: number;
+        researchMode: 'fast' | 'balanced' | 'thorough';
+        researchConstraints: any;
+      }): Promise<void> => {
+        const run = await this.researchRunRepo.findOne({
+          where: { id: researchRunId },
+        });
+        if (run) {
+          run.fieldStates = fieldStates;
+          run.researchCostUsd = researchCostUsd;
+          run.researchMode = researchMode;
+          run.researchConstraints = researchConstraints;
+          await this.researchRunRepo.save(run);
+        }
+      },
+
+      /**
+       * Update item readiness status
+       */
+      updateItemReadiness: async ({
+        itemId,
+        readyToPublish,
+        fieldCompletionScore,
+        canonicalFields,
+      }: {
+        itemId: string;
+        readyToPublish: boolean;
+        fieldCompletionScore: number;
+        canonicalFields: Record<string, unknown>;
+      }): Promise<void> => {
+        const item = await this.itemRepo.findOne({
+          where: { id: itemId, organizationId: orgId },
+        });
+        if (item) {
+          item.readyToPublish = readyToPublish;
+          item.fieldCompletionScore = fieldCompletionScore;
+          item.canonicalFields = canonicalFields;
+          await this.itemRepo.save(item);
+        }
       },
     };
   }

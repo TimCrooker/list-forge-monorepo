@@ -52,6 +52,8 @@ export interface ItemDto {
 
   // Media
   media: ItemMedia[];
+  photos: ItemMedia[]; // Alias for media for backwards compatibility
+  primaryImageUrl: string | null; // URL of primary image
 
   // Quantity & Pricing
   quantity: number;

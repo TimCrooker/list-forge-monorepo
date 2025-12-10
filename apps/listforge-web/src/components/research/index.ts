@@ -16,3 +16,5 @@ export { ListingPreview } from './ListingPreview';
 export { ListingStatusBadge } from './ListingStatusBadge';
 export { ResearchControlButtons } from './ResearchControlButtons';
 export { ResearchRunStatusBadge } from './ResearchRunStatusBadge';
+export { ResearchActivityLogsToggle } from './ResearchActivityLogsToggle';
+export { ResearchActivityLogsSidebar } from './ResearchActivityLogsSidebar';

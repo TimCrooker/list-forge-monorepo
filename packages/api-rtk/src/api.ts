@@ -16,6 +16,9 @@ import {
   AddOrgMemberResponse,
   UpdateOrgMemberRequest,
   UpdateOrgMemberResponse,
+  EnableTeamRequest,
+  EnableTeamResponse,
+  DisableTeamResponse,
   AdminUpdateUserRequest,
   AdminUpdateUserResponse,
   AdminListUsersResponse,
@@ -32,6 +35,9 @@ import {
   GetAmazonAuthUrlResponse,
   ExchangeAmazonCodeRequest,
   ExchangeAmazonCodeResponse,
+  GetFacebookAuthUrlResponse,
+  ExchangeFacebookCodeRequest,
+  ExchangeFacebookCodeResponse,
   ListMarketplaceAccountsResponse,
   DeleteMarketplaceAccountResponse,
   RefreshMarketplaceAccountResponse,
@@ -99,13 +105,22 @@ import {
   GetSecuritySettingsResponse,
   UpdateSecuritySettingsRequest,
   UpdateSecuritySettingsResponse,
+  // Settings Audit types
+  SettingsType,
+  GetSettingsVersionsResponse,
+  GetSettingsAuditLogsRequest,
+  GetSettingsAuditLogsResponse,
+  GetAdminSettingsAuditLogsRequest,
+  PreviewSettingsRevertResponse,
+  RevertSettingsRequest,
+  RevertSettingsResponse,
 } from '@listforge/api-types';
 import { baseQueryWithErrorHandling } from './baseQueryWithErrorHandling';
 
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithErrorHandling,
-  tagTypes: ['User', 'Org', 'OrgMember', 'MarketplaceAccount', 'MarketplaceListing', 'Item', 'ResearchRun', 'ChatSession'],
+  tagTypes: ['User', 'Org', 'OrgMember', 'MarketplaceAccount', 'MarketplaceListing', 'Item', 'ResearchRun', 'ChatSession', 'SettingsVersion', 'SettingsAuditLog'],
   endpoints: (builder) => ({
     // Auth endpoints
     login: builder.mutation<LoginResponse, LoginRequest>({
@@ -184,6 +199,30 @@ export const api = createApi({
       invalidatesTags: (_result, _error, { orgId }) => [
         { type: 'Org', id: orgId },
         'OrgMember',
+      ],
+    }),
+    enableTeam: builder.mutation<
+      EnableTeamResponse,
+      { orgId: string; data: EnableTeamRequest }
+    >({
+      query: ({ orgId, data }) => ({
+        url: `/orgs/${orgId}/enable-team`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { orgId }) => [
+        { type: 'Org', id: orgId },
+        'User', // Re-fetch user to get updated currentOrg
+      ],
+    }),
+    disableTeam: builder.mutation<DisableTeamResponse, { orgId: string }>({
+      query: ({ orgId }) => ({
+        url: `/orgs/${orgId}/disable-team`,
+        method: 'PATCH',
+      }),
+      invalidatesTags: (_result, _error, { orgId }) => [
+        { type: 'Org', id: orgId },
+        'User', // Re-fetch user to get updated currentOrg
       ],
     }),
 
@@ -290,6 +329,19 @@ export const api = createApi({
     exchangeAmazonCode: builder.mutation<ExchangeAmazonCodeResponse, ExchangeAmazonCodeRequest>({
       query: (body) => ({
         url: '/marketplaces/amazon/exchange-code',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['MarketplaceAccount'],
+    }),
+
+    // Marketplace endpoints - Facebook
+    getFacebookAuthUrl: builder.query<GetFacebookAuthUrlResponse, void>({
+      query: () => '/marketplaces/facebook/auth-url',
+    }),
+    exchangeFacebookCode: builder.mutation<ExchangeFacebookCodeResponse, ExchangeFacebookCodeRequest>({
+      query: (body) => ({
+        url: '/marketplaces/facebook/exchange-code',
         method: 'POST',
         body,
       }),
@@ -725,7 +777,11 @@ export const api = createApi({
         method: 'PATCH',
         body: data,
       }),
-      invalidatesTags: (_result, _error, { orgId }) => [{ type: 'Org', id: orgId }],
+      invalidatesTags: (_result, _error, { orgId }) => [
+        { type: 'Org', id: orgId },
+        { type: 'SettingsVersion', id: `${orgId}-workflow` },
+        { type: 'SettingsAuditLog', id: orgId },
+      ],
     }),
 
     // Notification Settings
@@ -742,7 +798,11 @@ export const api = createApi({
         method: 'PATCH',
         body: data,
       }),
-      invalidatesTags: (_result, _error, { orgId }) => [{ type: 'Org', id: orgId }],
+      invalidatesTags: (_result, _error, { orgId }) => [
+        { type: 'Org', id: orgId },
+        { type: 'SettingsVersion', id: `${orgId}-notification` },
+        { type: 'SettingsAuditLog', id: orgId },
+      ],
     }),
 
     // Team Settings
@@ -759,7 +819,11 @@ export const api = createApi({
         method: 'PATCH',
         body: data,
       }),
-      invalidatesTags: (_result, _error, { orgId }) => [{ type: 'Org', id: orgId }],
+      invalidatesTags: (_result, _error, { orgId }) => [
+        { type: 'Org', id: orgId },
+        { type: 'SettingsVersion', id: `${orgId}-team` },
+        { type: 'SettingsAuditLog', id: orgId },
+      ],
     }),
 
     // Inventory Settings
@@ -776,7 +840,11 @@ export const api = createApi({
         method: 'PATCH',
         body: data,
       }),
-      invalidatesTags: (_result, _error, { orgId }) => [{ type: 'Org', id: orgId }],
+      invalidatesTags: (_result, _error, { orgId }) => [
+        { type: 'Org', id: orgId },
+        { type: 'SettingsVersion', id: `${orgId}-inventory` },
+        { type: 'SettingsAuditLog', id: orgId },
+      ],
     }),
 
     // Marketplace Default Settings
@@ -793,7 +861,11 @@ export const api = createApi({
         method: 'PATCH',
         body: data,
       }),
-      invalidatesTags: (_result, _error, { orgId }) => [{ type: 'Org', id: orgId }],
+      invalidatesTags: (_result, _error, { orgId }) => [
+        { type: 'Org', id: orgId },
+        { type: 'SettingsVersion', id: `${orgId}-marketplaceDefaults` },
+        { type: 'SettingsAuditLog', id: orgId },
+      ],
     }),
 
     // Billing Settings
@@ -810,7 +882,11 @@ export const api = createApi({
         method: 'PATCH',
         body: data,
       }),
-      invalidatesTags: (_result, _error, { orgId }) => [{ type: 'Org', id: orgId }],
+      invalidatesTags: (_result, _error, { orgId }) => [
+        { type: 'Org', id: orgId },
+        { type: 'SettingsVersion', id: `${orgId}-billing` },
+        { type: 'SettingsAuditLog', id: orgId },
+      ],
     }),
 
     // Security Settings
@@ -827,7 +903,94 @@ export const api = createApi({
         method: 'PATCH',
         body: data,
       }),
-      invalidatesTags: (_result, _error, { orgId }) => [{ type: 'Org', id: orgId }],
+      invalidatesTags: (_result, _error, { orgId }) => [
+        { type: 'Org', id: orgId },
+        { type: 'SettingsVersion', id: `${orgId}-security` },
+        { type: 'SettingsAuditLog', id: orgId },
+      ],
+    }),
+
+    // ============================================================================
+    // Settings Audit & Version History Endpoints
+    // ============================================================================
+
+    // Get version history for a settings type
+    getSettingsVersions: builder.query<
+      GetSettingsVersionsResponse,
+      { orgId: string; settingsType: SettingsType }
+    >({
+      query: ({ orgId, settingsType }) => `/orgs/${orgId}/settings/${settingsType}/versions`,
+      providesTags: (_result, _error, { orgId, settingsType }) => [
+        { type: 'SettingsVersion', id: `${orgId}-${settingsType}` },
+      ],
+    }),
+
+    // Get audit logs for an organization
+    getSettingsAuditLogs: builder.query<
+      GetSettingsAuditLogsResponse,
+      { orgId: string; params?: GetSettingsAuditLogsRequest }
+    >({
+      query: ({ orgId, params = {} }) => ({
+        url: `/orgs/${orgId}/settings/audit-logs`,
+        params: params as Record<string, string>,
+      }),
+      providesTags: (_result, _error, { orgId }) => [
+        { type: 'SettingsAuditLog', id: orgId },
+      ],
+    }),
+
+    // Preview what a revert would change
+    previewSettingsRevert: builder.query<
+      PreviewSettingsRevertResponse,
+      { orgId: string; versionId: string }
+    >({
+      query: ({ orgId, versionId }) => `/orgs/${orgId}/settings/versions/${versionId}/preview`,
+    }),
+
+    // Revert to a previous version
+    revertSettings: builder.mutation<
+      RevertSettingsResponse,
+      { orgId: string; versionId: string; data: RevertSettingsRequest }
+    >({
+      query: ({ orgId, versionId, data }) => ({
+        url: `/orgs/${orgId}/settings/versions/${versionId}/revert`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (result, _error, { orgId }) => {
+        const settingsType = result?.newVersion?.settingsType;
+        return [
+          { type: 'Org', id: orgId },
+          // Invalidate the specific settings type version cache
+          settingsType
+            ? { type: 'SettingsVersion', id: `${orgId}-${settingsType}` }
+            : 'SettingsVersion',
+          { type: 'SettingsAuditLog', id: orgId },
+        ];
+      },
+    }),
+
+    // Admin: Get settings audit logs across all orgs
+    getAdminSettingsAuditLogs: builder.query<
+      GetSettingsAuditLogsResponse,
+      GetAdminSettingsAuditLogsRequest
+    >({
+      query: (params) => ({
+        url: '/admin/settings-audit-logs',
+        params: params as Record<string, string>,
+      }),
+      providesTags: ['SettingsAuditLog'],
+    }),
+
+    // Admin: Get version history for any org
+    getAdminSettingsVersions: builder.query<
+      GetSettingsVersionsResponse,
+      { orgId: string; settingsType: SettingsType }
+    >({
+      query: ({ orgId, settingsType }) => `/admin/orgs/${orgId}/settings/${settingsType}/versions`,
+      providesTags: (_result, _error, { orgId, settingsType }) => [
+        { type: 'SettingsVersion', id: `${orgId}-${settingsType}` },
+      ],
     }),
 
     // Slice 7: Retry failed publish endpoint
@@ -858,6 +1021,8 @@ export const {
   useGetOrgQuery,
   useAddOrgMemberMutation,
   useUpdateOrgMemberMutation,
+  useEnableTeamMutation,
+  useDisableTeamMutation,
   useListUsersQuery,
   useGetUserAdminQuery,
   useDisableUserMutation,
@@ -872,6 +1037,8 @@ export const {
   useExchangeEbayCodeMutation,
   useGetAmazonAuthUrlQuery,
   useExchangeAmazonCodeMutation,
+  useGetFacebookAuthUrlQuery,
+  useExchangeFacebookCodeMutation,
   useListMarketplaceAccountsQuery,
   useDeleteMarketplaceAccountMutation,
   useRefreshMarketplaceAccountMutation,
@@ -938,5 +1105,12 @@ export const {
   useUpdateBillingSettingsMutation,
   useGetSecuritySettingsQuery,
   useUpdateSecuritySettingsMutation,
+  // Settings Audit & Version History hooks
+  useGetSettingsVersionsQuery,
+  useGetSettingsAuditLogsQuery,
+  useLazyPreviewSettingsRevertQuery,
+  useRevertSettingsMutation,
+  useGetAdminSettingsAuditLogsQuery,
+  useGetAdminSettingsVersionsQuery,
 } = api;
 

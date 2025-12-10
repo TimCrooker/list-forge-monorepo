@@ -366,6 +366,15 @@ export class MarketplaceAccountService {
         amazonRegion: (this.configService.get<string>('AMAZON_REGION') || 'NA') as 'NA' | 'EU' | 'FE',
         amazonMarketplaceId: this.configService.get<string>('AMAZON_MARKETPLACE_ID') || 'ATVPDKIKX0DER',
       };
+    } else if (account.marketplace === 'FACEBOOK') {
+      credentials = {
+        ...baseCredentials,
+        facebookAppId: this.configService.get<string>('FACEBOOK_APP_ID'),
+        facebookAppSecret: this.configService.get<string>('FACEBOOK_APP_SECRET'),
+        facebookCatalogId: account.settings?.facebookCatalogId as string | undefined,
+        facebookPageId: account.settings?.facebookPageId as string | undefined,
+        facebookBusinessId: account.settings?.facebookBusinessId as string | undefined,
+      };
     } else {
       credentials = baseCredentials;
     }
@@ -564,9 +573,244 @@ export class MarketplaceAccountService {
     return savedAccount;
   }
 
+  // ============ Facebook OAuth ============
+
+  /**
+   * Generate Facebook OAuth authorization URL
+   */
+  getFacebookAuthUrl(orgId: string, userId: string): string {
+    const appId = this.configService.get<string>('FACEBOOK_APP_ID');
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const redirectUri = this.configService.get<string>('FACEBOOK_REDIRECT_URI') ||
+      `${frontendUrl}/settings/marketplaces/facebook/callback`;
+
+    if (!appId) {
+      throw new BadRequestException('Facebook credentials not configured');
+    }
+
+    // Create HMAC-signed state for CSRF protection
+    const state = this.createSignedState(orgId, userId);
+
+    // Facebook OAuth scopes for Commerce Platform
+    // Note: marketplace_manage_listings requires Meta Partner approval
+    const scopes = [
+      'catalog_management',
+      'pages_read_engagement',
+      'business_management',
+      'pages_show_list',
+    ].join(',');
+
+    const params = new URLSearchParams({
+      client_id: appId,
+      redirect_uri: redirectUri,
+      state,
+      scope: scopes,
+      response_type: 'code',
+    });
+
+    return `https://www.facebook.com/v18.0/dialog/oauth?${params.toString()}`;
+  }
+
+  /**
+   * Exchange Facebook OAuth code with state verification
+   */
+  async exchangeFacebookCode(
+    code: string,
+    state: string,
+    currentOrgId: string,
+    currentUserId: string,
+  ): Promise<MarketplaceAccount> {
+    // Verify the signed state
+    const statePayload = this.verifySignedState(state);
+
+    // Verify the state matches the current user context
+    if (statePayload.orgId !== currentOrgId) {
+      throw new BadRequestException('Organization mismatch in OAuth state');
+    }
+
+    if (statePayload.userId !== currentUserId) {
+      throw new BadRequestException('User mismatch in OAuth state');
+    }
+
+    // Exchange the code for tokens
+    return this.connectFacebook(statePayload.orgId, statePayload.userId, code);
+  }
+
+  /**
+   * Exchange Facebook OAuth authorization code for tokens and store account
+   */
+  async connectFacebook(
+    orgId: string,
+    userId: string,
+    authCode: string,
+  ): Promise<MarketplaceAccount> {
+    const appId = this.configService.get<string>('FACEBOOK_APP_ID');
+    const appSecret = this.configService.get<string>('FACEBOOK_APP_SECRET');
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const redirectUri = this.configService.get<string>('FACEBOOK_REDIRECT_URI') ||
+      `${frontendUrl}/settings/marketplaces/facebook/callback`;
+
+    if (!appId || !appSecret) {
+      throw new BadRequestException('Facebook credentials not configured');
+    }
+
+    // Step 1: Exchange code for short-lived access token
+    const tokenUrl = 'https://graph.facebook.com/v18.0/oauth/access_token';
+    const tokenParams = new URLSearchParams({
+      client_id: appId,
+      client_secret: appSecret,
+      redirect_uri: redirectUri,
+      code: authCode,
+    });
+
+    const tokenResponse = await fetch(`${tokenUrl}?${tokenParams.toString()}`);
+
+    if (!tokenResponse.ok) {
+      const error = await tokenResponse.text();
+      this.logger.error(`Facebook token exchange failed: ${error}`);
+      throw new BadRequestException(`Failed to exchange Facebook OAuth code: ${error}`);
+    }
+
+    interface FacebookTokenResponse {
+      access_token: string;
+      token_type: string;
+      expires_in?: number;
+    }
+
+    const shortLivedToken = await tokenResponse.json() as FacebookTokenResponse;
+
+    // Step 2: Exchange short-lived token for long-lived token (~60 days)
+    const longLivedTokenUrl = 'https://graph.facebook.com/v18.0/oauth/access_token';
+    const longLivedParams = new URLSearchParams({
+      grant_type: 'fb_exchange_token',
+      client_id: appId,
+      client_secret: appSecret,
+      fb_exchange_token: shortLivedToken.access_token,
+    });
+
+    const longLivedResponse = await fetch(`${longLivedTokenUrl}?${longLivedParams.toString()}`);
+
+    let accessToken = shortLivedToken.access_token;
+    let expiresIn = shortLivedToken.expires_in || 3600;
+
+    if (longLivedResponse.ok) {
+      const longLivedToken = await longLivedResponse.json() as FacebookTokenResponse;
+      accessToken = longLivedToken.access_token;
+      expiresIn = longLivedToken.expires_in || 5184000; // ~60 days default
+      this.logger.log('Successfully exchanged for long-lived Facebook token');
+    } else {
+      this.logger.warn('Failed to exchange for long-lived token, using short-lived token');
+    }
+
+    // Step 3: Get user info
+    const userInfoResponse = await fetch(
+      `https://graph.facebook.com/v18.0/me?access_token=${accessToken}&fields=id,name`
+    );
+
+    interface FacebookUserInfo {
+      id: string;
+      name: string;
+    }
+
+    let remoteAccountId: string | null = null;
+    let accountName = 'Facebook Account';
+
+    if (userInfoResponse.ok) {
+      const userInfo = await userInfoResponse.json() as FacebookUserInfo;
+      remoteAccountId = userInfo.id;
+      accountName = userInfo.name;
+    }
+
+    // Step 4: Try to get the user's pages (for business accounts)
+    let pageId: string | null = null;
+    let catalogId: string | null = null;
+
+    try {
+      const pagesResponse = await fetch(
+        `https://graph.facebook.com/v18.0/me/accounts?access_token=${accessToken}&fields=id,name,access_token`
+      );
+
+      if (pagesResponse.ok) {
+        interface FacebookPage {
+          id: string;
+          name: string;
+          access_token: string;
+        }
+
+        interface FacebookPagesResponse {
+          data: FacebookPage[];
+        }
+
+        const pagesData = await pagesResponse.json() as FacebookPagesResponse;
+
+        if (pagesData.data && pagesData.data.length > 0) {
+          // Use the first page for now (user can change in settings)
+          pageId = pagesData.data[0].id;
+          this.logger.log(`Found Facebook page: ${pagesData.data[0].name} (${pageId})`);
+        }
+      }
+    } catch (error) {
+      this.logger.warn('Could not fetch Facebook pages:', error);
+    }
+
+    // Create or update account
+    const existingAccount = await this.accountRepo.findOne({
+      where: {
+        orgId,
+        marketplace: 'FACEBOOK',
+        remoteAccountId: remoteAccountId || undefined,
+      },
+    });
+
+    const expiresAt = new Date(Date.now() + expiresIn * 1000);
+
+    let savedAccount: MarketplaceAccount;
+
+    const settings = {
+      facebookPageId: pageId,
+      facebookCatalogId: catalogId,
+    };
+
+    if (existingAccount) {
+      existingAccount.accessToken = this.encryptionService.encrypt(accessToken);
+      existingAccount.tokenExpiresAt = expiresAt;
+      existingAccount.status = 'active';
+      existingAccount.userId = userId;
+      existingAccount.settings = { ...existingAccount.settings, ...settings };
+      savedAccount = await this.accountRepo.save(existingAccount);
+    } else {
+      const account = this.accountRepo.create({
+        orgId,
+        userId,
+        marketplace: 'FACEBOOK',
+        accessToken: this.encryptionService.encrypt(accessToken),
+        refreshToken: null, // Facebook doesn't use traditional refresh tokens
+        tokenExpiresAt: expiresAt,
+        remoteAccountId,
+        status: 'active',
+        settings,
+      });
+
+      savedAccount = await this.accountRepo.save(account);
+    }
+
+    // Audit log: Account connected
+    await this.auditService.logAccountConnected({
+      orgId,
+      userId,
+      accountId: savedAccount.id,
+      marketplace: 'FACEBOOK',
+      remoteAccountId: remoteAccountId || undefined,
+    }).catch(err => {
+      this.logger.error('Failed to log account connection audit', err);
+    });
+
+    return savedAccount;
+  }
+
   /**
    * Manually refresh tokens for an account (with org validation)
-   * Supports both eBay and Amazon marketplaces
+   * Supports eBay, Amazon, and Facebook marketplaces
    */
   async refreshTokens(accountId: string, orgId: string): Promise<void> {
     const account = await this.accountRepo.findOne({
@@ -588,6 +832,8 @@ export class MarketplaceAccountService {
       await this.refreshEbayTokens(account);
     } else if (account.marketplace === 'AMAZON') {
       await this.refreshAmazonTokens(account);
+    } else if (account.marketplace === 'FACEBOOK') {
+      await this.refreshFacebookTokens(account);
     } else {
       throw new BadRequestException(
         `Token refresh not supported for marketplace: ${account.marketplace}`
@@ -721,6 +967,63 @@ export class MarketplaceAccountService {
     await this.updateTokens(account.id, {
       accessToken: tokenData.access_token,
       refreshToken: tokenData.refresh_token || refreshToken,
+      tokenExpiresAt: expiresAt,
+    });
+  }
+
+  /**
+   * Refresh Facebook access token
+   * Facebook uses long-lived tokens that can be refreshed before expiry
+   * @private
+   */
+  private async refreshFacebookTokens(account: MarketplaceAccount): Promise<void> {
+    const appId = this.configService.get<string>('FACEBOOK_APP_ID');
+    const appSecret = this.configService.get<string>('FACEBOOK_APP_SECRET');
+
+    if (!appId || !appSecret) {
+      throw new BadRequestException('Facebook credentials not configured');
+    }
+
+    // Facebook long-lived tokens can be refreshed by exchanging them again
+    // This only works if the token hasn't expired yet
+    const currentToken = this.encryptionService.decrypt(account.accessToken);
+
+    const refreshUrl = 'https://graph.facebook.com/v18.0/oauth/access_token';
+    const params = new URLSearchParams({
+      grant_type: 'fb_exchange_token',
+      client_id: appId,
+      client_secret: appSecret,
+      fb_exchange_token: currentToken,
+    });
+
+    const response = await fetch(`${refreshUrl}?${params.toString()}`);
+
+    if (!response.ok) {
+      const error = await response.text();
+      this.logger.error(`Facebook token refresh failed for account ${account.id}: ${error}`);
+
+      // Mark as expired on refresh failure
+      account.status = 'expired';
+      await this.accountRepo.save(account);
+
+      throw new BadRequestException(
+        'Failed to refresh Facebook token. The token may have expired. Please reconnect your account.'
+      );
+    }
+
+    interface FacebookTokenResponse {
+      access_token: string;
+      token_type: string;
+      expires_in?: number;
+    }
+
+    const tokenData = await response.json() as FacebookTokenResponse;
+    const expiresAt = tokenData.expires_in
+      ? new Date(Date.now() + tokenData.expires_in * 1000)
+      : new Date(Date.now() + 5184000 * 1000); // ~60 days default
+
+    await this.updateTokens(account.id, {
+      accessToken: tokenData.access_token,
       tokenExpiresAt: expiresAt,
     });
   }

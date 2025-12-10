@@ -21,9 +21,11 @@ import { Route as AuthenticatedCaptureIndexRouteImport } from './routes/_authent
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 import { Route as AuthenticatedSettingsOrganizationRouteImport } from './routes/_authenticated/settings/organization'
 import { Route as AuthenticatedSettingsMarketplacesRouteImport } from './routes/_authenticated/settings/marketplaces'
+import { Route as AuthenticatedSettingsHistoryRouteImport } from './routes/_authenticated/settings/history'
 import { Route as AuthenticatedItemsNewRouteImport } from './routes/_authenticated/items/new'
 import { Route as AuthenticatedCaptureIdRouteImport } from './routes/_authenticated/capture/$id'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
+import { Route as AuthenticatedAdminSettingsAuditRouteImport } from './routes/_authenticated/admin/settings-audit'
 import { Route as AuthenticatedAdminOrgsRouteImport } from './routes/_authenticated/admin/orgs'
 import { Route as AuthenticatedAdminMarketplaceAccountsRouteImport } from './routes/_authenticated/admin/marketplace-accounts'
 import { Route as AuthenticatedItemsIdIndexRouteImport } from './routes/_authenticated/items/$id/index'
@@ -96,6 +98,12 @@ const AuthenticatedSettingsMarketplacesRoute =
     path: '/settings/marketplaces',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedSettingsHistoryRoute =
+  AuthenticatedSettingsHistoryRouteImport.update({
+    id: '/settings/history',
+    path: '/settings/history',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedItemsNewRoute = AuthenticatedItemsNewRouteImport.update({
   id: '/items/new',
   path: '/items/new',
@@ -111,6 +119,12 @@ const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   path: '/admin/users',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedAdminSettingsAuditRoute =
+  AuthenticatedAdminSettingsAuditRouteImport.update({
+    id: '/admin/settings-audit',
+    path: '/admin/settings-audit',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAdminOrgsRoute = AuthenticatedAdminOrgsRouteImport.update({
   id: '/admin/orgs',
   path: '/admin/orgs',
@@ -153,9 +167,11 @@ export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/admin/marketplace-accounts': typeof AuthenticatedAdminMarketplaceAccountsRoute
   '/admin/orgs': typeof AuthenticatedAdminOrgsRouteWithChildren
+  '/admin/settings-audit': typeof AuthenticatedAdminSettingsAuditRoute
   '/admin/users': typeof AuthenticatedAdminUsersRouteWithChildren
   '/capture/$id': typeof AuthenticatedCaptureIdRoute
   '/items/new': typeof AuthenticatedItemsNewRoute
+  '/settings/history': typeof AuthenticatedSettingsHistoryRoute
   '/settings/marketplaces': typeof AuthenticatedSettingsMarketplacesRoute
   '/settings/organization': typeof AuthenticatedSettingsOrganizationRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
@@ -175,9 +191,11 @@ export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
   '/admin/marketplace-accounts': typeof AuthenticatedAdminMarketplaceAccountsRoute
   '/admin/orgs': typeof AuthenticatedAdminOrgsRouteWithChildren
+  '/admin/settings-audit': typeof AuthenticatedAdminSettingsAuditRoute
   '/admin/users': typeof AuthenticatedAdminUsersRouteWithChildren
   '/capture/$id': typeof AuthenticatedCaptureIdRoute
   '/items/new': typeof AuthenticatedItemsNewRoute
+  '/settings/history': typeof AuthenticatedSettingsHistoryRoute
   '/settings/marketplaces': typeof AuthenticatedSettingsMarketplacesRoute
   '/settings/organization': typeof AuthenticatedSettingsOrganizationRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
@@ -199,9 +217,11 @@ export interface FileRoutesById {
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/admin/marketplace-accounts': typeof AuthenticatedAdminMarketplaceAccountsRoute
   '/_authenticated/admin/orgs': typeof AuthenticatedAdminOrgsRouteWithChildren
+  '/_authenticated/admin/settings-audit': typeof AuthenticatedAdminSettingsAuditRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRouteWithChildren
   '/_authenticated/capture/$id': typeof AuthenticatedCaptureIdRoute
   '/_authenticated/items/new': typeof AuthenticatedItemsNewRoute
+  '/_authenticated/settings/history': typeof AuthenticatedSettingsHistoryRoute
   '/_authenticated/settings/marketplaces': typeof AuthenticatedSettingsMarketplacesRoute
   '/_authenticated/settings/organization': typeof AuthenticatedSettingsOrganizationRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
@@ -223,9 +243,11 @@ export interface FileRouteTypes {
     | '/'
     | '/admin/marketplace-accounts'
     | '/admin/orgs'
+    | '/admin/settings-audit'
     | '/admin/users'
     | '/capture/$id'
     | '/items/new'
+    | '/settings/history'
     | '/settings/marketplaces'
     | '/settings/organization'
     | '/admin'
@@ -245,9 +267,11 @@ export interface FileRouteTypes {
     | '/'
     | '/admin/marketplace-accounts'
     | '/admin/orgs'
+    | '/admin/settings-audit'
     | '/admin/users'
     | '/capture/$id'
     | '/items/new'
+    | '/settings/history'
     | '/settings/marketplaces'
     | '/settings/organization'
     | '/admin'
@@ -268,9 +292,11 @@ export interface FileRouteTypes {
     | '/_authenticated/'
     | '/_authenticated/admin/marketplace-accounts'
     | '/_authenticated/admin/orgs'
+    | '/_authenticated/admin/settings-audit'
     | '/_authenticated/admin/users'
     | '/_authenticated/capture/$id'
     | '/_authenticated/items/new'
+    | '/_authenticated/settings/history'
     | '/_authenticated/settings/marketplaces'
     | '/_authenticated/settings/organization'
     | '/_authenticated/admin/'
@@ -377,6 +403,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsMarketplacesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/settings/history': {
+      id: '/_authenticated/settings/history'
+      path: '/settings/history'
+      fullPath: '/settings/history'
+      preLoaderRoute: typeof AuthenticatedSettingsHistoryRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/items/new': {
       id: '/_authenticated/items/new'
       path: '/items/new'
@@ -396,6 +429,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/users'
       fullPath: '/admin/users'
       preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/admin/settings-audit': {
+      id: '/_authenticated/admin/settings-audit'
+      path: '/admin/settings-audit'
+      fullPath: '/admin/settings-audit'
+      preLoaderRoute: typeof AuthenticatedAdminSettingsAuditRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/admin/orgs': {
@@ -475,9 +515,11 @@ interface AuthenticatedRouteChildren {
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedAdminMarketplaceAccountsRoute: typeof AuthenticatedAdminMarketplaceAccountsRoute
   AuthenticatedAdminOrgsRoute: typeof AuthenticatedAdminOrgsRouteWithChildren
+  AuthenticatedAdminSettingsAuditRoute: typeof AuthenticatedAdminSettingsAuditRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRouteWithChildren
   AuthenticatedCaptureIdRoute: typeof AuthenticatedCaptureIdRoute
   AuthenticatedItemsNewRoute: typeof AuthenticatedItemsNewRoute
+  AuthenticatedSettingsHistoryRoute: typeof AuthenticatedSettingsHistoryRoute
   AuthenticatedSettingsMarketplacesRoute: typeof AuthenticatedSettingsMarketplacesRoute
   AuthenticatedSettingsOrganizationRoute: typeof AuthenticatedSettingsOrganizationRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
@@ -495,9 +537,11 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAdminMarketplaceAccountsRoute:
     AuthenticatedAdminMarketplaceAccountsRoute,
   AuthenticatedAdminOrgsRoute: AuthenticatedAdminOrgsRouteWithChildren,
+  AuthenticatedAdminSettingsAuditRoute: AuthenticatedAdminSettingsAuditRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRouteWithChildren,
   AuthenticatedCaptureIdRoute: AuthenticatedCaptureIdRoute,
   AuthenticatedItemsNewRoute: AuthenticatedItemsNewRoute,
+  AuthenticatedSettingsHistoryRoute: AuthenticatedSettingsHistoryRoute,
   AuthenticatedSettingsMarketplacesRoute:
     AuthenticatedSettingsMarketplacesRoute,
   AuthenticatedSettingsOrganizationRoute:

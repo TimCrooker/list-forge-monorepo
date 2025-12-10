@@ -23,6 +23,7 @@ import {
 import { Inbox, CheckCircle, Wrench, AlertCircle } from 'lucide-react';
 import { showSuccess, showError } from '@/utils/toast';
 import { EvidencePanel } from '@/components/review/EvidencePanel';
+import { useOrgFeatures } from '@/hooks';
 import type { UpdateItemRequest } from '@listforge/api-types';
 import { useMemo } from 'react';
 
@@ -32,6 +33,7 @@ export const Route = createFileRoute('/_authenticated/needs-work/')({
 
 function NeedsWorkPage() {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const { itemsLabel } = useOrgFeatures();
 
   // Fetch needs work queue
   const {
@@ -73,7 +75,7 @@ function NeedsWorkPage() {
 
     try {
       await markReady(selectedItemId).unwrap();
-      showSuccess('Item marked as ready and moved to inventory');
+      showSuccess(`Item marked as ready and moved to ${itemsLabel.toLowerCase()}`);
 
       // Refetch queue and advance to next item
       await refetchQueue();
@@ -93,7 +95,7 @@ function NeedsWorkPage() {
     } catch (error) {
       showError('Failed to mark item as ready');
     }
-  }, [selectedItemId, markReady, refetchQueue, queueData]);
+  }, [selectedItemId, markReady, refetchQueue, queueData, itemsLabel]);
 
   // Handle field updates
   const handleUpdate = useCallback(
@@ -359,7 +361,7 @@ function NeedsWorkPage() {
                       className="gap-2"
                     >
                       <CheckCircle className="h-5 w-5" />
-                      {isMarkingReady ? 'Marking Ready...' : 'Mark Ready for Inventory'}
+                      {isMarkingReady ? 'Marking Ready...' : `Mark Ready for ${itemsLabel}`}
                     </Button>
                   </div>
                 </div>

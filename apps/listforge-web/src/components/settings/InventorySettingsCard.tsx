@@ -4,7 +4,8 @@ import {
   useUpdateInventorySettingsMutation,
 } from '@listforge/api-rtk';
 import { InventorySettings } from '@listforge/core-types';
-import { Loader2, Package, Save } from 'lucide-react';
+import { Loader2, Package, Save, History } from 'lucide-react';
+import { SettingsVersionHistory } from './SettingsVersionHistory';
 import {
   Card,
   CardContent,
@@ -31,6 +32,7 @@ interface InventorySettingsCardProps {
 export function InventorySettingsCard({ orgId }: InventorySettingsCardProps) {
   const { data, isLoading } = useGetInventorySettingsQuery(orgId);
   const [updateSettings, { isLoading: isUpdating }] = useUpdateInventorySettingsMutation();
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const [formData, setFormData] = useState<InventorySettings>({
     defaultPricingStrategy: 'competitive',
@@ -77,16 +79,25 @@ export function InventorySettingsCard({ orgId }: InventorySettingsCardProps) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Package className="h-5 w-5" />
-          Inventory Settings
-        </CardTitle>
-        <CardDescription>
-          Configure default pricing strategy and inventory management rules.
-        </CardDescription>
-      </CardHeader>
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Package className="h-5 w-5" />
+                Inventory Settings
+              </CardTitle>
+              <CardDescription>
+                Configure default pricing strategy and inventory management rules.
+              </CardDescription>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
+              <History className="h-4 w-4 mr-1" />
+              History
+            </Button>
+          </div>
+        </CardHeader>
       <CardContent className="space-y-6">
         {/* Pricing Strategy */}
         <div className="space-y-2">
@@ -237,6 +248,14 @@ export function InventorySettingsCard({ orgId }: InventorySettingsCardProps) {
           </Button>
         </div>
       </CardContent>
-    </Card>
+      </Card>
+
+      <SettingsVersionHistory
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        orgId={orgId}
+        settingsType="inventory"
+      />
+    </>
   );
 }

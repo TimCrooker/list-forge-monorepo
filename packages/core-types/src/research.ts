@@ -389,6 +389,7 @@ export interface ListingValidation {
 /**
  * Research evidence record - individual evidence items collected during research
  * Slice 3: Added optional validation field for comp validation results
+ * Slice 3 Update: Added matchType for tracking HOW each comp was matched
  * Amazon Integration: Added Amazon-specific fields
  */
 export interface ResearchEvidenceRecord {
@@ -407,6 +408,10 @@ export interface ResearchEvidenceRecord {
   extractedData: Record<string, unknown>;
   fetchedAt: string;
   validation?: CompValidation; // Slice 3: Detailed validation result
+  // Slice 3: Match type tracking - how was this comp found?
+  matchType?: CompMatchType;
+  // Base confidence from match type (before validation adjustments)
+  baseConfidence?: number;
   // Amazon-specific fields (available when source === 'amazon')
   asin?: string;
   keepaData?: {
@@ -524,7 +529,15 @@ export type AgentOperationType =
   | 'listing_assembly'        // Slice 6: Assembling marketplace-ready listing
   | 'item_update'             // Updating item fields
   | 'persist_results'         // Saving research results
-  | 'reasoning';              // AI thinking/decision blocks
+  | 'reasoning'               // AI thinking/decision blocks
+  // Field-Driven Research operations
+  | 'initialize_field_states' // Initializing field states for research
+  | 'extract_from_images'     // Extracting data from images (OCR + vision)
+  | 'quick_lookups'           // Fast data lookups (UPC, Keepa)
+  | 'evaluate_fields'         // Evaluating field completion
+  | 'plan_next_research'      // Planning next research task
+  | 'execute_research'        // Executing a research task
+  | 'validate_readiness';     // Validating listing readiness
 
 /**
  * Event lifecycle types within an operation
@@ -713,4 +726,831 @@ export interface AmazonResearchData {
   keepaData: KeepaProductData | null;
   currentPricing: AmazonPricing | null;
   priceStats: KeepaPriceStats | null;
+}
+
+// ============================================================================
+// FIELD-DRIVEN RESEARCH SYSTEM
+// New types for adaptive, field-level research with confidence tracking
+// ============================================================================
+
+/**
+ * Extended source types for field data
+ * Tracks where field values originated from
+ */
+export type FieldDataSourceType =
+  | 'upc_lookup'      // UPC Database API
+  | 'vision_ai'       // GPT-4o vision analysis
+  | 'web_search'      // OpenAI web search
+  | 'keepa'           // Keepa Amazon data
+  | 'amazon_catalog'  // Amazon SP-API catalog
+  | 'ebay_api'        // eBay Taxonomy/Browse API
+  | 'user_input'      // User manually entered
+  | 'ocr'             // OCR text extraction
+  | 'user_hint';      // User provided hint during capture
+
+/**
+ * Source of field data with its contribution
+ */
+export interface FieldDataSource {
+  type: FieldDataSourceType;
+  confidence: number;     // How confident this source was (0-1)
+  timestamp: string;      // ISO timestamp
+  rawValue?: unknown;     // Original value before normalization
+  query?: string;         // Search query if applicable
+  cost?: number;          // Cost in USD for this lookup
+}
+
+/**
+ * Confidence level for a single field
+ */
+export interface FieldConfidenceScore {
+  value: number;              // 0-1 confidence score
+  sources: FieldDataSource[]; // What contributed to this value
+  lastUpdated: string;        // ISO timestamp
+}
+
+/**
+ * State of a single field during research
+ */
+export interface FieldState {
+  name: string;                       // Canonical field name (e.g., "brand", "material")
+  displayName: string;                // Human-readable name (e.g., "Brand", "Material")
+  value: unknown | null;              // Current best value
+  confidence: FieldConfidenceScore;
+  required: boolean;                  // Required by any target marketplace
+  requiredBy: string[];               // Which marketplaces require this (e.g., ["ebay"])
+  dataType: 'string' | 'number' | 'enum' | 'boolean' | 'array';
+  allowedValues?: string[];           // For enum fields (from marketplace)
+  mappedValue?: unknown;              // Value mapped to marketplace-specific format
+  attempts: number;                   // How many times we've tried to research this
+  status: 'pending' | 'researching' | 'complete' | 'failed' | 'user_required';
+}
+
+/**
+ * Collection of all field states for an item
+ */
+export interface ItemFieldStates {
+  fields: Record<string, FieldState>;
+
+  // Computed metrics
+  requiredFieldsComplete: number;     // Count of required fields with confidence >= threshold
+  requiredFieldsTotal: number;        // Total required fields
+  recommendedFieldsComplete: number;  // Count of recommended fields with confidence >= threshold
+  recommendedFieldsTotal: number;     // Total recommended fields
+  completionScore: number;            // 0-1 overall completion
+  readyToPublish: boolean;            // All required fields meet threshold
+
+  // Research tracking
+  totalCost: number;                  // USD spent on research
+  totalTimeMs: number;                // Time spent researching
+  iterations: number;                 // Research loop iterations
+
+  // Version for migrations
+  version: string;
+}
+
+/**
+ * Available research tools
+ */
+export type ResearchToolType =
+  | 'vision_analysis'         // GPT-4o vision on images
+  | 'ocr_extraction'          // Text extraction from images
+  | 'upc_lookup'              // UPC Database API
+  | 'web_search_general'      // General product web search
+  | 'web_search_targeted'     // Field-specific web search
+  | 'keepa_lookup'            // Keepa Amazon data
+  | 'amazon_catalog'          // Amazon SP-API catalog
+  | 'ebay_comps'              // eBay sold listings search
+  | 'ebay_taxonomy';          // eBay category/aspects API
+
+/**
+ * Research tool metadata for planning
+ */
+export interface ResearchToolMetadata {
+  type: ResearchToolType;
+  displayName: string;
+  canProvideFields: string[];         // Fields this tool can help with ('*' = any)
+  baseCost: number;                   // Base cost in USD
+  baseTimeMs: number;                 // Base time in ms
+  confidenceWeight: number;           // How much to trust this source (0-1)
+  requiresFields?: string[];          // Fields needed to use this tool effectively
+  priority: number;                   // Default priority (higher = try first)
+}
+
+/**
+ * A single research task to execute
+ */
+export interface ResearchTask {
+  id: string;
+  targetFields: string[];             // Which fields we're trying to fill
+  tool: ResearchToolType;             // Which tool to use
+  query?: string;                     // Search query if applicable
+  priority: number;                   // Higher = more important
+  estimatedCost: number;              // Expected cost in USD
+  estimatedTimeMs: number;            // Expected time
+  reasoning: string;                  // Why we chose this task
+}
+
+/**
+ * Research budget and constraints
+ */
+export interface ResearchConstraints {
+  maxCostUsd: number;                 // Max spend per item
+  maxTimeMs: number;                  // Max time per item
+  maxIterations: number;              // Max research loop iterations
+  requiredConfidence: number;         // Min confidence for required fields (0-1)
+  recommendedConfidence: number;      // Min confidence for recommended fields (0-1)
+  mode: 'fast' | 'balanced' | 'thorough';
+}
+
+/**
+ * Result of evaluating field states
+ */
+export interface FieldEvaluationResult {
+  decision: 'complete' | 'continue' | 'stop_with_warnings';
+  reason: string;
+  fieldsNeedingResearch: FieldState[];
+  currentCompletionScore: number;
+  budgetRemaining: number;
+  iterationsRemaining: number;
+}
+
+/**
+ * Result of executing a research task
+ */
+export interface ResearchTaskResult {
+  task: ResearchTask;
+  success: boolean;
+  fieldUpdates: Array<{
+    fieldName: string;
+    value: unknown;
+    source: FieldDataSource;
+  }>;
+  cost: number;
+  timeMs: number;
+  error?: string;
+}
+
+// ============================================================================
+// UNIVERSAL REQUIRED FIELDS & CANONICAL FIELD DEFINITIONS
+// ============================================================================
+
+/**
+ * Fields that are ALWAYS required regardless of marketplace
+ */
+export const UNIVERSAL_REQUIRED_FIELDS: string[] = [
+  'title',
+  'description',
+  'condition',
+  'price',
+  'category',
+  // photos handled separately (not a "field")
+];
+
+/**
+ * Canonical field definition
+ */
+export interface CanonicalFieldDefinition {
+  displayName: string;
+  dataType: 'string' | 'number' | 'enum' | 'boolean' | 'array';
+  description: string;
+  aliases: string[];  // Other names for this field across marketplaces
+}
+
+/**
+ * Canonical field definitions
+ * These are the "master" field names that map to marketplace-specific names
+ */
+export const CANONICAL_FIELDS: Record<string, CanonicalFieldDefinition> = {
+  title: {
+    displayName: 'Title',
+    dataType: 'string',
+    description: 'Product title for listing',
+    aliases: ['name', 'product_name', 'listing_title'],
+  },
+  description: {
+    displayName: 'Description',
+    dataType: 'string',
+    description: 'Product description',
+    aliases: ['product_description', 'item_description'],
+  },
+  condition: {
+    displayName: 'Condition',
+    dataType: 'enum',
+    description: 'Item condition',
+    aliases: ['item_condition', 'product_condition'],
+  },
+  category: {
+    displayName: 'Category',
+    dataType: 'string',
+    description: 'Product category',
+    aliases: ['product_type', 'item_category'],
+  },
+  price: {
+    displayName: 'Price',
+    dataType: 'number',
+    description: 'Listing price',
+    aliases: ['list_price', 'sale_price'],
+  },
+  brand: {
+    displayName: 'Brand',
+    dataType: 'string',
+    description: 'Product brand or manufacturer',
+    aliases: ['manufacturer', 'make', 'brand_name'],
+  },
+  model: {
+    displayName: 'Model',
+    dataType: 'string',
+    description: 'Model name or number',
+    aliases: ['model_number', 'model_name', 'part_number'],
+  },
+  mpn: {
+    displayName: 'MPN',
+    dataType: 'string',
+    description: 'Manufacturer Part Number',
+    aliases: ['manufacturer_part_number', 'part_number'],
+  },
+  upc: {
+    displayName: 'UPC',
+    dataType: 'string',
+    description: 'Universal Product Code (barcode)',
+    aliases: ['ean', 'gtin', 'barcode', 'isbn'],
+  },
+  color: {
+    displayName: 'Color',
+    dataType: 'string',
+    description: 'Primary color of the product',
+    aliases: ['colour', 'color_name', 'finish'],
+  },
+  size: {
+    displayName: 'Size',
+    dataType: 'string',
+    description: 'Size designation',
+    aliases: ['size_type', 'dimensions', 'item_size'],
+  },
+  material: {
+    displayName: 'Material',
+    dataType: 'string',
+    description: 'Primary material composition',
+    aliases: ['fabric_type', 'composition', 'fabric', 'material_type'],
+  },
+  weight: {
+    displayName: 'Weight',
+    dataType: 'string',
+    description: 'Product weight',
+    aliases: ['item_weight', 'shipping_weight', 'package_weight'],
+  },
+  width: {
+    displayName: 'Width',
+    dataType: 'string',
+    description: 'Product width dimension',
+    aliases: ['item_width'],
+  },
+  height: {
+    displayName: 'Height',
+    dataType: 'string',
+    description: 'Product height dimension',
+    aliases: ['item_height'],
+  },
+  depth: {
+    displayName: 'Depth',
+    dataType: 'string',
+    description: 'Product depth dimension',
+    aliases: ['item_depth', 'length', 'item_length'],
+  },
+  style: {
+    displayName: 'Style',
+    dataType: 'string',
+    description: 'Product style or design',
+    aliases: ['design', 'style_name'],
+  },
+  pattern: {
+    displayName: 'Pattern',
+    dataType: 'string',
+    description: 'Pattern or print design',
+    aliases: ['print', 'pattern_type'],
+  },
+  capacity: {
+    displayName: 'Capacity',
+    dataType: 'string',
+    description: 'Storage or volume capacity',
+    aliases: ['storage_capacity', 'volume'],
+  },
+  connectivity: {
+    displayName: 'Connectivity',
+    dataType: 'string',
+    description: 'Connection type (USB, Bluetooth, etc.)',
+    aliases: ['connection_type', 'interface'],
+  },
+  power_source: {
+    displayName: 'Power Source',
+    dataType: 'string',
+    description: 'Power source type',
+    aliases: ['power_type', 'battery_type'],
+  },
+  vintage: {
+    displayName: 'Vintage',
+    dataType: 'boolean',
+    description: 'Whether item is vintage',
+    aliases: ['is_vintage', 'antique'],
+  },
+  year_manufactured: {
+    displayName: 'Year Manufactured',
+    dataType: 'string',
+    description: 'Year the product was made',
+    aliases: ['year', 'manufacture_year', 'production_year'],
+  },
+  country_of_origin: {
+    displayName: 'Country of Origin',
+    dataType: 'string',
+    description: 'Country where product was manufactured',
+    aliases: ['made_in', 'country_of_manufacture'],
+  },
+};
+
+// ============================================================================
+// RESEARCH TOOL REGISTRY
+// ============================================================================
+
+/**
+ * Default research tools metadata
+ * Used by ResearchPlannerService to select appropriate tools
+ */
+export const RESEARCH_TOOLS: ResearchToolMetadata[] = [
+  {
+    type: 'ocr_extraction',
+    displayName: 'OCR Text Extraction',
+    canProvideFields: ['brand', 'model', 'mpn', 'upc', 'size', 'year_manufactured'],
+    baseCost: 0.005,
+    baseTimeMs: 1000,
+    confidenceWeight: 0.75,
+    priority: 100, // Run first - fast and cheap
+  },
+  {
+    type: 'vision_analysis',
+    displayName: 'Vision AI Analysis',
+    canProvideFields: ['brand', 'color', 'material', 'condition', 'size', 'category', 'style', 'pattern', 'vintage'],
+    baseCost: 0.02,
+    baseTimeMs: 3000,
+    confidenceWeight: 0.70,
+    priority: 90,
+  },
+  {
+    type: 'upc_lookup',
+    displayName: 'UPC Database Lookup',
+    canProvideFields: ['brand', 'model', 'title', 'category', 'upc', 'mpn'],
+    baseCost: 0.001,
+    baseTimeMs: 500,
+    confidenceWeight: 0.95,
+    requiresFields: ['upc'],
+    priority: 95, // High priority if UPC available
+  },
+  {
+    type: 'keepa_lookup',
+    displayName: 'Keepa Amazon Data',
+    canProvideFields: ['brand', 'model', 'title', 'category', 'price', 'weight', 'width', 'height', 'depth'],
+    baseCost: 0.01,
+    baseTimeMs: 2000,
+    confidenceWeight: 0.90,
+    requiresFields: ['upc'], // or ASIN
+    priority: 85,
+  },
+  {
+    type: 'web_search_general',
+    displayName: 'General Web Search',
+    canProvideFields: ['*'], // Can help with any field
+    baseCost: 0.05,
+    baseTimeMs: 4000,
+    confidenceWeight: 0.65,
+    requiresFields: ['brand'], // More effective with brand known
+    priority: 50, // Lower priority - use when specific tools don't work
+  },
+  {
+    type: 'web_search_targeted',
+    displayName: 'Targeted Web Search',
+    canProvideFields: ['*'], // Can research any specific field
+    baseCost: 0.05,
+    baseTimeMs: 4000,
+    confidenceWeight: 0.70,
+    requiresFields: ['brand', 'model'], // Best with known product
+    priority: 60,
+  },
+  {
+    type: 'ebay_comps',
+    displayName: 'eBay Sold Listings',
+    canProvideFields: ['price', 'title', 'category'],
+    baseCost: 0.01,
+    baseTimeMs: 2000,
+    confidenceWeight: 0.80,
+    priority: 70,
+  },
+  {
+    type: 'ebay_taxonomy',
+    displayName: 'eBay Category API',
+    canProvideFields: ['category'],
+    baseCost: 0.001,
+    baseTimeMs: 1000,
+    confidenceWeight: 0.95,
+    priority: 80,
+  },
+  {
+    type: 'amazon_catalog',
+    displayName: 'Amazon Catalog Lookup',
+    canProvideFields: ['brand', 'model', 'title', 'category', 'color', 'size', 'material', 'weight'],
+    baseCost: 0.02,
+    baseTimeMs: 2500,
+    confidenceWeight: 0.88,
+    requiresFields: ['upc'],
+    priority: 75,
+  },
+];
+
+/**
+ * Default research constraints by mode
+ */
+export const RESEARCH_MODE_CONSTRAINTS: Record<'fast' | 'balanced' | 'thorough', Omit<ResearchConstraints, 'mode'>> = {
+  fast: {
+    maxCostUsd: 0.05,
+    maxTimeMs: 15000,
+    maxIterations: 2,
+    requiredConfidence: 0.65,
+    recommendedConfidence: 0.40,
+  },
+  balanced: {
+    maxCostUsd: 0.25,
+    maxTimeMs: 60000,
+    maxIterations: 5,
+    requiredConfidence: 0.70,
+    recommendedConfidence: 0.50,
+  },
+  thorough: {
+    maxCostUsd: 0.50,
+    maxTimeMs: 180000,
+    maxIterations: 8,
+    requiredConfidence: 0.85,
+    recommendedConfidence: 0.70,
+  },
+};
+
+// =============================================================================
+// GOAL-DRIVEN RESEARCH SYSTEM (Slice 1)
+// =============================================================================
+
+/**
+ * Types of research goals in the goal-driven architecture.
+ * Goals form a DAG with dependencies - IDENTIFY_PRODUCT must complete
+ * before parallel goals can begin.
+ */
+export type GoalType =
+  | 'IDENTIFY_PRODUCT'       // First phase: figure out what the item is
+  | 'VALIDATE_IDENTIFICATION' // Confirm identification with additional sources
+  | 'GATHER_METADATA'        // Collect UPC, ASIN, color, variant, etc.
+  | 'RESEARCH_MARKET'        // Search comps, analyze pricing
+  | 'ASSEMBLE_LISTING';      // Build final listing data
+
+/**
+ * Status of a research goal
+ */
+export type GoalStatus =
+  | 'pending'      // Not yet started, waiting for dependencies
+  | 'in_progress'  // Currently being worked on
+  | 'completed'    // Successfully finished
+  | 'failed'       // Failed after all attempts
+  | 'skipped';     // Intentionally skipped (e.g., optional goal)
+
+/**
+ * A single research goal with tracking information
+ */
+export interface ResearchGoal {
+  /** Unique identifier for this goal instance */
+  id: string;
+
+  /** The type of goal */
+  type: GoalType;
+
+  /** Current status */
+  status: GoalStatus;
+
+  /** Confidence level achieved (0-1) */
+  confidence: number;
+
+  /** Goal IDs that must complete before this can start */
+  dependencies: string[];
+
+  /** When the goal started */
+  startedAt?: string;
+
+  /** When the goal completed (success or failure) */
+  completedAt?: string;
+
+  /** Number of attempts made */
+  attempts: number;
+
+  /** Maximum attempts before marking as failed */
+  maxAttempts: number;
+
+  /** Error message if failed */
+  errorMessage?: string;
+
+  /** Minimum confidence required to consider complete */
+  requiredConfidence: number;
+
+  /** Results/outputs from this goal */
+  result?: Record<string, unknown>;
+}
+
+/**
+ * Match type for comp validation - determines base confidence weight
+ * Higher weight = more trustworthy match
+ */
+export type CompMatchType =
+  | 'UPC_EXACT'              // UPC/barcode matched exactly (0.95)
+  | 'ASIN_EXACT'             // Amazon ASIN matched exactly (0.90)
+  | 'EBAY_ITEM_ID'           // eBay item ID matched (0.90)
+  | 'BRAND_MODEL_IMAGE'      // Brand+model match validated with image (0.85)
+  | 'BRAND_MODEL_KEYWORD'    // Brand+model keyword match only (0.50) - needs image validation
+  | 'IMAGE_SIMILARITY'       // Image-based match (0.65) - needs metadata validation
+  | 'GENERIC_KEYWORD';       // Generic keyword search (0.30)
+
+/**
+ * Confidence weight multipliers for comp match types
+ */
+export const COMP_MATCH_TYPE_WEIGHTS: Record<CompMatchType, number> = {
+  UPC_EXACT: 0.95,
+  ASIN_EXACT: 0.90,
+  EBAY_ITEM_ID: 0.90,
+  BRAND_MODEL_IMAGE: 0.85,
+  BRAND_MODEL_KEYWORD: 0.50,
+  IMAGE_SIMILARITY: 0.65,
+  GENERIC_KEYWORD: 0.30,
+};
+
+/**
+ * Validation status for a comparable
+ */
+export type CompValidationStatus =
+  | 'pending'           // Not yet validated
+  | 'validated'         // Passed validation checks
+  | 'failed'            // Failed validation - should be discarded or discounted
+  | 'needs_image_check' // Keyword match needs image validation
+  | 'needs_meta_check'; // Image match needs metadata validation
+
+/**
+ * Extended comparable with match type and validation tracking
+ */
+export interface ValidatedComparable {
+  /** Original comparable data */
+  listingId: string;
+  title: string;
+  price: number;
+  currency: string;
+  condition?: string;
+  soldDate?: string;
+  url?: string;
+  imageUrl?: string;
+
+  /** Match type that found this comp */
+  matchType: CompMatchType;
+
+  /** Base relevance score from search (0-1) */
+  relevanceScore: number;
+
+  /** Validation status */
+  validationStatus: CompValidationStatus;
+
+  /** Validation details */
+  validation?: {
+    /** Image similarity score if image validation was performed */
+    imageSimilarityScore?: number;
+    /** Metadata match details */
+    metadataMatches?: {
+      brand?: boolean;
+      model?: boolean;
+      condition?: boolean;
+      category?: boolean;
+    };
+    /** Reason for failure if validation failed */
+    failureReason?: string;
+    /** When validation was performed */
+    validatedAt?: string;
+  };
+
+  /** Final weighted confidence score */
+  confidenceScore: number;
+
+  /** Data source (ebay_sold, amazon, etc.) */
+  dataSource: string;
+}
+
+/**
+ * Tiered pricing confidence based on number and quality of comps
+ * Slice 5: Added 'insufficient' tier for 0-2 comps
+ */
+export type PricingConfidenceTier = 'insufficient' | 'low' | 'recommended' | 'high';
+
+/**
+ * Thresholds for pricing confidence tiers
+ * Based on validated comp count (comps with score >= 0.60)
+ */
+export const PRICING_CONFIDENCE_THRESHOLDS = {
+  /** 0-2 validated comps = insufficient */
+  insufficient: 0,
+  /** 3-4 validated comps = low confidence */
+  low: 3,
+  /** 5-9 validated comps = recommended confidence */
+  recommended: 5,
+  /** 10+ validated comps = high confidence */
+  high: 10,
+};
+
+/**
+ * Human-readable labels for confidence tiers
+ */
+export const PRICING_CONFIDENCE_LABELS: Record<PricingConfidenceTier, { label: string; description: string }> = {
+  insufficient: {
+    label: 'Insufficient Data',
+    description: 'Not enough comparable sales to determine accurate pricing. Consider manual research.',
+  },
+  low: {
+    label: 'Low Confidence',
+    description: 'Limited comparable data. Price estimate may vary significantly.',
+  },
+  recommended: {
+    label: 'Recommended',
+    description: 'Good amount of comparable data. Price estimate is reliable.',
+  },
+  high: {
+    label: 'High Confidence',
+    description: 'Excellent comparable data. Price estimate is highly accurate.',
+  },
+};
+
+/**
+ * Pricing analysis with tiered confidence
+ */
+export interface TieredPricingAnalysis {
+  /** Suggested price */
+  suggestedPrice: number;
+
+  /** Price range */
+  priceRange: {
+    low: number;
+    high: number;
+  };
+
+  /** Currency code */
+  currency: string;
+
+  /** Confidence tier */
+  confidenceTier: PricingConfidenceTier;
+
+  /** Overall confidence score (0-1) */
+  confidence: number;
+
+  /** Number of validated comps used */
+  validatedCompCount: number;
+
+  /** Average weighted confidence of comps */
+  averageCompConfidence: number;
+
+  /** Breakdown by match type */
+  compsByMatchType: Record<CompMatchType, number>;
+
+  /** Strategy used for calculation */
+  strategy: 'competitive' | 'market_value' | 'premium' | 'quick_sale';
+
+  /** Reasoning for the price recommendation */
+  reasoning: string;
+}
+
+/**
+ * Default goal configurations for initializing goals
+ */
+export const DEFAULT_GOAL_CONFIGS: Record<GoalType, Omit<ResearchGoal, 'id' | 'status' | 'confidence' | 'startedAt' | 'completedAt' | 'errorMessage' | 'result'>> = {
+  IDENTIFY_PRODUCT: {
+    type: 'IDENTIFY_PRODUCT',
+    dependencies: [],
+    attempts: 0,
+    maxAttempts: 3,
+    requiredConfidence: 0.85,
+  },
+  VALIDATE_IDENTIFICATION: {
+    type: 'VALIDATE_IDENTIFICATION',
+    dependencies: [], // Will be set to IDENTIFY_PRODUCT goal ID
+    attempts: 0,
+    maxAttempts: 2,
+    requiredConfidence: 0.90,
+  },
+  GATHER_METADATA: {
+    type: 'GATHER_METADATA',
+    dependencies: [], // Will be set to IDENTIFY_PRODUCT goal ID
+    attempts: 0,
+    maxAttempts: 3,
+    requiredConfidence: 0.70,
+  },
+  RESEARCH_MARKET: {
+    type: 'RESEARCH_MARKET',
+    dependencies: [], // Will be set to IDENTIFY_PRODUCT goal ID
+    attempts: 0,
+    maxAttempts: 3,
+    requiredConfidence: 0.75,
+  },
+  ASSEMBLE_LISTING: {
+    type: 'ASSEMBLE_LISTING',
+    dependencies: [], // Will be set to GATHER_METADATA and RESEARCH_MARKET goal IDs
+    attempts: 0,
+    maxAttempts: 2,
+    requiredConfidence: 0.80,
+  },
+};
+
+// =============================================================================
+// PLANNING PHASE (Pre-Act Pattern) - Slice 2
+// =============================================================================
+
+/**
+ * A single tool in the research plan sequence
+ */
+export interface ToolSequenceItem {
+  /** Tool name (e.g., 'upc_lookup', 'web_search', 'keepa') */
+  tool: string;
+  /** Inputs required for the tool */
+  inputs: string;
+  /** What we expect to get from this tool */
+  expectedYield: string;
+  /** Priority (1 = highest) */
+  priority?: number;
+}
+
+/**
+ * A challenge identified during planning and its mitigation strategy
+ */
+export interface ResearchChallenge {
+  /** Description of the risk */
+  risk: string;
+  /** How to handle this risk */
+  mitigation: string;
+}
+
+/**
+ * Visual assessment from analyzing item images
+ */
+export interface VisualAssessment {
+  /** Likely product category */
+  category: string | null;
+  /** Brand indicators spotted in images */
+  brandIndicators: string[];
+  /** Estimated condition from visual inspection */
+  conditionEstimate: string | null;
+  /** Text visible in images (model numbers, labels, tags) */
+  visibleText: string[];
+}
+
+/**
+ * Strategy for identifying the product
+ */
+export interface IdentificationStrategy {
+  /** Primary approach to identify product */
+  primaryApproach: string;
+  /** Fallback approaches if primary fails */
+  fallbackApproaches: string[];
+  /** Expected confidence level for identification (0-1) */
+  expectedConfidence: number;
+}
+
+/**
+ * Success criteria for the research
+ */
+export interface ResearchSuccessCriteria {
+  /** What constitutes successful identification */
+  identification: string;
+  /** Minimum fields required for a good listing */
+  minimumFields: string[];
+}
+
+/**
+ * Complete research plan generated by the planning phase
+ * Uses Pre-Act Pattern: plan before acting improves accuracy 20-40%
+ */
+export interface ResearchPlan {
+  /** Visual assessment of the item from images */
+  visualAssessment: VisualAssessment;
+
+  /** Strategy for identifying the product */
+  identificationStrategy: IdentificationStrategy;
+
+  /** Sequence of tools to use and their expected yields */
+  toolSequence: ToolSequenceItem[];
+
+  /** Anticipated challenges and mitigations */
+  challenges: ResearchChallenge[];
+
+  /** Success criteria for this research */
+  successCriteria: ResearchSuccessCriteria;
+
+  /** When the plan was generated */
+  generatedAt: string;
+
+  /** Reasoning summary (~1000 tokens) */
+  reasoning?: string;
 }

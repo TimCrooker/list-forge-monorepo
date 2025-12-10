@@ -75,7 +75,9 @@ Perfect for resellers, liquidators, thrift store owners, and anyone managing inv
 - **[Mobile App Spec](./docs/MOBILE_APP_SPEC.md)** - Native app specification
 
 ### Deployment
-- **[Production Deployment](./docs/DEPLOYMENT.md)** - Deploy to production (Vercel, AWS, etc.)
+- **[Web/API Deployment](./docs/DEPLOYMENT.md)** - Deploy web and API to AWS
+- **[Mobile App Deployment](./docs/MOBILE_DEPLOYMENT.md)** - Deploy native apps to App Store & Play Store
+- **[Mobile App Testing](./docs/MOBILE_TESTING.md)** - Install and test mobile app on your phone
 - **[Local Storage Setup](./docs/LOCAL_STORAGE_SETUP.md)** - Use MinIO for local development
 
 ---
@@ -110,6 +112,9 @@ Perfect for resellers, liquidators, thrift store owners, and anyone managing inv
 
    # Web configuration
    cp apps/listforge-web/.env.example apps/listforge-web/.env
+
+   # Mobile configuration
+   cp apps/listforge-mobile/.env.example apps/listforge-mobile/.env
    ```
 
 4. **Set required environment variables** in `apps/listforge-api/.env`:
@@ -147,6 +152,7 @@ Perfect for resellers, liquidators, thrift store owners, and anyone managing inv
    This starts:
    - 🔧 API server at `http://localhost:3001`
    - 🌐 Web app at `http://localhost:3000`
+   - 📱 Mobile app (Expo dev server) - scan QR code with Expo Go app
 
 7. **Create your first account**:
    - Navigate to `http://localhost:3000`
@@ -175,6 +181,16 @@ This is a Turborepo monorepo with shared packages and multiple applications.
   - TanStack Router for type-safe routing
   - ShadCN UI components with Tailwind CSS
   - Socket.io client for real-time features
+
+- **`apps/listforge-mobile`** - React Native mobile app (NEW!)
+  - Expo SDK 54 for cross-platform development
+  - NativeWind (Tailwind) for styling
+  - Redux Toolkit + RTK Query for state management
+  - Offline-first with SQLite storage
+  - Camera capture with barcode scanning
+  - Quick Eval for fast product evaluation
+  - Real-time chat and research progress
+  - Push notifications with Expo
 
 ### Shared Packages
 

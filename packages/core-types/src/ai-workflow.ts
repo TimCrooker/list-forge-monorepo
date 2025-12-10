@@ -161,6 +161,15 @@ export interface MarketplaceAccountSettings {
   /** Auto-relist enabled */
   autoRelist?: boolean;
 
+  /** Facebook-specific: Catalog ID for product listings */
+  facebookCatalogId?: string;
+
+  /** Facebook-specific: Page ID (for Marketplace listings) */
+  facebookPageId?: string;
+
+  /** Facebook-specific: Business ID */
+  facebookBusinessId?: string;
+
   /** Additional marketplace-specific settings */
   [key: string]: string | number | boolean | undefined;
 }

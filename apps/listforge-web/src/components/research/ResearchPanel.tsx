@@ -9,7 +9,7 @@ import {
 } from '@listforge/ui';
 import { showSuccess, showError } from '@/utils/toast';
 import { FlaskConical, RefreshCw, Clock, Tag, Store } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PriceBandsCard } from './PriceBandsCard';
 import { DemandSignalsCard } from './DemandSignalsCard';
 import { MissingInfoCard } from './MissingInfoCard';
@@ -19,6 +19,8 @@ import { ResearchPanelSkeleton } from './ResearchPanelSkeleton';
 import { ResearchControlButtons } from './ResearchControlButtons';
 import { ResearchRunStatusBadge } from './ResearchRunStatusBadge';
 import { ComponentErrorBoundary } from '../common/ComponentErrorBoundary';
+import { ResearchActivityLogsToggle } from './ResearchActivityLogsToggle';
+import { ResearchActivityLogsSidebar } from './ResearchActivityLogsSidebar';
 // Slice 4: Marketplace Schema Awareness
 import { CategoryPathCard } from './CategoryPathCard';
 import { FieldRequirementsCard } from './FieldRequirementsCard';
@@ -77,6 +79,9 @@ export function ResearchPanel({
 
   // Use new activity feed system
   const { operationEvents, checklistStatus } = useResearchActivityFeed(activeRunId ?? null);
+
+  // State for activity logs sidebar
+  const [activityLogsOpen, setActivityLogsOpen] = useState(false);
 
   // Fallback polling: Use RTK Query polling if WebSocket progress hasn't updated in 5 seconds
   // This provides graceful degradation if WebSocket fails
@@ -319,6 +324,12 @@ export function ResearchPanel({
           >
             <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
           </Button>
+          {!activityLogsOpen && research?.researchRunId && (
+            <ResearchActivityLogsToggle
+              onClick={() => setActivityLogsOpen(true)}
+              operationCount={runStatus?.stepCount || 0}
+            />
+          )}
           {onTriggerResearch && (
             <LoadingButton
               variant="outline"
@@ -473,6 +484,15 @@ export function ResearchPanel({
       {/* Missing Information */}
       <MissingInfoCard missingInfo={data.missingInfo} />
       </div>
+
+      {/* Activity Logs Sidebar */}
+      {research?.researchRunId && (
+        <ResearchActivityLogsSidebar
+          researchRunId={research.researchRunId}
+          isOpen={activityLogsOpen}
+          onClose={() => setActivityLogsOpen(false)}
+        />
+      )}
     </ComponentErrorBoundary>
   );
 }

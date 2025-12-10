@@ -114,7 +114,8 @@ export default function QuickEvalScreen() {
         <View className="flex-1">
           <CameraView
             onPhotoTaken={handlePhotoTaken}
-            onBarcodeDetected={handleBarcodeDetected}
+            onBarcodeScanned={handleBarcodeDetected}
+            onClose={handleClose}
           />
 
           {detectedBarcode && (

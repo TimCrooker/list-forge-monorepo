@@ -1,5 +1,11 @@
 import { ResearchGraphState } from '../research-graph.state';
-import { ResearchEvidenceRecord, CompValidation, KeepaProductData } from '@listforge/core-types';
+import {
+  ResearchEvidenceRecord,
+  CompValidation,
+  KeepaProductData,
+  COMP_MATCH_TYPE_WEIGHTS,
+  CompMatchType,
+} from '@listforge/core-types';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { ResearchActivityLoggerService } from '../../../../research/services/research-activity-logger.service';
@@ -13,18 +19,44 @@ import { withSpan, ResearchMetrics, startTiming } from '../../../utils/telemetry
 import { PRICING_THRESHOLDS, VALIDATION_SCORING } from '../../../config/research.constants';
 
 /**
+ * Image comparison result (from ImageComparisonService)
+ */
+export interface ImageComparisonResult {
+  similarityScore: number;
+  isSameProduct: boolean;
+  reasoning: string;
+  cached: boolean;
+}
+
+/**
  * Tools interface for comp analysis
  */
 export interface CompAnalysisTools {
   llm: BaseChatModel;
   getKeepaData?: (params: { asins: string[] }) => Promise<Record<string, KeepaProductData>>;
+  /** Slice 4: Image comparison for keyword comp validation */
+  compareImages?: (
+    itemImages: string[],
+    compImages: string[],
+  ) => Promise<ImageComparisonResult>;
 }
 
 /**
- * Score comp relevance using rule-based heuristics
- * PERFORMANCE FIX: Replaced expensive LLM call (1-2s, $0.01) with fast rule-based scoring (0.001s, $0)
- * This is 100x faster and 100x cheaper while providing equivalent accuracy since we do
- * comprehensive validation in validateAllComps anyway.
+ * Score comp relevance using rule-based heuristics with match-type base scoring
+ *
+ * Slice 3 Enhancement: Uses matchType as the base score instead of flat 0.5
+ * This ensures comps found via UPC/ASIN have higher inherent confidence than keyword searches.
+ *
+ * Match Type Base Scores (from COMP_MATCH_TYPE_WEIGHTS):
+ * - UPC_EXACT: 0.95 (nearly certain match)
+ * - ASIN_EXACT: 0.90 (very high confidence)
+ * - EBAY_ITEM_ID: 0.90 (direct reference)
+ * - BRAND_MODEL_IMAGE: 0.85 (visually verified)
+ * - BRAND_MODEL_KEYWORD: 0.50 (keyword-only, needs validation)
+ * - IMAGE_SIMILARITY: 0.65 (visual match, no text verification)
+ * - GENERIC_KEYWORD: 0.30 (lowest confidence, broad search)
+ *
+ * Additional boosts applied for brand/model/condition matches.
  */
 function scoreCompRelevanceHeuristic(
   comps: ResearchEvidenceRecord[],
@@ -36,30 +68,38 @@ function scoreCompRelevanceHeuristic(
   }
 
   return comps.map((comp) => {
-    let score = 0.5; // Base score
+    // Slice 3: Use matchType as base score (default to GENERIC_KEYWORD if not set)
+    const matchType: CompMatchType = comp.matchType || 'GENERIC_KEYWORD';
+    let score = comp.baseConfidence ?? COMP_MATCH_TYPE_WEIGHTS[matchType];
 
     const titleLower = comp.title.toLowerCase();
     const brand = productId?.brand?.toLowerCase();
     const model = productId?.model?.toLowerCase();
 
-    // Boost for brand match (+0.2)
+    // For high-confidence match types (UPC, ASIN), boosts are smaller since base is already high
+    // For low-confidence match types (keyword), boosts matter more
+    const boostMultiplier = matchType === 'UPC_EXACT' || matchType === 'ASIN_EXACT' || matchType === 'EBAY_ITEM_ID'
+      ? 0.5 // Reduced boosts for already-confident matches
+      : 1.0; // Full boosts for lower-confidence matches
+
+    // Boost for brand match (+0.15, reduced from 0.2 to prevent exceeding 1.0)
     if (brand && titleLower.includes(brand)) {
-      score += 0.2;
+      score += 0.15 * boostMultiplier;
     }
 
-    // Boost for model match (+0.1)
+    // Boost for model match (+0.10)
     if (model && titleLower.includes(model)) {
-      score += 0.1;
+      score += 0.10 * boostMultiplier;
     }
 
-    // Boost for condition match (+0.2)
+    // Boost for condition match (+0.15, reduced from 0.2)
     if (item?.condition && comp.condition === item.condition) {
-      score += 0.2;
+      score += 0.15 * boostMultiplier;
     }
 
-    // Boost for exact brand AND model match (+0.1 bonus)
+    // Boost for exact brand AND model match (+0.10 bonus)
     if (brand && model && titleLower.includes(brand) && titleLower.includes(model)) {
-      score += 0.1;
+      score += 0.10 * boostMultiplier;
     }
 
     return {
@@ -218,6 +258,116 @@ export async function analyzeCompsNode(
       }
     }
 
+    // Step 2.5: Image Cross-Validation for Keyword Comps (Slice 4)
+    // Validate keyword-matched comps by comparing images to upgrade/downgrade confidence
+    const itemImages = state.item?.media?.map((m) => m.url).filter((url): url is string => !!url) || [];
+
+    if (itemImages.length > 0 && tools?.compareImages) {
+      // Find keyword comps that need image validation
+      const keywordComps = scoredComps.filter(
+        (c) => c.matchType === 'BRAND_MODEL_KEYWORD' || c.matchType === 'GENERIC_KEYWORD',
+      );
+
+      if (keywordComps.length > 0) {
+        // Emit progress for image validation
+        if (activityLogger && operationId) {
+          await activityLogger.emitProgress({
+            researchRunId: state.researchRunId,
+            itemId: state.itemId,
+            operationId,
+            operationType: 'comp_analysis',
+            message: `Validating ${keywordComps.length} keyword match(es) via image comparison...`,
+            stepId: 'analyze_comps',
+            data: { keywordCompsCount: keywordComps.length },
+          });
+        }
+
+        // Process image comparisons (limit concurrency to avoid rate limits)
+        const imageValidationResults: Map<string, ImageComparisonResult> = new Map();
+        const BATCH_SIZE = 5;
+
+        for (let i = 0; i < keywordComps.length; i += BATCH_SIZE) {
+          const batch = keywordComps.slice(i, i + BATCH_SIZE);
+          const batchResults = await Promise.allSettled(
+            batch.map(async (comp) => {
+              if (!comp.imageUrl) {
+                return { id: comp.id, result: null };
+              }
+              try {
+                const result = await tools.compareImages!(itemImages, [comp.imageUrl]);
+                return { id: comp.id, result };
+              } catch (error) {
+                logNodeWarn('analyze-comps', `Image comparison failed for ${comp.id}`, { error });
+                return { id: comp.id, result: null };
+              }
+            }),
+          );
+
+          for (const outcome of batchResults) {
+            if (outcome.status === 'fulfilled' && outcome.value.result) {
+              imageValidationResults.set(outcome.value.id, outcome.value.result);
+            }
+          }
+        }
+
+        // Apply image validation results to adjust matchType and confidence
+        // Upgrade/downgrade based on image similarity score
+        for (const comp of scoredComps) {
+          const imageResult = imageValidationResults.get(comp.id);
+          if (imageResult) {
+            const { similarityScore, isSameProduct } = imageResult;
+
+            // Store image comparison result in extractedData
+            comp.extractedData = {
+              ...comp.extractedData,
+              imageValidation: {
+                score: similarityScore,
+                isSameProduct,
+                reasoning: imageResult.reasoning,
+              },
+            };
+
+            // Adjust matchType and confidence based on image similarity (per spec)
+            if (isSameProduct && similarityScore >= 0.80) {
+              // High image match: Upgrade to BRAND_MODEL_IMAGE (0.85 confidence)
+              comp.matchType = 'BRAND_MODEL_IMAGE';
+              comp.baseConfidence = COMP_MATCH_TYPE_WEIGHTS['BRAND_MODEL_IMAGE']; // 0.85
+              comp.relevanceScore = 0.85; // Fixed confidence per spec
+            } else if (similarityScore >= 0.50) {
+              // Partial match: baseConfidence * imageScore (per spec)
+              // For BRAND_MODEL_KEYWORD (0.50), this gives range 0.25-0.40
+              const baseConf = comp.baseConfidence ?? COMP_MATCH_TYPE_WEIGHTS[comp.matchType || 'BRAND_MODEL_KEYWORD'];
+              comp.relevanceScore = baseConf * similarityScore;
+            } else {
+              // Low image match: Downgrade to 0.20 (probably wrong product per spec)
+              comp.relevanceScore = 0.20;
+              // Mark as likely wrong product
+              comp.extractedData = {
+                ...comp.extractedData,
+                imageValidationFailed: true,
+              };
+            }
+          }
+        }
+
+        // Log summary of image validation
+        const upgraded = scoredComps.filter((c) => c.matchType === 'BRAND_MODEL_IMAGE' && c.extractedData?.imageValidation).length;
+        const downgraded = scoredComps.filter((c) => c.extractedData?.imageValidationFailed).length;
+
+        if (activityLogger && operationId) {
+          await activityLogger.emitProgress({
+            researchRunId: state.researchRunId,
+            itemId: state.itemId,
+            operationId,
+            operationType: 'comp_analysis',
+            message: `Image validation: ${upgraded} upgraded, ${downgraded} flagged as potential mismatches`,
+            stepId: 'analyze_comps',
+            data: { upgraded, downgraded, validated: imageValidationResults.size },
+          });
+        }
+      }
+    }
+
     // Step 3: Emit progress for validation
     if (activityLogger && operationId) {
       await activityLogger.emitProgress({
@@ -241,21 +391,46 @@ export async function analyzeCompsNode(
     // Step 5: Calculate validation summary
     const validationSummary = getValidationSummary(validatedComps);
 
-    // Step 6: Filter to valid comps (validation score >= threshold)
-    // Combine heuristic relevance score with validation score for final filtering
-    const finalComps = validatedComps.filter((c) => {
-      const validationScore = c.validation?.overallScore ?? 0;
-      // Use the higher of: validation score or (threshold * relevance score)
-      // This ensures good heuristic matches aren't filtered if validation is incomplete
-      const combinedScore = Math.max(validationScore, c.relevanceScore * PRICING_THRESHOLDS.MIN_RELEVANCE_SCORE);
-      return combinedScore >= PRICING_THRESHOLDS.MIN_COMBINED_SCORE && (c.validation?.isValid || c.relevanceScore >= PRICING_THRESHOLDS.MIN_RELEVANCE_SCORE);
-    });
+    // Step 6: Context-dependent comp filtering (per spec)
+    // Threshold for "validated" comps
+    const VALIDATED_THRESHOLD = 0.60;
+    const MARGINAL_THRESHOLD = 0.25;
+    const MARGINAL_DISCOUNT = 0.5; // 50% discount for marginal comps when scarce
 
-    // Update relevance scores to use validation score where available
-    const updatedComps = finalComps.map((c) => ({
+    // First, update relevance scores to use validation score where available
+    const compsWithFinalScores = validatedComps.map((c) => ({
       ...c,
       relevanceScore: c.validation?.overallScore ?? c.relevanceScore,
     }));
+
+    // Count validated comps (score >= 0.60)
+    const validatedCount = compsWithFinalScores.filter((c) => c.relevanceScore >= VALIDATED_THRESHOLD).length;
+
+    let finalComps: ResearchEvidenceRecord[];
+
+    if (validatedCount >= 5) {
+      // We have enough good comps - be strict, discard lower-scored comps
+      finalComps = compsWithFinalScores.filter((c) => c.relevanceScore >= VALIDATED_THRESHOLD);
+    } else {
+      // Comps are scarce - include marginal comps with 0.5x discount
+      const goodComps = compsWithFinalScores.filter((c) => c.relevanceScore >= VALIDATED_THRESHOLD);
+
+      const marginalComps = compsWithFinalScores
+        .filter((c) => c.relevanceScore >= MARGINAL_THRESHOLD && c.relevanceScore < VALIDATED_THRESHOLD)
+        .map((c) => ({
+          ...c,
+          relevanceScore: c.relevanceScore * MARGINAL_DISCOUNT, // Heavy discount
+          extractedData: {
+            ...c.extractedData,
+            marginalCompDiscounted: true, // Flag for UI
+          },
+        }));
+
+      finalComps = [...goodComps, ...marginalComps];
+    }
+
+    // Sort by relevance score descending
+    const updatedComps = finalComps.sort((a, b) => b.relevanceScore - a.relevanceScore);
 
     // Calculate score distribution based on validation
     const scoreDistribution = {

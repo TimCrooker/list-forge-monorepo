@@ -33,6 +33,12 @@ import { PromptTemplateService } from './services/prompt-template.service';
 import { GoalOrchestratorService } from './orchestration/goal-orchestrator.service';
 import { RecoveryService } from './services/recovery.service';
 import { ResearchHealthService } from './services/research-health.service';
+// Field-Driven Research services
+import { FieldStateManagerService } from './services/field-state-manager.service';
+import { ResearchPlannerService } from './services/research-planner.service';
+import { FieldResearchService } from './services/field-research.service';
+// Slice 4: Image Cross-Validation
+import { ImageComparisonService } from './services/image-comparison.service';
 
 @Module({
   imports: [
@@ -92,6 +98,12 @@ import { ResearchHealthService } from './services/research-health.service';
     // Research recovery and health
     RecoveryService,
     ResearchHealthService,
+    // Field-Driven Research services
+    FieldStateManagerService,
+    ResearchPlannerService,
+    FieldResearchService,
+    // Slice 4: Image Cross-Validation
+    ImageComparisonService,
   ],
   exports: [
     OpenAIService,
@@ -111,6 +123,12 @@ import { ResearchHealthService } from './services/research-health.service';
     GoalOrchestratorService,
     RecoveryService,
     ResearchHealthService,
+    // Field-Driven Research services
+    FieldStateManagerService,
+    ResearchPlannerService,
+    FieldResearchService,
+    // Slice 4: Image Cross-Validation
+    ImageComparisonService,
   ],
 })
 export class AiWorkflowsModule {}

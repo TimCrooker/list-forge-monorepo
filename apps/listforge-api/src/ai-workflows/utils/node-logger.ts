@@ -54,3 +54,29 @@ export function logNodeError(nodeName: string, message: string, error?: Error | 
     logger.error(`[${nodeName}] ${message}: ${errorMessage}`);
   }
 }
+
+/**
+ * Node logger interface for convenient logging
+ */
+export interface NodeLogger {
+  debug: (message: string, context?: Record<string, unknown>) => void;
+  info: (message: string, context?: Record<string, unknown>) => void;
+  warn: (message: string, context?: Record<string, unknown>) => void;
+  error: (message: string, error?: Error | unknown, context?: Record<string, unknown>) => void;
+}
+
+/**
+ * Create a logger bound to a specific node name
+ */
+export function createNodeLogger(nodeName: string): NodeLogger {
+  return {
+    debug: (message: string, context?: Record<string, unknown>) =>
+      logNodeDebug(nodeName, message, context),
+    info: (message: string, context?: Record<string, unknown>) =>
+      logNodeInfo(nodeName, message, context),
+    warn: (message: string, context?: Record<string, unknown>) =>
+      logNodeWarn(nodeName, message, context),
+    error: (message: string, error?: Error | unknown, context?: Record<string, unknown>) =>
+      logNodeError(nodeName, message, error, context),
+  };
+}

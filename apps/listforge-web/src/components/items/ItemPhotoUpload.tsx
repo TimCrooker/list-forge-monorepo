@@ -1,6 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle, cn } from '@listforge/ui';
 import { Upload, X, GripVertical } from 'lucide-react';
-import type { DropzoneOptions } from 'react-dropzone';
 
 interface ItemPhotoUploadProps {
   files: File[];

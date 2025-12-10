@@ -130,6 +130,58 @@ export class MarketplaceConnectionController {
     };
   }
 
+  // ============ Facebook OAuth Endpoints ============
+
+  /**
+   * Generate Facebook OAuth authorization URL
+   * Rate limit: 5 requests per minute (prevent state enumeration)
+   */
+  @Get('facebook/auth-url')
+  @Throttle(createThrottleOptions(MARKETPLACE_THROTTLER_OPTIONS.getAuthUrl))
+  getFacebookAuthUrl(@ReqCtx() ctx: RequestContext) {
+    const url = this.accountService.getFacebookAuthUrl(ctx.currentOrgId, ctx.userId);
+    return { authUrl: url };
+  }
+
+  /**
+   * Exchange Facebook OAuth authorization code for tokens
+   * Called by frontend after Facebook redirects back with code
+   * Rate limit: 10 requests per 5 minutes (prevent brute force)
+   */
+  @Post('facebook/exchange-code')
+  @Throttle(createThrottleOptions(MARKETPLACE_THROTTLER_OPTIONS.exchangeCode))
+  async exchangeFacebookCode(
+    @Body() body: { code: string; state: string },
+    @ReqCtx() ctx: RequestContext,
+  ) {
+    if (!body.code) {
+      throw new BadRequestException('Authorization code is required');
+    }
+
+    if (!body.state) {
+      throw new BadRequestException('State parameter is required');
+    }
+
+    const account = await this.accountService.exchangeFacebookCode(
+      body.code,
+      body.state,
+      ctx.currentOrgId,
+      ctx.userId,
+    );
+
+    return {
+      success: true,
+      account: {
+        id: account.id,
+        marketplace: account.marketplace,
+        status: account.status,
+        remoteAccountId: account.remoteAccountId,
+      },
+    };
+  }
+
+  // ============ Account Management Endpoints ============
+
   /**
    * List all marketplace accounts for organization
    * Rate limit: 20 requests per minute (normal API usage)

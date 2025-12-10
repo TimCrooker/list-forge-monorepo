@@ -5,12 +5,14 @@ import { ItemsController } from './items.controller';
 import { ItemsService } from './items.service';
 import { QuickEvalService } from './services/quick-eval.service';
 import { Item } from './entities/item.entity';
+import { Organization } from '../organizations/entities/organization.entity';
 import { StorageModule } from '../storage/storage.module';
 import { EventsModule } from '../events/events.module';
 import { EvidenceModule } from '../evidence/evidence.module';
 import { MarketplacesModule } from '../marketplaces/marketplaces.module';
 import { ChatModule } from '../chat/chat.module';
 import { AiWorkflowsModule } from '../ai-workflows/ai-workflows.module';
+import { OrganizationsModule } from '../organizations/organizations.module';
 import { QUEUE_AI_WORKFLOW } from '@listforge/queue-types';
 
 /**
@@ -21,7 +23,7 @@ import { QUEUE_AI_WORKFLOW } from '@listforge/queue-types';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Item]),
+    TypeOrmModule.forFeature([Item, Organization]),
     BullModule.registerQueue({
       name: QUEUE_AI_WORKFLOW,
     }),
@@ -29,6 +31,7 @@ import { QUEUE_AI_WORKFLOW } from '@listforge/queue-types';
     EventsModule,
     EvidenceModule,
     MarketplacesModule,
+    OrganizationsModule, // For TeamOrgGuard
     forwardRef(() => ChatModule), // Handle circular dependency with ChatModule
     forwardRef(() => AiWorkflowsModule), // Handle circular dependency with AiWorkflowsModule
   ],

@@ -57,6 +57,22 @@ export interface UpdateOrgMemberResponse {
 }
 
 // ============================================================================
+// Organization Type Management (Personal vs Team)
+// ============================================================================
+
+export interface EnableTeamRequest {
+  name: string; // New organization name
+}
+
+export interface EnableTeamResponse {
+  org: OrgDto;
+}
+
+export interface DisableTeamResponse {
+  org: OrgDto;
+}
+
+// ============================================================================
 // Auto-Publish Settings (Slice 7)
 // ============================================================================
 

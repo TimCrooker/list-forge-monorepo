@@ -46,7 +46,7 @@ export class QuickEvalService {
         const upcResult = await this.upcLookupService.lookup(barcode);
         if (upcResult.found) {
           productInfo = {
-            title: upcResult.title,
+            title: upcResult.name || 'Unknown Product',
             brand: upcResult.brand,
             category: upcResult.category,
             confidence: 0.9,
@@ -98,7 +98,7 @@ export class QuickEvalService {
       return {
         success: false,
         processingTimeMs: Date.now() - startTime,
-        warnings: ['Evaluation failed: ' + error.message],
+        warnings: ['Evaluation failed: ' + (error instanceof Error ? error.message : 'Unknown error')],
       };
     }
   }
@@ -111,39 +111,16 @@ export class QuickEvalService {
     title?: string,
     description?: string,
   ): Promise<any> {
-    const prompt = `Identify this product quickly. ${title ? `User hint: ${title}` : ''} ${description ? `Description: ${description}` : ''}
-
-Return JSON with:
-{
-  "title": "Product name",
-  "brand": "Brand name",
-  "category": "Category",
-  "confidence": 0.0-1.0
-}`;
-
     try {
-      const response = await this.openaiService.createChatCompletion({
-        model: 'gpt-4o-mini', // Use faster model for quick eval
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: prompt },
-              { type: 'image_url', image_url: { url: imageUrl } },
-            ],
-          },
-        ],
-        max_tokens: 300,
-        temperature: 0.1,
-      });
+      // Use the existing analyzePhotos method
+      const result = await this.openaiService.analyzePhotos([imageUrl]);
 
-      const content = response.choices[0].message.content;
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-
-      return null;
+      return {
+        title: title || result.description || 'Unknown Product',
+        brand: result.brand,
+        category: result.category,
+        confidence: 0.7, // Medium confidence from quick analysis
+      };
     } catch (error) {
       this.logger.error('Quick identify error:', error);
       return null;
@@ -158,15 +135,19 @@ Return JSON with:
 
     try {
       // Use web search to find recent sold listings (simplified)
-      const results = await this.webSearchService.search(
-        `${searchQuery} sold ebay`,
-        { maxResults: 5 },
-      );
+      const result = await this.webSearchService.search(`${searchQuery} sold ebay`);
 
-      return results.map(r => ({
-        title: r.title,
-        price: this.extractPrice(r.snippet),
-        url: r.url,
+      if (result.error || !result.sources.length) {
+        return [];
+      }
+
+      // Extract price info from the search content
+      const prices = this.extractPricesFromContent(result.content);
+
+      return result.sources.slice(0, 5).map((url, index) => ({
+        title: `${title} - Comp ${index + 1}`,
+        price: prices[index] || 0,
+        url,
         isSold: true,
       }));
     } catch (error) {
@@ -182,13 +163,19 @@ Return JSON with:
     const searchQuery = brand ? `${brand} ${title} price` : `${title} price`;
 
     try {
-      const results = await this.webSearchService.search(searchQuery, {
-        maxResults: 3,
-      });
+      const result = await this.webSearchService.search(searchQuery);
 
-      const prices = results
-        .map(r => this.extractPrice(r.snippet))
-        .filter(p => p > 0);
+      if (result.error) {
+        return {
+          suggestedPrice: 0,
+          priceRangeLow: 0,
+          priceRangeHigh: 0,
+          currency: 'USD',
+          confidence: 0,
+        };
+      }
+
+      const prices = this.extractPricesFromContent(result.content);
 
       if (prices.length === 0) {
         return {
@@ -251,6 +238,21 @@ Return JSON with:
       return parseFloat(priceMatch[1].replace(',', ''));
     }
     return 0;
+  }
+
+  /**
+   * Extract multiple prices from content
+   */
+  private extractPricesFromContent(text: string): number[] {
+    const priceMatches = text.matchAll(/\$(\d+(?:,\d{3})*(?:\.\d{2})?)/g);
+    const prices: number[] = [];
+    for (const match of priceMatches) {
+      const price = parseFloat(match[1].replace(/,/g, ''));
+      if (price > 0) {
+        prices.push(price);
+      }
+    }
+    return prices;
   }
 
   /**

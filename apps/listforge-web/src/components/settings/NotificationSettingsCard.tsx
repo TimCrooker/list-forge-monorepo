@@ -4,7 +4,8 @@ import {
   useUpdateNotificationSettingsMutation,
 } from '@listforge/api-rtk';
 import { NotificationSettings } from '@listforge/core-types';
-import { Loader2, Bell, Save } from 'lucide-react';
+import { Loader2, Bell, Save, History } from 'lucide-react';
+import { SettingsVersionHistory } from './SettingsVersionHistory';
 import {
   Card,
   CardContent,
@@ -26,6 +27,7 @@ interface NotificationSettingsCardProps {
 export function NotificationSettingsCard({ orgId }: NotificationSettingsCardProps) {
   const { data, isLoading } = useGetNotificationSettingsQuery(orgId);
   const [updateSettings, { isLoading: isUpdating }] = useUpdateNotificationSettingsMutation();
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const [formData, setFormData] = useState<NotificationSettings>({
     emailNotifications: {
@@ -80,16 +82,25 @@ export function NotificationSettingsCard({ orgId }: NotificationSettingsCardProp
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Bell className="h-5 w-5" />
-          Notification Settings
-        </CardTitle>
-        <CardDescription>
-          Configure how you receive notifications about your listings.
-        </CardDescription>
-      </CardHeader>
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5" />
+                Notification Settings
+              </CardTitle>
+              <CardDescription>
+                Configure how you receive notifications about your listings.
+              </CardDescription>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
+              <History className="h-4 w-4 mr-1" />
+              History
+            </Button>
+          </div>
+        </CardHeader>
       <CardContent className="space-y-6">
         {/* Email Notifications Section */}
         <div className="space-y-4">
@@ -243,6 +254,14 @@ export function NotificationSettingsCard({ orgId }: NotificationSettingsCardProp
           </Button>
         </div>
       </CardContent>
-    </Card>
+      </Card>
+
+      <SettingsVersionHistory
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        orgId={orgId}
+        settingsType="notification"
+      />
+    </>
   );
 }

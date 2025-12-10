@@ -1,0 +1,163 @@
+name: Mobile App Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/listforge-mobile/**'
+      - 'packages/**'
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - ios
+          - android
+      profile:
+        description: 'Build profile'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - development
+          - preview
+          - production
+
+jobs:
+  build:
+    name: EAS Build
+    runs-on: ubuntu-latest
+    # Only run full builds on manual trigger or when commit message contains [native]
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.message, '[native]')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8.15.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build mobile app
+        working-directory: apps/listforge-mobile
+        run: |
+          PLATFORM="${{ github.event.inputs.platform || 'all' }}"
+          PROFILE="${{ github.event.inputs.profile || 'preview' }}"
+
+          eas build \
+            --platform $PLATFORM \
+            --profile $PROFILE \
+            --non-interactive \
+            --no-wait
+
+      - name: Add build summary
+        run: |
+          echo "## 📱 Mobile Build Started" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Platform:** ${{ github.event.inputs.platform || 'all' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Profile:** ${{ github.event.inputs.profile || 'preview' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🔍 **Check build status:** https://expo.dev" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⏱️ Build typically takes 15-20 minutes per platform" >> $GITHUB_STEP_SUMMARY
+
+  update-ota:
+    name: Publish OTA Update
+    runs-on: ubuntu-latest
+    # Only run OTA updates for JS-only changes (no [native] tag)
+    if: |
+      github.event_name == 'push' &&
+      !contains(github.event.head_commit.message, '[native]') &&
+      !contains(github.event.head_commit.message, '[skip-ota]')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8.15.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Publish OTA update
+        working-directory: apps/listforge-mobile
+        run: |
+          eas update \
+            --branch production \
+            --message "${{ github.event.head_commit.message }}" \
+            --non-interactive
+
+      - name: Add OTA summary
+        run: |
+          echo "## 🔄 OTA Update Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Message:** ${{ github.event.head_commit.message }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Update will be delivered to users on next app launch" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📊 **View update status:** https://expo.dev" >> $GITHUB_STEP_SUMMARY
+
+  summary:
+    name: Workflow Summary
+    runs-on: ubuntu-latest
+    needs: [build, update-ota]
+    if: always()
+    steps:
+      - name: Build summary
+        if: needs.build.result != 'skipped'
+        run: |
+          echo "## 📦 Build Job" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.build.result }}" = "success" ]; then
+            echo "✅ Build started successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Build failed: ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: OTA summary
+        if: needs.update-ota.result != 'skipped'
+        run: |
+          echo "## 🔄 OTA Update Job" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.update-ota.result }}" = "success" ]; then
+            echo "✅ OTA update published successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ OTA update failed: ${{ needs.update-ota.result }}" >> $GITHUB_STEP_SUMMARY
+          fi

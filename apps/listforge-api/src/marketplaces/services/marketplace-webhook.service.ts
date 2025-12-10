@@ -285,6 +285,175 @@ export class MarketplaceWebhookService {
   }
 
   /**
+   * Process Facebook webhook event
+   *
+   * Handles various Facebook catalog notification types:
+   * - product_catalog: Product catalog changes
+   * - product_update: Product added/updated/deleted
+   * - feed_status_change: Catalog feed status updates
+   *
+   * @see https://developers.facebook.com/docs/commerce-platform/webhooks
+   * @param event - Webhook event payload
+   * @param ipAddress - Client IP address
+   */
+  async processFacebookWebhook(
+    event: {
+      object: string;
+      entry?: Array<{
+        id: string;
+        time: number;
+        changes?: Array<{
+          field: string;
+          value: {
+            catalog_id?: string;
+            retailer_id?: string;
+            product_id?: string;
+            verb?: 'add' | 'update' | 'delete';
+            feed_id?: string;
+            feed_status?: 'complete' | 'error' | 'in_progress';
+          };
+        }>;
+      }>;
+    },
+    ipAddress?: string,
+  ): Promise<void> {
+    this.logger.log(`Processing Facebook webhook: ${event.object}`);
+
+    // Only process product_catalog webhooks
+    if (event.object !== 'product_catalog') {
+      this.logger.log(`Ignoring Facebook webhook object type: ${event.object}`);
+      return;
+    }
+
+    if (!event.entry || event.entry.length === 0) {
+      this.logger.warn('Facebook webhook missing entries');
+      return;
+    }
+
+    for (const entry of event.entry) {
+      const catalogId = entry.id;
+
+      // Find associated account by catalog ID
+      const account = await this.accountRepo
+        .createQueryBuilder('account')
+        .where('account.marketplace = :marketplace', { marketplace: 'FACEBOOK' })
+        .andWhere("account.settings->>'facebookCatalogId' = :catalogId", { catalogId })
+        .getOne();
+
+      // Audit log: Webhook received
+      if (account) {
+        await this.auditService.logWebhookReceived({
+          orgId: account.orgId,
+          accountId: account.id,
+          marketplace: 'FACEBOOK',
+          webhookType: event.object,
+          verified: true,
+          ipAddress,
+        }).catch(err => {
+          this.logger.error('Failed to log Facebook webhook audit', err);
+        });
+      }
+
+      // Process changes
+      if (entry.changes) {
+        for (const change of entry.changes) {
+          await this.processFacebookChange(change, account?.orgId);
+        }
+      }
+    }
+  }
+
+  /**
+   * Process a single Facebook webhook change event
+   */
+  private async processFacebookChange(
+    change: {
+      field: string;
+      value: {
+        catalog_id?: string;
+        retailer_id?: string;
+        product_id?: string;
+        verb?: 'add' | 'update' | 'delete';
+        feed_id?: string;
+        feed_status?: 'complete' | 'error' | 'in_progress';
+      };
+    },
+    orgId?: string,
+  ): Promise<void> {
+    const { field, value } = change;
+
+    this.logger.log(`Processing Facebook change: ${field} - ${value.verb || 'unknown'}`);
+
+    switch (field) {
+      case 'product_update':
+      case 'product':
+        await this.handleFacebookProductUpdate(value);
+        break;
+      case 'feed_status_change':
+        this.logger.log(`Facebook feed status: ${value.feed_status} (feed: ${value.feed_id})`);
+        break;
+      default:
+        this.logger.log(`Unhandled Facebook webhook field: ${field}`);
+    }
+  }
+
+  /**
+   * Handle Facebook product update webhook
+   */
+  private async handleFacebookProductUpdate(value: {
+    retailer_id?: string;
+    product_id?: string;
+    verb?: 'add' | 'update' | 'delete';
+  }): Promise<void> {
+    const productId = value.product_id || value.retailer_id;
+
+    if (!productId) {
+      this.logger.warn('Facebook product update missing product ID');
+      return;
+    }
+
+    // Find listing by remote listing ID
+    const listing = await this.listingRepo.findOne({
+      where: { remoteListingId: productId },
+    });
+
+    if (!listing) {
+      // Also try retailer_id since that's our item ID
+      const listingByRetailerId = value.retailer_id
+        ? await this.listingRepo.findOne({
+            where: { remoteListingId: value.retailer_id },
+          })
+        : null;
+
+      if (!listingByRetailerId) {
+        this.logger.log(`No listing found for Facebook product: ${productId}`);
+        return;
+      }
+    }
+
+    const targetListing = listing;
+    if (!targetListing) return;
+
+    switch (value.verb) {
+      case 'delete':
+        targetListing.status = 'ended';
+        targetListing.lastSyncedAt = new Date();
+        await this.listingRepo.save(targetListing);
+        this.logger.log(`Marked Facebook listing ${targetListing.id} as ended (deleted)`);
+        break;
+      case 'add':
+      case 'update':
+        // Just update sync timestamp, actual status sync happens via polling
+        targetListing.lastSyncedAt = new Date();
+        await this.listingRepo.save(targetListing);
+        this.logger.log(`Updated sync time for Facebook listing ${targetListing.id}`);
+        break;
+      default:
+        this.logger.log(`Unknown Facebook product verb: ${value.verb}`);
+    }
+  }
+
+  /**
    * Check if webhook has already been processed
    */
   private isWebhookProcessed(webhookId: string): boolean {

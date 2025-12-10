@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { useListItemsQuery, useOrgRoom, useMeQuery } from '@listforge/api-rtk'
 import { itemsToProducts } from '@/utils/transformers'
 import { useItemFilters } from '@/hooks/useItemFilters'
+import { useOrgFeatures } from '@/hooks'
 import {
 	Button,
 	ProductGrid,
@@ -27,6 +28,7 @@ export const Route = createFileRoute('/_authenticated/items/')({
 
 function ItemsListPage() {
 	const navigate = useNavigate()
+	const { itemsLabel } = useOrgFeatures()
 
 	// Use custom hook for filter management
 	const {
@@ -35,6 +37,7 @@ function ItemsListPage() {
 		sourceFilter,
 		setSourceFilter,
 		searchQuery,
+		setSearchQuery,
 		searchInput,
 		setSearchInput,
 		sortOption,
@@ -82,7 +85,7 @@ function ItemsListPage() {
 		return (
 			<div className="space-y-6">
 				<div className="flex justify-between items-center">
-					<h1 className="text-3xl font-bold">Inventory</h1>
+					<h1 className="text-3xl font-bold">{itemsLabel}</h1>
 				</div>
 				<div className="flex items-center justify-center py-12">
 					<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -95,7 +98,7 @@ function ItemsListPage() {
 		return (
 			<div className="space-y-6">
 				<div className="flex justify-between items-center">
-					<h1 className="text-3xl font-bold">Inventory</h1>
+					<h1 className="text-3xl font-bold">{itemsLabel}</h1>
 				</div>
 				<div className="text-center py-12">
 					<p className="text-destructive">Error loading items</p>
@@ -106,7 +109,7 @@ function ItemsListPage() {
 
 	return (
 		<AppContent
-			title="Inventory"
+			title={itemsLabel}
 			description={`${data?.total || 0} ${data?.total === 1 ? 'item' : 'items'} ${lifecycleTab !== 'all' && `(${lifecycleTab})`}`}
 			actions={
 				<Link to="/items/new">

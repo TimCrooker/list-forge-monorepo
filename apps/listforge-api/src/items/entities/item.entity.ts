@@ -196,6 +196,31 @@ export class Item {
   aiConfidenceScore: number | null;
 
   // ============================================================================
+  // Field-Driven Research State
+  // ============================================================================
+
+  /**
+   * Overall field completion score (0-1)
+   * Computed from field states during research
+   */
+  @Column({ type: 'decimal', precision: 3, scale: 2, nullable: true })
+  fieldCompletionScore: number | null;
+
+  /**
+   * Whether all required fields meet confidence threshold
+   * Set by research validation node
+   */
+  @Column({ type: 'boolean', default: false })
+  readyToPublish: boolean;
+
+  /**
+   * Canonical field values (brand, model, color, etc.)
+   * Stored in canonical format, mapped to marketplace-specific during publish
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  canonicalFields: Record<string, unknown> | null;
+
+  // ============================================================================
   // Review Tracking
   // ============================================================================
 

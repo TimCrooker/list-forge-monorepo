@@ -3,7 +3,7 @@ import { MarketplaceListingStatus } from '@listforge/core-types';
 /**
  * Supported marketplace types
  */
-export type MarketplaceType = 'EBAY' | 'AMAZON';
+export type MarketplaceType = 'EBAY' | 'AMAZON' | 'FACEBOOK';
 
 /**
  * OAuth credentials for marketplace authentication
@@ -45,7 +45,22 @@ export interface MarketplaceCredentials {
   /** Amazon-specific: Marketplace ID (e.g., ATVPDKIKX0DER for US) */
   amazonMarketplaceId?: string;
 
-  /** Remote account/user ID from marketplace (eBay username, Amazon seller ID) */
+  /** Facebook-specific: App ID */
+  facebookAppId?: string;
+
+  /** Facebook-specific: App Secret */
+  facebookAppSecret?: string;
+
+  /** Facebook-specific: Catalog ID for product listings */
+  facebookCatalogId?: string;
+
+  /** Facebook-specific: Page ID (for Marketplace listings) */
+  facebookPageId?: string;
+
+  /** Facebook-specific: Business ID */
+  facebookBusinessId?: string;
+
+  /** Remote account/user ID from marketplace (eBay username, Amazon seller ID, Facebook Page ID) */
   remoteAccountId?: string;
 }
 
@@ -102,6 +117,9 @@ export interface CompResult {
 
   /** Listing URL */
   url: string;
+
+  /** Primary image URL (Slice 3: for image-based validation) */
+  imageUrl?: string;
 
   /** Sold date (for sold listings) */
   soldDate?: Date;

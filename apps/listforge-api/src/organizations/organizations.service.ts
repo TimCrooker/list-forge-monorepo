@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -14,6 +15,9 @@ import {
   UpdateOrgMemberRequest,
   UpdateOrgMemberResponse,
   OrgMemberDto,
+  EnableTeamRequest,
+  EnableTeamResponse,
+  DisableTeamResponse,
 } from '@listforge/api-types';
 import { Organization } from './entities/organization.entity';
 import { UserOrganization } from './entities/user-organization.entity';
@@ -46,6 +50,7 @@ export class OrganizationsService {
   ): Promise<CreateOrgResponse> {
     const org = this.orgRepo.create({
       name: data.name,
+      type: 'team', // Explicitly created orgs are team orgs
       status: 'active',
     });
     const savedOrg = await this.orgRepo.save(org);
@@ -62,6 +67,7 @@ export class OrganizationsService {
       org: {
         id: savedOrg.id,
         name: savedOrg.name,
+        type: savedOrg.type,
         status: savedOrg.status,
         createdAt: savedOrg.createdAt.toISOString(),
         role: 'owner',
@@ -115,6 +121,7 @@ export class OrganizationsService {
       org: {
         id: org.id,
         name: org.name,
+        type: org.type,
         status: org.status,
         createdAt: org.createdAt.toISOString(),
         role: userMembership?.role,
@@ -214,6 +221,119 @@ export class OrganizationsService {
         },
       },
     };
+  }
+
+  // ============================================================================
+  // Organization Type Management (Personal vs Team)
+  // ============================================================================
+
+  async enableTeam(
+    orgId: string,
+    ctx: RequestContext,
+    data: EnableTeamRequest,
+  ): Promise<EnableTeamResponse> {
+    // Verify user is owner
+    const membership = await this.userOrgRepo.findOne({
+      where: { userId: ctx.userId, orgId },
+    });
+    if (!membership || membership.role !== 'owner') {
+      throw new ForbiddenException('Only owner can enable team mode');
+    }
+
+    const org = await this.orgRepo.findOne({ where: { id: orgId } });
+    if (!org) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    if (org.type === 'team') {
+      throw new BadRequestException('Organization is already in team mode');
+    }
+
+    // Update to team type
+    org.type = 'team';
+    org.name = data.name;
+    const savedOrg = await this.orgRepo.save(org);
+
+    return {
+      org: {
+        id: savedOrg.id,
+        name: savedOrg.name,
+        type: savedOrg.type,
+        status: savedOrg.status,
+        createdAt: savedOrg.createdAt.toISOString(),
+        role: 'owner',
+      },
+    };
+  }
+
+  async disableTeam(
+    orgId: string,
+    ctx: RequestContext,
+  ): Promise<DisableTeamResponse> {
+    // Verify user is owner
+    const membership = await this.userOrgRepo.findOne({
+      where: { userId: ctx.userId, orgId },
+    });
+    if (!membership || membership.role !== 'owner') {
+      throw new ForbiddenException('Only owner can disable team mode');
+    }
+
+    const org = await this.orgRepo.findOne({ where: { id: orgId } });
+    if (!org) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    if (org.type === 'personal') {
+      throw new BadRequestException('Organization is already in personal mode');
+    }
+
+    // Check only 1 member remains
+    const memberCount = await this.getMemberCount(orgId);
+    if (memberCount > 1) {
+      throw new BadRequestException(
+        'Remove all other members before disabling team mode',
+      );
+    }
+
+    // Get user for generating workspace name
+    const user = await this.userRepo.findOne({ where: { id: ctx.userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Update to personal type
+    org.type = 'personal';
+    org.name = `${user.name}'s Workspace`;
+    const savedOrg = await this.orgRepo.save(org);
+
+    return {
+      org: {
+        id: savedOrg.id,
+        name: savedOrg.name,
+        type: savedOrg.type,
+        status: savedOrg.status,
+        createdAt: savedOrg.createdAt.toISOString(),
+        role: 'owner',
+      },
+    };
+  }
+
+  // ============================================================================
+  // Helper Methods
+  // ============================================================================
+
+  async getMemberCount(orgId: string): Promise<number> {
+    return this.userOrgRepo.count({ where: { orgId } });
+  }
+
+  async isPersonalOrg(orgId: string): Promise<boolean> {
+    const org = await this.orgRepo.findOne({ where: { id: orgId } });
+    return org?.type === 'personal';
+  }
+
+  async canAddMembers(orgId: string): Promise<boolean> {
+    const org = await this.orgRepo.findOne({ where: { id: orgId } });
+    return org?.type === 'team';
   }
 }
 

@@ -97,67 +97,74 @@ The mobile app imports types and utilities from:
 
 ## Development Status
 
-### ✅ Phase 1: Foundation (Complete)
-- Expo project setup with TypeScript
-- NativeWind styling configuration
-- Redux store with auth and sync slices
-- React Navigation with bottom tabs
-- API service with RTK Query
-- Login screen with secure storage
-- Network connectivity monitoring
+### ✅ All Phases Complete!
 
-### 🚧 Phase 2: Offline Capture (In Progress)
-- SQLite database for pending captures
-- Camera integration with photo management
-- Offline sync service with background tasks
+**Phase 1-5: Foundation & Core Features**
+- ✓ Expo project setup with TypeScript
+- ✓ NativeWind styling configuration
+- ✓ Redux Toolkit + RTK Query
+- ✓ React Navigation (tabs + stack)
+- ✓ Authentication with secure storage
+- ✓ SQLite offline storage
+- ✓ Background sync with exponential backoff
+- ✓ Camera capture with photo management
+- ✓ Barcode auto-scanning (UPC, EAN, Code 128, QR)
+- ✓ Tinder-style swipe review interface
+- ✓ Real-time chat with WebSocket streaming
 
-### ⏳ Upcoming Phases
-- Phase 3: Barcode Auto-Scan
-- Phase 4: Review Flow
-- Phase 5: Chat Interface
-- Phase 6: Quick Evaluation
-- Phase 7: Push Notifications
-- Phase 8: Deep Linking
-- Phase 9: Polish & Sentry
-- Phase 10: App Store Preparation
+**Phase 6: Quick Evaluation**
+- ✓ Quick eval service (5-15s response time)
+- ✓ Camera → preview → evaluate → results flow
+- ✓ Product identification, pricing, demand analysis
+- ✓ "Pass" or "Keep & Full Research" actions
 
-## Building for Production
+**Phase 4: Real-Time Research Updates**
+- ✓ useResearchProgress hook
+- ✓ ResearchProgressIndicator component
+- ✓ WebSocket subscription to research events
+- ✓ Live node progress, activity log, error handling
 
-### EAS Build
+**Phase 7: Push Notifications**
+- ✓ Expo push notification service
+- ✓ Device token registration (mobile + backend)
+- ✓ Foreground/background notification handling
+- ✓ Android notification channels
+- ✓ Backend PushNotificationService with Expo SDK
+- ✓ Research completion notifications
 
-```bash
-# Install EAS CLI
-npm install -g eas-cli
+**Phase 8: Deep Linking**
+- ✓ iOS associatedDomains configured
+- ✓ Android intentFilters with autoVerify
+- ✓ URL scheme: listforge://
+- ✓ Ready for 1:1 web URL mapping
 
-# Configure EAS project
-eas build:configure
+**Phase 9: Error Tracking & Polish**
+- ✓ Sentry SDK integrated
+- ✓ ErrorBoundary component
+- ✓ Automatic crash reporting
+- ✓ User context tracking
+- ✓ Performance monitoring
+- ✓ Sensitive data filtering
 
-# Build for iOS
-eas build --platform ios
+## Testing on Physical Devices
 
-# Build for Android
-eas build --platform android
-```
+Want to test the app on your phone right away? See the **[Mobile Testing Guide](../../docs/MOBILE_TESTING.md)** for:
+- Installing on iPhone via TestFlight
+- Installing APK on Android
+- Testing with local API
+- Development builds vs Preview builds
 
-### Sentry Configuration
+## Deployment
 
-Add your Sentry configuration to `app.json`:
+For complete deployment instructions, including:
+- EAS Build setup
+- App Store and Play Store submission
+- Over-the-air (OTA) updates
+- GitHub Actions CI/CD
+- Beta testing with TestFlight
+- Production release strategy
 
-```json
-{
-  "expo": {
-    "plugins": [
-      [
-        "@sentry/react-native/expo",
-        {
-          "organization": "your-org",
-          "project": "listforge-mobile"
-        }
-      ]
-    ]
-  }
-}
-```
+**See the full deployment guide:** [Mobile App Deployment](../../docs/MOBILE_DEPLOYMENT.md)
 
 ## License
 

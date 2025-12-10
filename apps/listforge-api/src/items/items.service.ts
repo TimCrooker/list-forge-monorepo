@@ -510,6 +510,8 @@ export class ItemsService {
   // ============================================================================
 
   private mapToDto(item: Item): ItemDto {
+    const primaryImage = item.media.find(m => m.isPrimary) || item.media[0];
+
     return {
       id: item.id,
       organizationId: item.organizationId,
@@ -535,6 +537,8 @@ export class ItemsService {
 
       attributes: item.attributes,
       media: item.media,
+      photos: item.media, // Alias for backwards compatibility
+      primaryImageUrl: primaryImage?.url || null,
 
       quantity: item.quantity,
       defaultPrice: item.defaultPrice ? Number(item.defaultPrice) : null,

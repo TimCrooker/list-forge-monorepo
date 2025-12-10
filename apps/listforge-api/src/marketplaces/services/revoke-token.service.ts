@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 
 export interface TokenRevocationResult {
   success: boolean;
-  marketplace: 'EBAY' | 'AMAZON';
+  marketplace: 'EBAY' | 'AMAZON' | 'FACEBOOK';
   error?: string;
 }
 
@@ -165,6 +165,62 @@ export class RevokeTokenService {
   }
 
   /**
+   * Revoke Facebook OAuth access token
+   *
+   * Calls Facebook's Graph API to revoke (delete) the user's permissions,
+   * effectively invalidating the access token.
+   *
+   * @see https://developers.facebook.com/docs/facebook-login/permissions/revoking
+   * @param accessToken - The access token to revoke (decrypted)
+   * @returns Promise with revocation result
+   */
+  async revokeFacebookToken(accessToken: string): Promise<TokenRevocationResult> {
+    try {
+      // Facebook revokes tokens by deleting permissions
+      // DELETE /{user-id}/permissions or DELETE /me/permissions
+      const response = await fetch(
+        `https://graph.facebook.com/v18.0/me/permissions?access_token=${encodeURIComponent(accessToken)}`,
+        {
+          method: 'DELETE',
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json() as { success?: boolean };
+        if (data.success) {
+          this.logger.log('Successfully revoked Facebook token');
+          return { success: true, marketplace: 'FACEBOOK' };
+        }
+      }
+
+      // Non-200 response or success: false
+      const errorData = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+      const errorMessage = errorData?.error?.message || `HTTP ${response.status}`;
+
+      this.logger.warn(`Facebook token revocation failed: ${errorMessage}`, {
+        status: response.status,
+        error: errorData,
+      });
+
+      return {
+        success: false,
+        marketplace: 'FACEBOOK',
+        error: errorMessage,
+      };
+    } catch (error) {
+      this.logger.error('Failed to revoke Facebook token', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      return {
+        success: false,
+        marketplace: 'FACEBOOK',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
    * Revoke token for any marketplace
    *
    * Routes to the appropriate marketplace-specific revocation method.
@@ -174,13 +230,15 @@ export class RevokeTokenService {
    * @returns Promise with revocation result
    */
   async revokeToken(
-    marketplace: 'EBAY' | 'AMAZON',
+    marketplace: 'EBAY' | 'AMAZON' | 'FACEBOOK',
     accessToken: string,
   ): Promise<TokenRevocationResult> {
     if (marketplace === 'EBAY') {
       return this.revokeEbayToken(accessToken);
     } else if (marketplace === 'AMAZON') {
       return this.revokeAmazonToken(accessToken);
+    } else if (marketplace === 'FACEBOOK') {
+      return this.revokeFacebookToken(accessToken);
     }
 
     this.logger.warn(`Token revocation not supported for marketplace: ${marketplace}`);

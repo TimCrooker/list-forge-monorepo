@@ -8,6 +8,7 @@ import { Package, Settings, Users, LayoutDashboard, Camera, ClipboardCheck, Wren
 import { ChatProvider, useChat } from '../contexts/ChatContext';
 import { ChatSidebar } from '../components/chat/ChatSidebar';
 import { useSidebar } from '@listforge/ui';
+import { useOrgFeatures } from '../hooks';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -23,6 +24,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
   const { setMode } = useTheme();
   const { toggleChat } = useChat();
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
+  const { isTeam, itemsLabel, dashboardTitle } = useOrgFeatures();
 
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -60,60 +62,64 @@ function AppLayoutContent({ children }: AppLayoutProps) {
     }
   }, [sidebarCollapsed, isMobile]);
 
+  // Build navigation items conditionally based on org type
+  const mainNavItems = [
+    {
+      id: 'dashboard',
+      label: dashboardTitle,
+      icon: LayoutDashboard,
+      href: '/',
+      active: location.pathname === '/',
+      onClick: () => navigate({ to: '/' }),
+    },
+    {
+      id: 'capture',
+      label: 'Capture',
+      icon: Camera,
+      href: '/capture',
+      active: location.pathname.startsWith('/capture'),
+      onClick: () => navigate({ to: '/capture' }),
+    },
+    // Review queue is team-only feature for dual approval workflow
+    ...(isTeam ? [{
+      id: 'review',
+      label: 'Review',
+      icon: ClipboardCheck,
+      href: '/review',
+      active: location.pathname.startsWith('/review'),
+      onClick: () => navigate({ to: '/review' }),
+    }] : []),
+    {
+      id: 'needs-work',
+      label: 'Needs Work',
+      icon: Wrench,
+      href: '/needs-work',
+      active: location.pathname.startsWith('/needs-work'),
+      onClick: () => navigate({ to: '/needs-work' }),
+    },
+    {
+      id: 'inventory',
+      label: itemsLabel, // "My Items" for personal, "Inventory" for team
+      icon: Package,
+      href: '/items',
+      active: location.pathname.startsWith('/items'),
+      onClick: () => navigate({ to: '/items' }),
+    },
+    {
+      id: 'settings',
+      label: 'Settings',
+      icon: Settings,
+      href: '/settings',
+      active: location.pathname.startsWith('/settings'),
+      onClick: () => navigate({ to: '/settings' }),
+    },
+  ];
+
   const navGroups: NavGroup[] = [
     {
       id: 'main',
       label: 'Navigation',
-      items: [
-        {
-          id: 'dashboard',
-          label: 'Dashboard',
-          icon: LayoutDashboard,
-          href: '/',
-          active: location.pathname === '/',
-          onClick: () => navigate({ to: '/' }),
-        },
-        {
-          id: 'capture',
-          label: 'Capture',
-          icon: Camera,
-          href: '/capture',
-          active: location.pathname.startsWith('/capture'),
-          onClick: () => navigate({ to: '/capture' }),
-        },
-        {
-          id: 'review',
-          label: 'Review',
-          icon: ClipboardCheck,
-          href: '/review',
-          active: location.pathname.startsWith('/review'),
-          onClick: () => navigate({ to: '/review' }),
-        },
-        {
-          id: 'needs-work',
-          label: 'Needs Work',
-          icon: Wrench,
-          href: '/needs-work',
-          active: location.pathname.startsWith('/needs-work'),
-          onClick: () => navigate({ to: '/needs-work' }),
-        },
-        {
-          id: 'inventory',
-          label: 'Inventory',
-          icon: Package,
-          href: '/items',
-          active: location.pathname.startsWith('/items'),
-          onClick: () => navigate({ to: '/items' }),
-        },
-        {
-          id: 'settings',
-          label: 'Settings',
-          icon: Settings,
-          href: '/settings',
-          active: location.pathname.startsWith('/settings'),
-          onClick: () => navigate({ to: '/settings' }),
-        },
-      ],
+      items: mainNavItems,
     },
   ];
 
@@ -258,6 +264,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
 function SidebarFooterContent({ orgName }: { orgName: string }) {
   const { state } = useSidebar();
   const isCollapsed = state === 'collapsed';
+  const { isPersonal } = useOrgFeatures();
 
   if (isCollapsed) {
     return (
@@ -277,7 +284,9 @@ function SidebarFooterContent({ orgName }: { orgName: string }) {
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{orgName}</p>
-          <p className="text-xs text-muted-foreground truncate">Current Organization</p>
+          <p className="text-xs text-muted-foreground truncate">
+            {isPersonal ? 'Personal Workspace' : 'Organization'}
+          </p>
         </div>
       </div>
     </div>

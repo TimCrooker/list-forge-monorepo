@@ -14,6 +14,11 @@ import Navigation from './src/navigation';
 import { db } from './src/services/database';
 import { syncService } from './src/services/syncService';
 import { useNotifications } from './src/hooks/useNotifications';
+import { initializeSentry, setSentryUser } from './src/config/sentry';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
+
+// Initialize Sentry as early as possible
+initializeSentry();
 
 function AppContent() {
   const [isReady, setIsReady] = useState(false);
@@ -38,6 +43,8 @@ function AppContent() {
 
         if (token && userId) {
           dispatch(setCredentials({ token, userId }));
+          // Set Sentry user context
+          setSentryUser(userId);
         }
 
         // Get initial pending count
@@ -95,10 +102,12 @@ function AppContent() {
 
 export default function App() {
   return (
-    <Provider store={store}>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <AppContent />
-      </GestureHandlerRootView>
-    </Provider>
+    <ErrorBoundary>
+      <Provider store={store}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <AppContent />
+        </GestureHandlerRootView>
+      </Provider>
+    </ErrorBoundary>
   );
 }

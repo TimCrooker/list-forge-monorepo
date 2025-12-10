@@ -3,16 +3,16 @@
  */
 
 import type { Product } from '@listforge/ui';
-import type { Item } from '@listforge/core-types';
+import type { ItemDto, ItemSummaryDto } from '@listforge/api-types';
 
 /**
  * Transform a single Item to Product format for ProductGrid
  */
-export function itemToProduct(item: Item): Product {
+export function itemToProduct(item: ItemDto | ItemSummaryDto): Product {
   return {
     id: item.id,
     name: item.title || 'Untitled Item',
-    description: item.description || undefined,
+    description: 'description' in item ? item.description || undefined : undefined,
     price: item.defaultPrice || 0,
     images: item.primaryImageUrl ? [item.primaryImageUrl] : [],
     category: undefined, // Could be enhanced to use categoryPath if needed
@@ -26,35 +26,39 @@ export function itemToProduct(item: Item): Product {
 /**
  * Transform multiple Items to Product format
  */
-export function itemsToProducts(items: Item[]): Product[] {
+export function itemsToProducts(items: (ItemDto | ItemSummaryDto)[]): Product[] {
   return items.map(itemToProduct);
 }
 
 /**
  * Extract primary image URL from item
  */
-export function getItemPrimaryImage(item: Item): string | undefined {
-  return item.primaryImageUrl || item.photos?.[0]?.url;
+export function getItemPrimaryImage(item: ItemDto | ItemSummaryDto): string | undefined {
+  if (item.primaryImageUrl) return item.primaryImageUrl;
+  if ('photos' in item && item.photos?.[0]?.url) return item.photos[0].url;
+  return undefined;
 }
 
 /**
  * Get item display title (with fallback)
  */
-export function getItemTitle(item: Item): string {
-  return item.title || item.subtitle || 'Untitled Item';
+export function getItemTitle(item: ItemDto | ItemSummaryDto): string {
+  if (item.title) return item.title;
+  if ('subtitle' in item && item.subtitle) return item.subtitle;
+  return 'Untitled Item';
 }
 
 /**
  * Check if item is in stock
  */
-export function isItemInStock(item: Item): boolean {
+export function isItemInStock(item: ItemDto | ItemSummaryDto): boolean {
   return item.lifecycleStatus === 'ready' || item.lifecycleStatus === 'listed';
 }
 
 /**
- * Check if item is sellable (has required data for listing)
+ * Check if item is sellable (has required data for listing) - only works with full ItemDto
  */
-export function isItemSellable(item: Item): boolean {
+export function isItemSellable(item: ItemDto): boolean {
   return Boolean(
     item.title &&
     item.description &&
@@ -68,7 +72,7 @@ export function isItemSellable(item: Item): boolean {
 /**
  * Get item status display text
  */
-export function getItemStatusText(item: Item): string {
+export function getItemStatusText(item: ItemDto | ItemSummaryDto): string {
   switch (item.lifecycleStatus) {
     case 'draft':
       return 'Draft';
@@ -86,9 +90,9 @@ export function getItemStatusText(item: Item): string {
 }
 
 /**
- * Calculate item profit margin (if cost basis is available)
+ * Calculate item profit margin (if cost basis is available) - only works with full ItemDto
  */
-export function calculateItemProfit(item: Item): number | null {
+export function calculateItemProfit(item: ItemDto): number | null {
   if (!item.defaultPrice || !item.costBasis) {
     return null;
   }
@@ -96,9 +100,9 @@ export function calculateItemProfit(item: Item): number | null {
 }
 
 /**
- * Calculate item profit margin percentage
+ * Calculate item profit margin percentage - only works with full ItemDto
  */
-export function calculateItemProfitMargin(item: Item): number | null {
+export function calculateItemProfitMargin(item: ItemDto): number | null {
   if (!item.defaultPrice || !item.costBasis || item.defaultPrice === 0) {
     return null;
   }

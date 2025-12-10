@@ -15,6 +15,13 @@ import {
   Scan,
   FolderTree,
   ClipboardList, // Slice 6
+  Settings,
+  Layers,
+  Zap,
+  CheckSquare,
+  Map,
+  Play,
+  CheckCircle,
 } from 'lucide-react'
 import type { AgentOperationType, GroupedOperation } from '@listforge/core-types'
 import LoadContextRenderer from './load-context-renderer'
@@ -32,6 +39,15 @@ import ItemUpdateRenderer from './item-update-renderer'
 import PersistResultsRenderer from './persist-results-renderer'
 import ReasoningRenderer from './reasoning-renderer'
 import DefaultRenderer from './default-renderer'
+// Field-Driven Research renderers
+import InitializeFieldStatesRenderer from './initialize-field-states-renderer'
+import ExtractFromImagesRenderer from './extract-from-images-renderer'
+import QuickLookupsRenderer from './quick-lookups-renderer'
+import EvaluateFieldsRenderer from './evaluate-fields-renderer'
+import PlanNextResearchRenderer from './plan-next-research-renderer'
+import ExecuteResearchRenderer from './execute-research-renderer'
+import ValidateReadinessRenderer from './validate-readiness-renderer'
+import DemandAnalysisRenderer from './demand-analysis-renderer'
 
 /**
  * Icon mapping for operation types
@@ -52,6 +68,14 @@ const operationIcons: Record<AgentOperationType, React.ElementType> = {
   item_update: Edit,
   persist_results: Save,
   reasoning: Brain,
+  // Field-Driven Research operations
+  initialize_field_states: Settings,
+  extract_from_images: Layers,
+  quick_lookups: Zap,
+  evaluate_fields: CheckSquare,
+  plan_next_research: Map,
+  execute_research: Play,
+  validate_readiness: CheckCircle,
 }
 
 /**
@@ -73,6 +97,14 @@ const operationLabels: Record<AgentOperationType, string> = {
   item_update: 'Updating Item',
   persist_results: 'Saving Results',
   reasoning: 'AI Reasoning',
+  // Field-Driven Research operations
+  initialize_field_states: 'Initializing Fields',
+  extract_from_images: 'Extracting from Images',
+  quick_lookups: 'Quick Lookups',
+  evaluate_fields: 'Evaluating Fields',
+  plan_next_research: 'Planning Research',
+  execute_research: 'Executing Research',
+  validate_readiness: 'Validating Readiness',
 }
 
 /**
@@ -131,7 +163,23 @@ export function getOperationRenderer(
       return PersistResultsRenderer
     case 'reasoning':
       return ReasoningRenderer
-    // demand_analysis uses default renderer
+    // Field-Driven Research operations
+    case 'initialize_field_states':
+      return InitializeFieldStatesRenderer
+    case 'extract_from_images':
+      return ExtractFromImagesRenderer
+    case 'quick_lookups':
+      return QuickLookupsRenderer
+    case 'evaluate_fields':
+      return EvaluateFieldsRenderer
+    case 'plan_next_research':
+      return PlanNextResearchRenderer
+    case 'execute_research':
+      return ExecuteResearchRenderer
+    case 'validate_readiness':
+      return ValidateReadinessRenderer
+    case 'demand_analysis':
+      return DemandAnalysisRenderer
     default:
       return DefaultRenderer
   }

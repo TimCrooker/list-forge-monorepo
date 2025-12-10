@@ -1,7 +1,6 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import { useGetItemQuery, useItemRoom } from '@listforge/api-rtk';
 import {
-  Button,
   Card,
   CardContent,
   CardHeader,
@@ -23,7 +22,6 @@ export const Route = createFileRoute('/_authenticated/capture/$id')({
 });
 
 function ItemDetailPage() {
-  const navigate = useNavigate();
   const { id } = Route.useParams();
   const { data, isLoading, error } = useGetItemQuery(id);
 

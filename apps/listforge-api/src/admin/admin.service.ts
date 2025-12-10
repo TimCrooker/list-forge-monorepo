@@ -22,6 +22,10 @@ import {
   AdminMarketplaceAccountDto,
   AdminListMarketplaceAccountsQuery,
   AdminListMarketplaceAccountsResponse,
+  GetAdminSettingsAuditLogsRequest,
+  GetSettingsAuditLogsResponse,
+  GetSettingsVersionsResponse,
+  SettingsType,
 } from '@listforge/api-types';
 import { OrgStatus } from '@listforge/core-types';
 import { User } from '../users/entities/user.entity';
@@ -31,6 +35,7 @@ import { Item } from '../items/entities/item.entity';
 import { MarketplaceAccount } from '../marketplaces/entities/marketplace-account.entity';
 import { MarketplaceAuditLog } from '../marketplaces/entities/marketplace-audit-log.entity';
 import { WorkflowRun } from '../ai-workflows/entities/workflow-run.entity';
+import { SettingsAuditService } from '../organizations/services/settings-audit.service';
 import { QUEUE_AI_WORKFLOW, QUEUE_MARKETPLACE_PUBLISH, QUEUE_MARKETPLACE_SYNC } from '@listforge/queue-types';
 
 @Injectable()
@@ -56,6 +61,7 @@ export class AdminService {
     private marketplacePublishQueue: Queue,
     @InjectQueue(QUEUE_MARKETPLACE_SYNC)
     private marketplaceSyncQueue: Queue,
+    private settingsAuditService: SettingsAuditService,
   ) {}
 
   async listUsers(): Promise<AdminListUsersResponse> {
@@ -431,6 +437,78 @@ export class AdminService {
         timestamp: log.timestamp.toISOString(),
       })),
       total: logs.length,
+    };
+  }
+
+  // ============================================================================
+  // Settings Audit
+  // ============================================================================
+
+  /**
+   * Get settings audit logs with optional filters (admin - all orgs)
+   */
+  async getSettingsAuditLogs(
+    params: GetAdminSettingsAuditLogsRequest,
+  ): Promise<GetSettingsAuditLogsResponse> {
+    const { logs, total } = await this.settingsAuditService.queryAuditLogs({
+      orgId: params.orgId,
+      settingsType: params.settingsType,
+      eventType: params.eventType,
+      userId: params.userId,
+      startDate: params.startDate ? new Date(params.startDate) : undefined,
+      endDate: params.endDate ? new Date(params.endDate) : undefined,
+      limit: params.limit || 50,
+      offset: params.offset || 0,
+    });
+
+    return {
+      logs: logs.map((log) => ({
+        id: log.id,
+        orgId: log.orgId,
+        user: log.user
+          ? { id: log.user.id, email: log.user.email, name: log.user.name }
+          : null,
+        settingsType: log.settingsType,
+        eventType: log.eventType,
+        message: log.message,
+        fieldDiffs: log.fieldDiffs,
+        versionId: log.versionId,
+        ipAddress: log.ipAddress,
+        userAgent: log.userAgent,
+        metadata: log.metadata,
+        timestamp: log.timestamp.toISOString(),
+      })),
+      total,
+    };
+  }
+
+  /**
+   * Get settings version history for an org (admin)
+   */
+  async getSettingsVersionHistory(
+    orgId: string,
+    settingsType: SettingsType,
+  ): Promise<GetSettingsVersionsResponse> {
+    const versions = await this.settingsAuditService.getVersionHistory(
+      orgId,
+      settingsType,
+    );
+
+    return {
+      versions: versions.map((v) => ({
+        id: v.id,
+        orgId: v.orgId,
+        settingsType: v.settingsType,
+        versionNumber: v.versionNumber,
+        settingsSnapshot: v.settingsSnapshot,
+        user: v.user
+          ? { id: v.user.id, email: v.user.email, name: v.user.name }
+          : null,
+        isRevert: v.isRevert,
+        revertedFromVersionId: v.revertedFromVersionId,
+        revertReason: v.revertReason,
+        createdAt: v.createdAt.toISOString(),
+      })),
     };
   }
 }

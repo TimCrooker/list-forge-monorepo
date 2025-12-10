@@ -20,7 +20,6 @@ import {
   MoreVertical,
   Zap,
   Settings,
-  ChevronDown,
 } from 'lucide-react';
 import {
   WorkflowSettingsCard,
@@ -30,7 +29,10 @@ import {
   MarketplaceDefaultsCard,
   BillingSettingsCard,
   SecuritySettingsCard,
+  EnableOrganization,
+  DisableOrganization,
 } from '@/components/settings';
+import { useOrgFeatures } from '@/hooks';
 import {
   Button,
   Card,
@@ -60,9 +62,6 @@ import {
   Switch,
   Slider,
   AppContent,
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
   Separator,
 } from '@listforge/ui';
 import { showSuccess, showError } from '@/utils/toast';
@@ -79,6 +78,7 @@ function OrganizationPage() {
   const search = useSearch({ from: '/_authenticated/settings/organization' });
   const currentOrg = useSelector((state: RootState) => state.auth.currentOrg);
   const { data: meData } = useMeQuery();
+  const { isPersonal, isTeam } = useOrgFeatures();
 
   // Use the ID from search params, or fall back to current org
   const orgId = search.id || currentOrg?.id;
@@ -475,8 +475,20 @@ function OrganizationPage() {
         </Card>
       )}
 
+      {/* Organization Type Management */}
+      {isOwnerOrAdmin && (
+        <>
+          <Separator className="my-6" />
+          {isPersonal ? (
+            <EnableOrganization />
+          ) : (
+            <DisableOrganization />
+          )}
+        </>
+      )}
+
       {/* Additional Settings Sections (Owner/Admin Only) */}
-      {isOwnerOrAdmin && orgId && (
+      {isOwnerOrAdmin && isTeam && orgId && (
         <>
           <Separator className="my-6" />
           <h2 className="text-lg font-semibold mb-4">Organization Settings</h2>

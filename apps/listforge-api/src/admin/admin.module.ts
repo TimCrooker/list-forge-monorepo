@@ -10,6 +10,7 @@ import { Item } from '../items/entities/item.entity';
 import { MarketplaceAccount } from '../marketplaces/entities/marketplace-account.entity';
 import { MarketplaceAuditLog } from '../marketplaces/entities/marketplace-audit-log.entity';
 import { WorkflowRun } from '../ai-workflows/entities/workflow-run.entity';
+import { OrganizationsModule } from '../organizations/organizations.module';
 import { QUEUE_AI_WORKFLOW, QUEUE_MARKETPLACE_PUBLISH, QUEUE_MARKETPLACE_SYNC } from '@listforge/queue-types';
 
 @Module({
@@ -28,6 +29,7 @@ import { QUEUE_AI_WORKFLOW, QUEUE_MARKETPLACE_PUBLISH, QUEUE_MARKETPLACE_SYNC } 
       { name: QUEUE_MARKETPLACE_PUBLISH },
       { name: QUEUE_MARKETPLACE_SYNC },
     ),
+    OrganizationsModule,
   ],
   controllers: [AdminController],
   providers: [AdminService],

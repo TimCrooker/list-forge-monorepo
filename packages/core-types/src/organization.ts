@@ -1,6 +1,7 @@
 import { OrgRole } from './roles';
 
 export type OrgStatus = 'active' | 'suspended';
+export type OrgType = 'personal' | 'team';
 
 /**
  * Auto-approval settings for an organization.
@@ -245,6 +246,18 @@ export interface AmazonDefaultSettings {
 }
 
 /**
+ * Facebook-specific default settings.
+ */
+export interface FacebookDefaultSettings {
+  /** Default condition for listings */
+  defaultCondition: 'new' | 'used_like_new' | 'used_good' | 'used_fair';
+  /** Whether to auto-renew listings */
+  autoRenew: boolean;
+  /** Default listing category on Facebook Marketplace */
+  defaultCategory?: string;
+}
+
+/**
  * Marketplace default settings for an organization.
  * Controls default values for marketplace listings.
  */
@@ -253,6 +266,8 @@ export interface MarketplaceDefaultSettings {
   ebay: EbayDefaultSettings;
   /** Amazon-specific defaults */
   amazon: AmazonDefaultSettings;
+  /** Facebook-specific defaults */
+  facebook: FacebookDefaultSettings;
 }
 
 export const DEFAULT_MARKETPLACE_SETTINGS: MarketplaceDefaultSettings = {
@@ -265,6 +280,11 @@ export const DEFAULT_MARKETPLACE_SETTINGS: MarketplaceDefaultSettings = {
   amazon: {
     fulfillmentChannel: 'FBM',
     defaultCondition: 'Used - Good',
+  },
+  facebook: {
+    defaultCondition: 'used_good',
+    autoRenew: true,
+    defaultCategory: undefined,
   },
 };
 
@@ -346,6 +366,7 @@ export const DEFAULT_SECURITY_SETTINGS: SecuritySettings = {
 export interface Organization {
   id: string;
   name: string;
+  type: OrgType;
   status: OrgStatus;
   autoApprovalSettings: AutoApprovalSettings;
   autoPublishSettings: AutoPublishSettings;

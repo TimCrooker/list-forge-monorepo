@@ -25,7 +25,9 @@
       "ebay-api@7.1.3": "patches/ebay-api@7.1.3.patch"
     },
     "overrides": {
-      "@sp-api-sdk/auth": "^2.2.15"
+      "@sp-api-sdk/auth": "^2.2.15",
+      "@types/react": "^18.2.79",
+      "@types/react-dom": "^18.2.25"
     }
   }
 }

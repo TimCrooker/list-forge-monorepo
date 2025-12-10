@@ -1,5 +1,5 @@
 import { ResearchGraphState } from '../research-graph.state';
-import { ItemResearchData, ResearchEvidenceRecord } from '@listforge/core-types';
+import { ItemResearchData, ResearchEvidenceRecord, ItemFieldStates, ResearchConstraints } from '@listforge/core-types';
 import { ResearchActivityLoggerService } from '../../../../research/services/research-activity-logger.service';
 
 /**
@@ -16,6 +16,20 @@ export interface PersistResultsTools {
     researchRunId: string;
     evidence: ResearchEvidenceRecord[];
   }) => Promise<{ bundleId: string; evidenceCount: number }>;
+  saveFieldStates?: (params: {
+    itemId: string;
+    researchRunId: string;
+    fieldStates: ItemFieldStates;
+    researchCostUsd: number;
+    researchMode: 'fast' | 'balanced' | 'thorough';
+    researchConstraints: ResearchConstraints | null;
+  }) => Promise<void>;
+  updateItemReadiness?: (params: {
+    itemId: string;
+    readyToPublish: boolean;
+    fieldCompletionScore: number;
+    canonicalFields: Record<string, unknown>;
+  }) => Promise<void>;
 }
 
 /**
@@ -123,6 +137,47 @@ export async function persistResultsNode(
       evidence: state.comps,
     });
 
+    // Save field-driven research state (if available)
+    if (tools.saveFieldStates && state.fieldStates) {
+      if (activityLogger && operationId) {
+        await activityLogger.emitProgress({
+          researchRunId: state.researchRunId,
+          itemId: state.itemId,
+          operationId,
+          operationType: 'persist_results',
+          message: 'Saving field states...',
+          stepId: 'persist_results',
+        });
+      }
+
+      await tools.saveFieldStates({
+        itemId: state.itemId,
+        researchRunId: state.researchRunId,
+        fieldStates: state.fieldStates,
+        researchCostUsd: state.currentResearchCost || 0,
+        researchMode: state.researchMode || 'balanced',
+        researchConstraints: state.researchConstraints || null,
+      });
+    }
+
+    // Update item readiness (if available)
+    if (tools.updateItemReadiness && state.fieldStates) {
+      // Extract canonical field values for the item
+      const canonicalFields: Record<string, unknown> = {};
+      for (const [fieldName, field] of Object.entries(state.fieldStates.fields)) {
+        if (field.value !== null && field.value !== undefined && field.confidence.value >= 0.5) {
+          canonicalFields[fieldName] = field.value;
+        }
+      }
+
+      await tools.updateItemReadiness({
+        itemId: state.itemId,
+        readyToPublish: state.fieldStates.readyToPublish,
+        fieldCompletionScore: state.fieldStates.completionScore,
+        canonicalFields,
+      });
+    }
+
     // Complete the operation
     if (activityLogger && operationId) {
       await activityLogger.completeOperation({
@@ -154,6 +209,14 @@ export async function persistResultsNode(
           // Slice 6: Include listing info
           listingsCount: state.listings?.length || 0,
           listingStatus: state.listings?.[0]?.status || null,
+          // Field-driven research info
+          fieldStatesComplete: state.fieldStates?.readyToPublish || false,
+          fieldCompletionScore: state.fieldStates?.completionScore
+            ? Math.round(state.fieldStates.completionScore * 100)
+            : null,
+          researchCost: state.currentResearchCost || 0,
+          researchMode: state.researchMode || null,
+          iterations: state.iteration || 0,
         },
       });
     }

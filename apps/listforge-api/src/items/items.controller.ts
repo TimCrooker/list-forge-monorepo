@@ -41,6 +41,7 @@ import { ChatGraphService } from '../ai-workflows/services/chat-graph.service';
 import { UPCLookupService } from '../ai-workflows/services/upc-lookup.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { OrgGuard } from '../common/guards/org.guard';
+import { TeamOrgGuard } from '../common/guards/team-org.guard';
 import { ReqCtx } from '../common/decorators/req-ctx.decorator';
 import { RequestContext } from '../common/interfaces/request-context.interface';
 import { MulterFile } from '../common/types/multer-file.type';
@@ -189,11 +190,11 @@ export class ItemsController {
       return {
         barcode: dto.barcode,
         found: true,
-        title: result.title,
+        title: result.name,
         description: result.description,
         brand: result.brand,
         category: result.category,
-        imageUrl: result.images?.[0],
+        imageUrl: result.imageUrl,
         source: 'upc',
       };
     }
@@ -274,8 +275,10 @@ export class ItemsController {
    * GET /items/review/ai-queue
    *
    * Returns items with source='ai_capture', lifecycleStatus='draft', aiReviewState='pending'
+   * TEAM ONLY: Review queue is a team collaboration feature
    */
   @Get('review/ai-queue')
+  @UseGuards(TeamOrgGuard)
   async getAiReviewQueue(
     @ReqCtx() ctx: RequestContext,
     @Query('page') page?: string,
@@ -388,8 +391,10 @@ export class ItemsController {
    * POST /items/:id/review/ai-approve
    *
    * Sets aiReviewState='approved', lifecycleStatus='ready'
+   * TEAM ONLY: Review queue is a team collaboration feature
    */
   @Post(':id/review/ai-approve')
+  @UseGuards(TeamOrgGuard)
   async approveItem(
     @ReqCtx() ctx: RequestContext,
     @Param('id') id: string,
@@ -408,8 +413,10 @@ export class ItemsController {
    * POST /items/:id/review/ai-reject
    *
    * Sets aiReviewState='rejected', keeps lifecycleStatus='draft'
+   * TEAM ONLY: Review queue is a team collaboration feature
    */
   @Post(':id/review/ai-reject')
+  @UseGuards(TeamOrgGuard)
   async rejectItem(
     @ReqCtx() ctx: RequestContext,
     @Param('id') id: string,

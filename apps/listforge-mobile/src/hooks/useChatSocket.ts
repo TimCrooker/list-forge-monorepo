@@ -90,16 +90,18 @@ export function useChatSocket(sessionId: string) {
       }
     };
 
-    socketService.onChatMessage(handleChatMessage);
-    socketService.onChatMessageChunk(handleChatMessageChunk);
+    socketService.on('chat_message', handleChatMessage);
+    socketService.on('chat_message_chunk', handleChatMessageChunk);
 
     // Cleanup
     return () => {
       socketService.leaveChatRoom(sessionId);
       socketService.off('chat_message', handleChatMessage);
       socketService.off('chat_message_chunk', handleChatMessageChunk);
-      socket.off('connect', handleConnect);
-      socket.off('disconnect', handleDisconnect);
+      if (socket) {
+        socket.off('connect', handleConnect);
+        socket.off('disconnect', handleDisconnect);
+      }
     };
   }, [sessionId]);
 

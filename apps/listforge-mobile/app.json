@@ -74,11 +74,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/notification-icon.png",
-          "color": "#0ea5e9",
-          "sounds": [
-            "./assets/notification.wav"
-          ]
+          "color": "#0ea5e9"
         }
       ],
       "expo-secure-store",
@@ -86,7 +82,6 @@
       "@sentry/react-native/expo"
     ],
     "notification": {
-      "icon": "./assets/notification-icon.png",
       "color": "#0ea5e9",
       "androidMode": "default",
       "androidCollapsedTitle": "New ListForge notification"
@@ -94,7 +89,10 @@
     "extra": {
       "eas": {
         "projectId": "your-project-id"
-      }
+      },
+      "sentryDsn": "your-sentry-dsn",
+      "sentryOrganization": "your-org",
+      "sentryProject": "listforge-mobile"
     }
   }
 }

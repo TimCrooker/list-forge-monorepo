@@ -22,7 +22,7 @@ function NewItemPage() {
     <AppContent
       title="Create New Item"
       description="Manually add an item to your inventory"
-      icon={<Package className="h-5 w-5" />}
+      statusIndicator={<Package className="h-5 w-5" />}
       breadcrumbs={[
         { label: 'Inventory', href: '/items' },
         { label: 'New Item', href: '/items/new' },

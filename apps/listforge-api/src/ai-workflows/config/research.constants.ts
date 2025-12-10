@@ -452,3 +452,125 @@ export function getAllConstants() {
  * Ensures TypeScript can infer exact types
  */
 export type ResearchConstants = ReturnType<typeof getAllConstants>;
+
+// =============================================================================
+// PLANNING PHASE PROMPTS (Pre-Act Pattern) - Slice 2
+// =============================================================================
+
+/**
+ * Planning Phase Prompt (Medium Depth ~1000 tokens)
+ *
+ * Uses Pre-Act Pattern: Planning before acting improves accuracy 20-40%
+ * This prompt guides the LLM to analyze the item and create a structured research plan.
+ */
+export const PLANNING_PROMPT = `You are a product research specialist planning how to research an e-commerce item for listing.
+
+ITEM CONTEXT:
+- Title hint: {userTitleHint}
+- Description hint: {userDescriptionHint}
+- Images: {imageCount} photos available
+- User notes: {userNotes}
+- Condition specified: {condition}
+
+{imageAnalysisContext}
+
+ANALYZE AND PLAN:
+
+1. VISUAL ASSESSMENT
+   Based on the images and any hints provided:
+   - What product category does this appear to be?
+   - What brand indicators do you see (logos, labels, distinctive design)?
+   - What is your assessment of the item's condition?
+   - What text is visible (model numbers, serial numbers, labels, tags)?
+
+2. IDENTIFICATION STRATEGY
+   - What's the most reliable way to identify this exact product?
+   - If the primary approach fails, what fallback methods should we try?
+   - How confident do you expect to be in the identification?
+
+3. TOOL SEQUENCE
+   Plan which research tools to use and in what order. Available tools:
+   - upc_lookup: Look up product by UPC/EAN barcode
+   - amazon_catalog: Search Amazon product catalog
+   - keepa: Get historical Amazon pricing and BSR data
+   - ebay_search: Search eBay sold/active listings
+   - web_search: General web search for product info
+   - vision_ai: Analyze images with AI
+   - ocr: Extract text from product images
+
+   For each tool, specify:
+   - What inputs it needs
+   - What information you expect to get
+
+4. ANTICIPATED CHALLENGES
+   - What might go wrong during research?
+   - How should we handle each potential issue?
+
+5. SUCCESS CRITERIA
+   - What would constitute successful product identification?
+   - What minimum fields do we need for a quality listing?
+
+OUTPUT FORMAT (JSON):
+{
+  "visualAssessment": {
+    "category": "...",
+    "brandIndicators": ["logo visible", "distinctive design", ...],
+    "conditionEstimate": "new/like_new/good/fair/poor",
+    "visibleText": ["model X123", "serial ABC", ...]
+  },
+  "identificationStrategy": {
+    "primaryApproach": "UPC lookup from barcode in image / Amazon search by brand+model / ...",
+    "fallbackApproaches": ["web search for visible model number", "image-based search on eBay", ...],
+    "expectedConfidence": 0.0-1.0
+  },
+  "toolSequence": [
+    { "tool": "upc_lookup", "inputs": "barcode from OCR", "expectedYield": "exact product match with ASIN, brand, model" },
+    { "tool": "amazon_catalog", "inputs": "brand + model from vision", "expectedYield": "product details, variants, pricing" },
+    ...
+  ],
+  "challenges": [
+    { "risk": "No visible barcode", "mitigation": "Use brand+model search instead" },
+    { "risk": "Generic/unbranded item", "mitigation": "Focus on category and condition for pricing" },
+    ...
+  ],
+  "successCriteria": {
+    "identification": "Match to specific product with UPC/ASIN or brand+model+variant",
+    "minimumFields": ["title", "brand", "category", "condition", "price estimate"]
+  }
+}
+
+Be thorough but concise. Focus on actionable insights.`;
+
+/**
+ * Simplified context template for image analysis results
+ */
+export const IMAGE_ANALYSIS_CONTEXT_TEMPLATE = `
+IMAGE ANALYSIS RESULTS:
+{imageAnalysisResults}
+`;
+
+/**
+ * Planning phase configuration
+ */
+export const PLANNING_CONFIG = {
+  /**
+   * Maximum tokens for planning response
+   * Target: ~1000 tokens for medium-depth planning
+   */
+  MAX_TOKENS: 1500,
+
+  /**
+   * Model temperature for planning (lower = more deterministic)
+   */
+  TEMPERATURE: 0.3,
+
+  /**
+   * Timeout for planning phase
+   */
+  TIMEOUT_MS: 30000,
+
+  /**
+   * Whether to include reasoning in the plan
+   */
+  INCLUDE_REASONING: true,
+} as const;

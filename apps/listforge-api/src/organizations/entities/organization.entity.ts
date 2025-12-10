@@ -37,6 +37,13 @@ export class Organization {
 
   @Column({
     type: 'enum',
+    enum: ['personal', 'team'],
+    default: 'team',
+  })
+  type: 'personal' | 'team';
+
+  @Column({
+    type: 'enum',
     enum: ['active', 'suspended'],
     default: 'active',
   })

@@ -70,6 +70,24 @@ const GetPricingAnalysisSchema = z.object({
     .describe('The item ID to analyze pricing for'),
 });
 
+const ResearchFieldSchema = z.object({
+  itemId: z.string()
+    .min(1, 'Item ID cannot be empty')
+    .regex(/^[a-zA-Z0-9\-_]+$/, 'Item ID must be alphanumeric')
+    .describe('The item ID to research'),
+  fieldName: z.string()
+    .min(1, 'Field name cannot be empty')
+    .max(50, 'Field name too long')
+    .describe('The canonical field name to research (e.g., "brand", "model", "upc", "title", "description")'),
+  researchMode: z.enum(['fast', 'balanced', 'thorough'])
+    .default('fast')
+    .describe('Research mode: fast (cheap, quick), balanced, or thorough (more expensive but complete)'),
+  hint: z.string()
+    .max(500, 'Hint too long')
+    .optional()
+    .describe('Optional hint to help guide research (e.g., "I think it might be Sony")'),
+});
+
 // ============================================================================
 // Tool Implementations
 // ============================================================================
@@ -495,6 +513,128 @@ Combines item data with research to provide:
 
 Use this when users ask "what should I price this at?" or "is my price good?"`,
       schema: GetPricingAnalysisSchema,
+    },
+  );
+}
+
+/**
+ * Research Field Tool
+ *
+ * Triggers targeted research for a specific field on an item.
+ * Uses the field-driven research system to find the best value.
+ */
+export function researchFieldTool(deps: ChatToolDependencies): StructuredTool {
+  return tool(
+    async (input: z.infer<typeof ResearchFieldSchema>) => {
+      const ctx = getToolContext();
+
+      try {
+        // Check if item exists
+        const item = await deps.getItem(ctx.organizationId, input.itemId);
+        if (!item) {
+          return JSON.stringify({
+            error: true,
+            message: `Item ${input.itemId} not found`,
+          });
+        }
+
+        // Validate field name
+        const validFields = [
+          'title', 'description', 'brand', 'model', 'upc', 'mpn', 'sku',
+          'color', 'size', 'material', 'condition', 'category',
+          'weight', 'dimensions', 'features', 'manufacturer',
+        ];
+
+        const normalizedField = input.fieldName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        if (!validFields.includes(normalizedField)) {
+          return JSON.stringify({
+            error: true,
+            message: `Unknown field: ${input.fieldName}`,
+            validFields: validFields,
+            suggestion: `Did you mean one of: ${validFields.slice(0, 5).join(', ')}?`,
+          });
+        }
+
+        // Trigger field-specific research
+        if (deps.researchField) {
+          const result = await deps.researchField({
+            itemId: input.itemId,
+            organizationId: ctx.organizationId,
+            fieldName: normalizedField,
+            researchMode: input.researchMode,
+            hint: input.hint,
+          });
+
+          return JSON.stringify({
+            success: true,
+            itemId: input.itemId,
+            field: normalizedField,
+            researchMode: input.researchMode,
+            result: {
+              value: result.value,
+              confidence: Math.round((result.confidence || 0) * 100) + '%',
+              source: result.source,
+              researchCost: result.costUsd ? `$${result.costUsd.toFixed(4)}` : null,
+            },
+            message: result.value
+              ? `Found ${normalizedField}: "${result.value}" (${Math.round((result.confidence || 0) * 100)}% confidence from ${result.source})`
+              : `Could not determine ${normalizedField}. You may need to provide this manually.`,
+          }, null, 2);
+        } else {
+          // Fallback to full research if researchField not available
+          const result = await deps.startResearchJob({
+            itemId: input.itemId,
+            priority: 'high',
+            options: {
+              runType: 'manual_request',
+              targetFields: [normalizedField],
+              researchMode: input.researchMode,
+            },
+          });
+
+          return JSON.stringify({
+            success: true,
+            itemId: input.itemId,
+            field: normalizedField,
+            researchMode: input.researchMode,
+            jobId: result.jobId,
+            status: result.status,
+            message: `Started targeted research for ${normalizedField}. Job ID: ${result.jobId}`,
+            note: 'Targeted research typically takes 10-30 seconds.',
+          }, null, 2);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return JSON.stringify({
+          error: true,
+          message: `Failed to research field: ${message}`,
+        });
+      }
+    },
+    {
+      name: 'research_field',
+      description: `Research a specific field for an item.
+
+Use this for targeted research when you need to fill in a specific missing field.
+More efficient than full research when you only need one piece of information.
+
+Supported fields:
+- title, description: Generate optimized listing content
+- brand, model, manufacturer: Identify the product
+- upc, mpn, sku: Product identifiers
+- color, size, material: Physical attributes
+- condition: Item condition assessment
+- category: Marketplace category suggestion
+- weight, dimensions: Shipping attributes
+- features: Key product features
+
+Research modes:
+- fast: Quick lookup (UPC, vision) - cheapest
+- balanced: Standard research
+- thorough: Deep research with web search - most expensive
+
+Use hint to provide context that helps the AI find the right value.`,
+      schema: ResearchFieldSchema,
     },
   );
 }

@@ -7,7 +7,7 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { ResearchRunType, ResearchRunStatus } from '@listforge/core-types';
+import { ResearchRunType, ResearchRunStatus, ItemFieldStates, ResearchConstraints } from '@listforge/core-types';
 import { Item } from '../../items/entities/item.entity';
 
 /**
@@ -85,4 +85,36 @@ export class ItemResearchRun {
 
   @Column({ type: 'timestamp', nullable: true, name: 'paused_at' })
   pausedAt: Date | null;
+
+  // ============================================================================
+  // Field-Driven Research State
+  // ============================================================================
+
+  /**
+   * Per-field confidence tracking and research state
+   * Core data structure for field-driven research system
+   */
+  @Column({ type: 'jsonb', nullable: true, name: 'field_states' })
+  fieldStates: ItemFieldStates | null;
+
+  /**
+   * Total USD spent on this research run
+   * Accumulated from individual tool costs
+   */
+  @Column({ type: 'decimal', precision: 8, scale: 4, nullable: true, name: 'research_cost_usd' })
+  researchCostUsd: number | null;
+
+  /**
+   * Research mode: fast, balanced, or thorough
+   * Determines budget constraints and confidence thresholds
+   */
+  @Column({ type: 'varchar', length: 20, default: 'balanced', name: 'research_mode' })
+  researchMode: 'fast' | 'balanced' | 'thorough';
+
+  /**
+   * Research constraints used for this run
+   * Snapshot of constraints at start of research
+   */
+  @Column({ type: 'jsonb', nullable: true, name: 'research_constraints' })
+  researchConstraints: ResearchConstraints | null;
 }

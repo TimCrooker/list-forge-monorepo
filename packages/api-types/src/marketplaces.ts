@@ -1,6 +1,6 @@
 import { MarketplaceListingStatus } from '@listforge/core-types';
 
-export type MarketplaceType = 'EBAY' | 'AMAZON';
+export type MarketplaceType = 'EBAY' | 'AMAZON' | 'FACEBOOK';
 
 export type MarketplaceAccountStatus = 'active' | 'expired' | 'revoked' | 'error';
 
@@ -87,6 +87,29 @@ export interface ExchangeAmazonCodeResponse {
   };
 }
 
+// ============================================================================
+// Facebook Marketplace OAuth
+// ============================================================================
+
+export interface GetFacebookAuthUrlResponse {
+  authUrl: string;
+}
+
+export interface ExchangeFacebookCodeRequest {
+  code: string;
+  state: string;
+}
+
+export interface ExchangeFacebookCodeResponse {
+  success: boolean;
+  account: {
+    id: string;
+    marketplace: MarketplaceType;
+    status: MarketplaceAccountStatus;
+    remoteAccountId: string | null;
+  };
+}
+
 export interface ListMarketplaceAccountsResponse {
   accounts: MarketplaceAccountDto[];
 }
@@ -160,5 +183,25 @@ export interface PublishItemListingRequest {
 
 export interface PublishItemListingResponse {
   success: boolean;
+}
+
+// Facebook OAuth types
+export interface GetFacebookAuthUrlResponse {
+  authUrl: string;
+}
+
+export interface ExchangeFacebookCodeRequest {
+  code: string;
+  state: string;
+}
+
+export interface ExchangeFacebookCodeResponse {
+  success: boolean;
+  account: {
+    id: string;
+    marketplace: MarketplaceType;
+    status: MarketplaceAccountStatus;
+    remoteAccountId: string | null;
+  };
 }
 
