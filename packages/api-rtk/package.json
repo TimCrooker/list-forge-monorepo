@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@listforge/api-types": "workspace:*",
+    "@listforge/core-types": "workspace:*",
     "@listforge/socket-types": "workspace:*",
     "@reduxjs/toolkit": "^2.0.1",
     "socket.io-client": "^4.7.2"

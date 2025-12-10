@@ -5,6 +5,8 @@
  * Evidence captures what data the AI used to make decisions.
  */
 
+import { CompValidation } from './research';
+
 // Evidence item type discriminator
 export type EvidenceItemType =
   | 'marketplace_sold'
@@ -23,6 +25,7 @@ export type SummaryKind =
 
 /**
  * Evidence from a sold marketplace listing (e.g., eBay completed sale)
+ * Slice 3: Added validation field for comp validation results
  */
 export interface MarketplaceSoldEvidence {
   type: 'marketplace_sold';
@@ -35,10 +38,12 @@ export interface MarketplaceSoldEvidence {
   condition: string | null;
   thumbUrl: string | null;
   relevanceScore: number | null;
+  validation?: CompValidation; // Slice 3: Validation result
 }
 
 /**
  * Evidence from an active marketplace listing
+ * Slice 3: Added validation field for comp validation results
  */
 export interface MarketplaceActiveEvidence {
   type: 'marketplace_active';
@@ -51,6 +56,7 @@ export interface MarketplaceActiveEvidence {
   sellerRating: number | null;
   thumbUrl: string | null;
   watchCount: number | null;
+  validation?: CompValidation; // Slice 3: Validation result
 }
 
 /**

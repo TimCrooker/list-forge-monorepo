@@ -81,5 +81,28 @@ export class AdminController {
   async getSystemMetrics() {
     return this.adminService.getSystemMetrics();
   }
+
+  /**
+   * Get marketplace audit logs
+   * Supports filtering by organization, account, user, and event type
+   */
+  @Get('marketplace-audit-logs')
+  async getMarketplaceAuditLogs(
+    @Query('orgId') orgId?: string,
+    @Query('accountId') accountId?: string,
+    @Query('userId') userId?: string,
+    @Query('eventType') eventType?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.adminService.getMarketplaceAuditLogs({
+      orgId,
+      accountId,
+      userId,
+      eventType,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      offset: offset ? parseInt(offset, 10) : undefined,
+    });
+  }
 }
 

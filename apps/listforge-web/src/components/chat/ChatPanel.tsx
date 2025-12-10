@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
 import {
   useCreateChatSessionMutation,
   useGetChatMessagesQuery,
@@ -6,40 +7,75 @@ import {
   useGetItemQuery,
 } from '@listforge/api-rtk';
 import { ChatMessageDto } from '@listforge/api-types';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Button,
-  Badge,
-} from '@listforge/ui';
-import { Send, Loader2, MessageSquare, Sparkles } from 'lucide-react';
-import { ChatAction } from './ChatAction';
+import { Button } from '@listforge/ui';
+import { Send, Loader2 } from 'lucide-react';
+import { ChatMessage } from './ChatMessage';
 import { ResearchStatus } from './ResearchStatus';
 import { ChatPanelSkeleton } from './ChatPanelSkeleton';
 import { ComponentErrorBoundary } from '../common/ComponentErrorBoundary';
 import { ConnectionStatus } from '../common/ConnectionStatus';
+import { FoundryAvatar } from '../foundry';
+import { useChatContext } from '../../hooks/useChatContext';
 
 interface ChatPanelProps {
-  itemId: string;
+  itemId?: string;
   itemTitle?: string | null;
 }
+
+type AvatarState = 'idle' | 'listening' | 'thinking' | 'typing' | 'error';
 
 export function ChatPanel({ itemId }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessageDto[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
+  const [avatarState, setAvatarState] = useState<AvatarState>('idle');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Collect current page context for context-aware responses
+  const context = useChatContext();
 
   // Create or get session
   const [createSession, { isLoading: isCreatingSession }] = useCreateChatSessionMutation();
 
   // Get messages for session
   const { data: messagesData, refetch: refetchMessages } = useGetChatMessagesQuery(
-    { itemId, sessionId: sessionId! },
-    { skip: !sessionId },
+    { itemId: itemId!, sessionId: sessionId! },
+    {
+      skip: !sessionId || !itemId,
+    },
   );
+
+  // Handle incoming messages from WebSocket
+  const handleSocketMessage = useCallback((message: ChatMessageDto) => {
+    setMessages((prev) => {
+      const existingIndex = prev.findIndex((m) => m.id === message.id);
+      if (existingIndex >= 0) {
+        // Update existing message
+        const updated = [...prev];
+        updated[existingIndex] = message;
+        return updated;
+      }
+
+      // Replace optimistic message if this is the real user message
+      if (message.role === 'user') {
+        const tempIndex = prev.findIndex((m) => m.id.startsWith('temp-') && m.content === message.content);
+        if (tempIndex >= 0) {
+          const updated = [...prev];
+          updated[tempIndex] = message;
+          return updated;
+        }
+      }
+
+      // Clear waiting state when we get assistant response
+      if (message.role === 'assistant') {
+        setIsWaitingForResponse(false);
+      }
+
+      // Append new message
+      return [...prev, message];
+    });
+  }, []);
 
   // WebSocket hook for streaming and actions
   const {
@@ -50,14 +86,17 @@ export function ChatPanel({ itemId }: ChatPanelProps) {
     error: socketError,
     applyAction,
     activeResearchJobId,
+    activeTools,
     reconnect,
-  } = useChatSocket(sessionId);
+  } = useChatSocket(sessionId, handleSocketMessage);
 
   // Get item query for refreshing on action apply
-  const { refetch: refetchItem } = useGetItemQuery(itemId, { skip: !itemId });
+  const { refetch: refetchItem } = useGetItemQuery(itemId!, { skip: !itemId });
 
   // Initialize session on mount
   useEffect(() => {
+    if (!itemId) return;
+
     const initSession = async () => {
       try {
         const result = await createSession({
@@ -73,47 +112,103 @@ export function ChatPanel({ itemId }: ChatPanelProps) {
     initSession();
   }, [itemId, createSession]);
 
-  // Load messages when session is ready or when new messages arrive
+  // Load messages once when data arrives
   useEffect(() => {
-    if (sessionId && messagesData) {
+    if (messagesData) {
       setMessages(messagesData.messages);
     }
-  }, [sessionId, messagesData]);
+  }, [messagesData]);
 
-  // Refetch messages after streaming completes (to get the saved assistant message)
+  // Clear messages when session changes
   useEffect(() => {
-    if (sessionId && !streamingContent && messages.length > 0) {
-      // Small delay to ensure message is saved before refetching
-      const timeout = setTimeout(() => {
-        refetchMessages();
-      }, 500);
-      return () => clearTimeout(timeout);
+    if (sessionId) {
+      setMessages([]);
     }
-  }, [sessionId, streamingContent, messages.length, refetchMessages]);
+  }, [sessionId]);
 
-  // Scroll to bottom when messages or streaming content changes
+  // Clear waiting state when streaming starts or tools appear
+  useEffect(() => {
+    if (streamingContent || activeTools.length > 0) {
+      setIsWaitingForResponse(false);
+    }
+  }, [streamingContent, activeTools.length]);
+
+  // Event-driven avatar state logic - responds to backend events
+  useEffect(() => {
+    // Priority 1: Error state (highest priority)
+    if (socketError) {
+      setAvatarState('error');
+      return;
+    }
+
+    // Priority 2: Typing state (streaming response)
+    if (streamingContent) {
+      setAvatarState('typing');
+      return;
+    }
+
+    // Priority 3: Thinking state (tools executing)
+    if (activeTools.length > 0) {
+      setAvatarState('thinking');
+      return;
+    }
+
+    // Priority 4: Listening state (waiting for response)
+    if (isWaitingForResponse) {
+      setAvatarState('listening');
+      return;
+    }
+
+    // Default: Idle state
+    setAvatarState('idle');
+  }, [socketError, streamingContent, activeTools.length, isWaitingForResponse]);
+
+  // Scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent]);
+  }, [messages, streamingContent, isWaitingForResponse, activeTools.length]);
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !sessionId) return;
+    if (!isConnected) {
+      console.error('Cannot send message: not connected');
+      return;
+    }
 
     const content = inputValue.trim();
     setInputValue('');
+    setIsWaitingForResponse(true);
+
+    // Add optimistic user message immediately for instant feedback
+    const optimisticMessage: ChatMessageDto = {
+      id: `temp-${Date.now()}`,
+      sessionId,
+      role: 'user',
+      content,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimisticMessage]);
 
     try {
-      // Send via WebSocket if connected, otherwise fall back to REST
-      if (isConnected) {
-        sendMessage(content);
-      } else {
-        // Fallback to REST API (handled by existing endpoint)
-        // For now, we'll just show an error
-        console.warn('WebSocket not connected, falling back to REST');
-        // TODO: Implement REST fallback if needed
+      // Send message with rich context for context-aware responses
+      const result = await sendMessage(content, {
+        pageType: context.pageType,
+        currentRoute: context.currentRoute,
+        itemId: context.itemId,
+        activeTab: context.activeTab,
+        activeModal: context.activeModal,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to send message');
       }
     } catch (error) {
-      console.error('Failed to send message:', error);
+      // On error, remove optimistic message and restore input
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticMessage.id));
+      const errorMessage = error instanceof Error ? error.message : 'Failed to send message';
+      console.error('Failed to send message:', errorMessage);
+      setInputValue(content);
+      setIsWaitingForResponse(false);
     }
   };
 
@@ -125,16 +220,10 @@ export function ChatPanel({ itemId }: ChatPanelProps) {
   };
 
   const handleApplyAction = async (messageId: string, actionIndex: number) => {
-    if (!applyAction) {
-      console.error('applyAction not available');
-      return;
-    }
-
+    if (!applyAction) return;
     try {
       await applyAction(messageId, actionIndex);
-      // Refresh item data after successful action
       refetchItem();
-      // Refetch messages to get updated action state
       refetchMessages();
     } catch (error) {
       console.error('Failed to apply action:', error);
@@ -147,152 +236,186 @@ export function ChatPanel({ itemId }: ChatPanelProps) {
 
   return (
     <ComponentErrorBoundary context="chat">
-      <Card className="flex flex-col h-full">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="h-5 w-5" />
-            <CardTitle className="text-base">Item Assistant</CardTitle>
-            <Badge variant="secondary" className="ml-2">
-              <Sparkles className="h-3 w-3 mr-1" />
-              AI
-            </Badge>
-            {sessionId && (
-              <ConnectionStatus
-                isConnected={isConnected}
-                isConnecting={isConnecting}
-                onReconnect={reconnect}
-                className="ml-2"
-              />
-            )}
-          </div>
-        </CardHeader>
-
-        <CardContent className="flex flex-col space-y-4 pt-0 flex-1 overflow-hidden">
-          {isLoading ? (
-            <ChatPanelSkeleton />
-          ) : messages.length === 0 && !streamingContent ? (
-          <div className="text-center py-8 px-4">
-            <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-            <p className="text-sm text-muted-foreground mb-2">
-              Ask me anything about this item!
-            </p>
-            <p className="text-xs text-muted-foreground">
-              I can help with pricing, descriptions, categories, and more.
-            </p>
-          </div>
-        ) : (
-          <div
-            className="space-y-3 flex-1 overflow-y-auto pr-2"
-            role="log"
-            aria-live="polite"
-            aria-busy={isSending}
-            aria-label="Chat messages"
-          >
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[85%] rounded-lg px-4 py-2 ${
-                    message.role === 'user'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted'
-                  }`}
-                >
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                  {message.actions && message.actions.length > 0 && (
-                    <div className="mt-2 space-y-2">
-                      {message.actions.map((action, index) => (
-                        <ChatAction
-                          key={index}
-                          action={action}
-                          messageId={message.id}
-                          actionIndex={index}
-                          onApply={handleApplyAction}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  <p
-                    className={`text-xs mt-1 ${
-                      message.role === 'user'
-                        ? 'text-primary-foreground/70'
-                        : 'text-muted-foreground'
-                    }`}
-                  >
-                    {new Date(message.createdAt).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </p>
-                </div>
-              </div>
-            ))}
-
-            {/* Streaming content */}
-            {streamingContent && (
-              <div className="flex justify-start">
-                <div className="max-w-[85%] rounded-lg px-4 py-2 bg-muted">
-                  <p className="text-sm whitespace-pre-wrap">
-                    {streamingContent}
-                    <span className="inline-block w-2 h-4 bg-current animate-pulse ml-1" />
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Error message */}
-            {socketError && (
-              <div className="flex justify-start">
-                <div className="max-w-[85%] rounded-lg px-4 py-2 bg-destructive/10 text-destructive">
-                  <p className="text-sm">{socketError}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Research status (Phase 7 Slice 7) */}
-            {activeResearchJobId && (
-              <div className="mt-2">
-                <ResearchStatus researchRunId={activeResearchJobId} itemId={itemId} />
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
+      <div className="flex flex-col h-full">
+        {/* Connection status bar */}
+        {sessionId && !isConnected && (
+          <div className="px-4 py-2 bg-muted/50 border-b">
+            <ConnectionStatus
+              isConnected={isConnected}
+              isConnecting={isConnecting}
+              onReconnect={reconnect}
+            />
           </div>
         )}
 
-        <div className="flex gap-2 pt-2 border-t">
-          <input
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask about pricing, condition, or get suggestions... (Press Enter to send)"
-            className="flex-1 px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-            disabled={isLoading || isSending || !isConnected}
-            aria-label="Chat message input"
-            aria-describedby="chat-input-hint"
-          />
-          <span id="chat-input-hint" className="sr-only">
-            Press Enter to send message
-          </span>
-          <Button
-            onClick={handleSendMessage}
-            disabled={!inputValue.trim() || isLoading || isSending || !isConnected}
-            size="sm"
-            className="px-3"
-            aria-label="Send message"
-          >
-            {isSending ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <Send className="h-4 w-4" aria-hidden="true" />
-            )}
-          </Button>
+        {/* Messages area */}
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {!itemId ? (
+            <div className="flex-1 flex items-center justify-center p-6">
+              <div className="text-center">
+                <div className="flex items-center justify-center mx-auto mb-4">
+                  <FoundryAvatar state={avatarState} size="lg" mode="dark" />
+                </div>
+                <p className="text-sm font-medium text-foreground mb-1">
+                  Foundry Assistant
+                </p>
+                <p className="text-xs text-muted-foreground max-w-[200px]">
+                  Navigate to an item page to chat about specific items
+                </p>
+              </div>
+            </div>
+          ) : isLoading ? (
+            <div className="flex-1 p-4">
+              <ChatPanelSkeleton />
+            </div>
+          ) : messages.length === 0 && !streamingContent ? (
+            <div className="flex-1 flex items-center justify-center p-6">
+              <div className="text-center">
+                <div className="flex items-center justify-center mx-auto mb-4">
+                  <FoundryAvatar state={avatarState} size="lg" mode="dark" />
+                </div>
+                <p className="text-sm font-medium text-foreground mb-1">
+                  Ask me anything about this item!
+                </p>
+                <p className="text-xs text-muted-foreground max-w-[200px]">
+                  I can help with pricing, descriptions, categories, and more.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div
+              className="flex-1 overflow-y-auto p-4 space-y-3"
+              role="log"
+              aria-live="polite"
+              aria-busy={isSending}
+              aria-label="Chat messages"
+            >
+              {messages.map((message) => (
+                <ChatMessage
+                  key={message.id}
+                  message={message}
+                  onApplyAction={handleApplyAction}
+                />
+              ))}
+
+              {/* Waiting for response indicator */}
+              {isWaitingForResponse && !streamingContent && activeTools.length === 0 && (
+                <div className="flex gap-2 justify-start">
+                  <div className="shrink-0 mt-1">
+                    <FoundryAvatar state={avatarState} size="sm" mode="dark" />
+                  </div>
+                  <div className="max-w-[80%] rounded-2xl px-4 py-2.5 bg-muted/70">
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-pulse" />
+                      <span className="text-muted-foreground">Processing your message...</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tool progress indicators */}
+              {activeTools.length > 0 && (
+                <div className="flex gap-2 justify-start">
+                  <div className="shrink-0 mt-1">
+                    <FoundryAvatar state={avatarState} size="sm" mode="dark" />
+                  </div>
+                  <div className="max-w-[80%] rounded-2xl px-4 py-2.5 bg-muted/70">
+                    <div className="flex flex-col gap-1">
+                      {activeTools.map((tool) => (
+                        <div key={tool.toolName} className="flex items-center gap-2 text-xs">
+                          <div className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-pulse" />
+                          <span className="text-muted-foreground">
+                            {tool.displayName || tool.toolName}
+                            {tool.message && `: ${tool.message}`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Streaming content with typing indicator */}
+              {streamingContent && (
+                <div className="flex gap-2 justify-start">
+                  <div className="shrink-0 mt-1">
+                    <FoundryAvatar state={avatarState} size="sm" mode="dark" />
+                  </div>
+                  <div className="max-w-[80%] rounded-2xl px-4 py-2.5 bg-muted">
+                    <div className="text-sm prose prose-sm dark:prose-invert prose-p:my-1 prose-ul:my-1 prose-li:my-0 max-w-none">
+                      <ReactMarkdown>{streamingContent}</ReactMarkdown>
+                      <span className="inline-block w-1.5 h-4 bg-primary/60 animate-pulse ml-0.5 rounded-sm" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Error message */}
+              {socketError && (
+                <div className="flex gap-2 justify-start">
+                  <div className="shrink-0 mt-1">
+                    <FoundryAvatar state={avatarState} size="sm" mode="dark" />
+                  </div>
+                  <div className="max-w-[80%] rounded-2xl px-4 py-2.5 bg-destructive/10 text-destructive border border-destructive/20">
+                    <p className="text-sm font-medium mb-1">Error</p>
+                    <p className="text-sm">{socketError}</p>
+                    {!isConnected && (
+                      <button
+                        onClick={reconnect}
+                        className="mt-2 text-xs underline hover:no-underline"
+                      >
+                        Try reconnecting
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Research status */}
+              {activeResearchJobId && (
+                <div className="mt-2">
+                  <ResearchStatus researchRunId={activeResearchJobId} itemId={itemId} />
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </div>
+          )}
         </div>
-      </CardContent>
-    </Card>
+
+        {/* Input area */}
+        <div className="p-4 border-t bg-background">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                !isConnected
+                  ? 'Connecting...'
+                  : 'Ask about pricing, condition...'
+              }
+              className="flex-1 px-4 py-2.5 text-sm border rounded-full bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary focus:bg-background disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              disabled={isLoading || isSending || !isConnected}
+              aria-label="Chat message input"
+            />
+            <Button
+              onClick={handleSendMessage}
+              disabled={!inputValue.trim() || isLoading || isSending || !isConnected}
+              size="icon"
+              className="h-10 w-10 rounded-full shrink-0"
+              aria-label="Send message"
+            >
+              {isSending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
     </ComponentErrorBoundary>
   );
 }

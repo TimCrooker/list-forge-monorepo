@@ -11,6 +11,10 @@
   },
   "dependencies": {
     "@listforge/core-types": "workspace:*",
+    "@sp-api-sdk/auth": "^2.0.0",
+    "@sp-api-sdk/catalog-items-api-2022-04-01": "^2.0.0",
+    "@sp-api-sdk/product-pricing-api-v0": "^2.0.0",
+    "@sp-api-sdk/listings-items-api-2021-08-01": "^2.0.0",
     "ebay-api": "^7.0.0"
   },
   "devDependencies": {

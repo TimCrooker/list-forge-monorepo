@@ -203,7 +203,7 @@ export class EventsService {
     researchRunId: string,
     itemId: string,
     organizationId: string,
-    status: 'success' | 'error',
+    status: 'success' | 'error' | 'paused',
     summary?: string,
     error?: string,
   ): void {
@@ -229,5 +229,65 @@ export class EventsService {
     // See ChatGateway.notifyResearchCompleted for the implementation
 
     this.logger.debug(`Emitted research job completed: ${status} for run ${researchRunId}`);
+  }
+
+  /**
+   * Emit research paused event
+   */
+  emitResearchPaused(researchRunId: string, itemId: string, organizationId: string): void {
+    const rooms = [
+      Rooms.researchRun(researchRunId),
+      Rooms.item(itemId),
+      Rooms.org(organizationId),
+    ];
+    const payload: SocketEventPayloads[typeof SocketEvents.RESEARCH_PAUSED] = {
+      researchRunId,
+      itemId,
+      timestamp: new Date().toISOString(),
+    };
+    rooms.forEach((room) => {
+      this.gateway.server.to(room).emit(SocketEvents.RESEARCH_PAUSED, payload);
+    });
+    this.logger.debug(`Emitted research paused for run ${researchRunId}`);
+  }
+
+  /**
+   * Emit research resumed event
+   */
+  emitResearchResumed(researchRunId: string, itemId: string, organizationId: string): void {
+    const rooms = [
+      Rooms.researchRun(researchRunId),
+      Rooms.item(itemId),
+      Rooms.org(organizationId),
+    ];
+    const payload: SocketEventPayloads[typeof SocketEvents.RESEARCH_RESUMED] = {
+      researchRunId,
+      itemId,
+      timestamp: new Date().toISOString(),
+    };
+    rooms.forEach((room) => {
+      this.gateway.server.to(room).emit(SocketEvents.RESEARCH_RESUMED, payload);
+    });
+    this.logger.debug(`Emitted research resumed for run ${researchRunId}`);
+  }
+
+  /**
+   * Emit research cancelled event
+   */
+  emitResearchCancelled(researchRunId: string, itemId: string, organizationId: string): void {
+    const rooms = [
+      Rooms.researchRun(researchRunId),
+      Rooms.item(itemId),
+      Rooms.org(organizationId),
+    ];
+    const payload: SocketEventPayloads[typeof SocketEvents.RESEARCH_CANCELLED] = {
+      researchRunId,
+      itemId,
+      timestamp: new Date().toISOString(),
+    };
+    rooms.forEach((room) => {
+      this.gateway.server.to(room).emit(SocketEvents.RESEARCH_CANCELLED, payload);
+    });
+    this.logger.debug(`Emitted research cancelled for run ${researchRunId}`);
   }
 }

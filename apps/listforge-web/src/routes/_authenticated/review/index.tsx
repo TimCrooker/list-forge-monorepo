@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useSwipeable } from 'react-swipeable';
 import {
   useGetItemAiReviewQueueQuery,
   useGetItemQuery,
@@ -14,9 +15,13 @@ import { EvidencePanel } from '@/components/review/EvidencePanel';
 import {
   Skeleton,
   Badge,
+  Card,
+  CardContent,
+  Button,
 } from '@listforge/ui';
-import { Inbox, Keyboard } from 'lucide-react';
+import { Inbox, Keyboard, ChevronLeft, ChevronRight, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { showSuccess, showError, showInfo } from '@/utils/toast';
+import { cn } from '@listforge/ui';
 
 export const Route = createFileRoute('/_authenticated/review/')({
   component: ReviewPage,
@@ -24,9 +29,21 @@ export const Route = createFileRoute('/_authenticated/review/')({
 
 function ReviewPage() {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
+  const [showQueue, setShowQueue] = useState(false);
+  const [showEvidence, setShowEvidence] = useState(false);
 
   // Get current user
   useMeQuery();
+
+  // Detect mobile screen
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Fetch AI review queue (Phase 6)
   const {
@@ -96,7 +113,10 @@ function ReviewPage() {
   // Handle queue item selection
   const handleSelectItem = useCallback((id: string) => {
     setSelectedItemId(id);
-  }, []);
+    if (isMobile) {
+      setShowQueue(false);
+    }
+  }, [isMobile]);
 
   // Track if currently applying to prevent double-actions
   const isApplyingRef = useRef(false);
@@ -104,8 +124,35 @@ function ReviewPage() {
     isApplyingRef.current = isApplying;
   }, [isApplying]);
 
-  // Keyboard shortcuts
+  // Swipe handlers for mobile
+  const swipeHandlers = useSwipeable({
+    onSwipedLeft: () => {
+      if (!isApplyingRef.current && selectedItemId && isMobile) {
+        setSwipeDirection('left');
+        setTimeout(() => {
+          handleAction('reject');
+          setSwipeDirection(null);
+        }, 150);
+      }
+    },
+    onSwipedRight: () => {
+      if (!isApplyingRef.current && selectedItemId && isMobile) {
+        setSwipeDirection('right');
+        setTimeout(() => {
+          handleAction('approve');
+          setSwipeDirection(null);
+        }, 150);
+      }
+    },
+    preventScrollOnSwipe: true,
+    trackMouse: false,
+    delta: 50,
+  });
+
+  // Keyboard shortcuts (desktop only)
   useEffect(() => {
+    if (isMobile) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if user is typing in an input/textarea
       if (
@@ -143,33 +190,199 @@ function ReviewPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedItemId, handleAction]);
+  }, [selectedItemId, handleAction, isMobile]);
 
-  return (
-    <div className="h-[calc(100vh-4rem)] flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-4">
-          <div>
-            <h1 className="text-2xl font-bold">AI Review Deck</h1>
-            <p className="text-sm text-muted-foreground">
-              {queueData?.total ?? 0} AI-captured items awaiting review
-            </p>
+  // Mobile view
+  if (isMobile) {
+    return (
+      <div className="h-full flex flex-col bg-background">
+        {/* Mobile Header */}
+        <Card className="rounded-none border-x-0 border-t-0">
+          <CardContent className="px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-xl font-bold">Review</h1>
+                <p className="text-xs text-muted-foreground">
+                  {queueData?.total ?? 0} items
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowQueue(true)}
+              >
+                Queue ({queueData?.items.length ?? 0})
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Mobile Queue Overlay */}
+        {showQueue && (
+          <div className="fixed inset-0 z-50 bg-background">
+            <Card className="rounded-none border-x-0 border-t-0">
+              <CardContent className="px-4 py-3 flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Review Queue</h2>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowQueue(false)}
+                >
+                  Close
+                </Button>
+              </CardContent>
+            </Card>
+            <div className="overflow-y-auto h-[calc(100%-60px)]">
+              {isLoadingQueue ? (
+                <div className="p-4 space-y-3">
+                  {[...Array(5)].map((_, i) => (
+                    <Skeleton key={i} className="h-20 w-full" />
+                  ))}
+                </div>
+              ) : queueData?.items && queueData.items.length > 0 ? (
+                <ReviewQueue
+                  items={queueData.items}
+                  selectedId={selectedItemId}
+                  onSelect={handleSelectItem}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-6">
+                  <Inbox className="h-12 w-12 mb-4" />
+                  <p className="text-center">No items in queue</p>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Keyboard className="h-4 w-4" />
-          <span className="hidden sm:inline">Shortcuts:</span>
-          <Badge variant="outline" className="text-xs py-0 px-1.5">A</Badge>
-          <span>Approve</span>
-          <Badge variant="outline" className="text-xs py-0 px-1.5">R</Badge>
-          <span>Reject</span>
+        {/* Mobile Main Content - Swipeable Card */}
+        <div className="flex-1 flex flex-col overflow-hidden relative">
+          {isLoadingItem ? (
+            <div className="p-4 space-y-4">
+              <Skeleton className="h-64 w-full" />
+              <Skeleton className="h-8 w-3/4" />
+              <Skeleton className="h-32 w-full" />
+            </div>
+          ) : itemData?.item ? (
+            <>
+              {/* Swipe Container */}
+              <div
+                {...swipeHandlers}
+                className={cn(
+                  "flex-1 overflow-y-auto transition-transform duration-150",
+                  swipeDirection === 'left' && 'translate-x-[-20px] opacity-70',
+                  swipeDirection === 'right' && 'translate-x-[20px] opacity-70'
+                )}
+              >
+                <div className="p-4">
+                  <ListingCard
+                    draft={itemData.item}
+                    onRerunAi={() => {}}
+                    isRerunningAi={false}
+                    onUpdate={() => Promise.resolve()}
+                  />
+                </div>
+              </div>
+
+              {/* Mobile Action Buttons - Fixed Bottom */}
+              <div className="border-t bg-background p-4 safe-bottom">
+                <div className="flex items-center gap-3 max-w-md mx-auto">
+                  <Button
+                    variant="destructive"
+                    size="lg"
+                    onClick={() => handleAction('reject')}
+                    disabled={isApplying}
+                    className="flex-1 h-14 text-base gap-2"
+                  >
+                    <ThumbsDown className="h-5 w-5" />
+                    Reject
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="lg"
+                    onClick={() => handleAction('approve')}
+                    disabled={isApplying}
+                    className="flex-1 h-14 text-base gap-2 bg-green-600 hover:bg-green-700"
+                  >
+                    <ThumbsUp className="h-5 w-5" />
+                    Approve
+                  </Button>
+                </div>
+                <div className="flex items-center justify-center gap-4 mt-2 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <ChevronLeft className="h-3 w-3" />
+                    Swipe left to reject
+                  </span>
+                  <span className="flex items-center gap-1">
+                    Swipe right to approve
+                    <ChevronRight className="h-3 w-3" />
+                  </span>
+                </div>
+              </div>
+
+              {/* Swipe Indicators */}
+              {swipeDirection && (
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                  <div
+                    className={cn(
+                      "text-6xl font-bold p-8 rounded-2xl border-4",
+                      swipeDirection === 'left'
+                        ? "text-red-500 border-red-500 bg-red-500/10"
+                        : "text-green-500 border-green-500 bg-green-500/10"
+                    )}
+                  >
+                    {swipeDirection === 'left' ? '✗' : '✓'}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-6">
+              <Inbox className="h-16 w-16 mb-4 opacity-50" />
+              <p className="text-center">No item selected</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={() => setShowQueue(true)}
+              >
+                View Queue
+              </Button>
+            </div>
+          )}
         </div>
       </div>
+    );
+  }
+
+  // Desktop view (existing layout)
+  return (
+    <div className="h-full flex flex-col">
+      {/* Header with keyboard shortcuts */}
+      <Card className="rounded-none border-x-0 border-t-0">
+        <CardContent className="px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold">AI Review Deck</h1>
+              <p className="text-sm text-muted-foreground">
+                {queueData?.total ?? 0} AI-captured items awaiting review
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Keyboard className="h-4 w-4" />
+              <span className="hidden sm:inline">Shortcuts:</span>
+              <Badge variant="outline" className="text-xs py-0 px-1.5">A</Badge>
+              <span>Approve</span>
+              <Badge variant="outline" className="text-xs py-0 px-1.5">R</Badge>
+              <span>Reject</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Three-column layout */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Left: Review Queue (25%) */}
         <div className="w-1/4 min-w-[280px] border-r overflow-y-auto bg-muted/30">
           {isLoadingQueue ? (

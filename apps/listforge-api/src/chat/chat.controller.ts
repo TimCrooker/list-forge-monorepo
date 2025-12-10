@@ -48,9 +48,14 @@ export class ChatController {
     return {
       session: {
         id: session.id,
+        conversationType: session.conversationType,
+        title: session.title,
         itemId: session.itemId,
+        userId: session.userId,
+        organizationId: session.organizationId,
         createdAt: session.createdAt.toISOString(),
-        lastMessageAt: session.updatedAt.toISOString(),
+        updatedAt: session.updatedAt.toISOString(),
+        lastActivityAt: session.lastActivityAt.toISOString(),
       },
     };
   }

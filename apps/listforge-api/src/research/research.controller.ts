@@ -7,7 +7,6 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import {
@@ -16,13 +15,17 @@ import {
   ListResearchRunsResponse,
   GetResearchRunResponse,
   GetResearchRunEvidenceResponse,
+  GetResearchActivityLogResponse,
   GetLatestResearchResponse,
   GetResearchHistoryResponse,
+  PauseResearchResponse,
+  StopResearchResponse,
 } from '@listforge/api-types';
 import { QUEUE_AI_WORKFLOW, StartResearchRunJob } from '@listforge/queue-types';
 import { ResearchService } from './research.service';
 import { EvidenceService } from '../evidence/evidence.service';
 import { BadRequestException } from '@nestjs/common';
+import { EventsService } from '../events/events.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { OrgGuard } from '../common/guards/org.guard';
 import { ReqCtx } from '../common/decorators/req-ctx.decorator';
@@ -39,6 +42,7 @@ export class ResearchController {
   constructor(
     private readonly researchService: ResearchService,
     private readonly evidenceService: EvidenceService,
+    private readonly eventsService: EventsService,
     @InjectQueue(QUEUE_AI_WORKFLOW)
     private readonly aiWorkflowQueue: Queue,
   ) {}
@@ -48,7 +52,6 @@ export class ResearchController {
    *
    * POST /items/:id/research
    */
-  @Throttle({ medium: { limit: 5, ttl: 60000 } }) // 5 requests per minute
   @Post('items/:id/research')
   async triggerResearch(
     @ReqCtx() ctx: RequestContext,
@@ -143,6 +146,63 @@ export class ResearchController {
     };
   }
 
+  /**
+   * Get activity log for a research run (legacy format)
+   *
+   * GET /research-runs/:id/activity
+   */
+  @Get('research-runs/:id/activity')
+  async getResearchActivityLog(
+    @ReqCtx() ctx: RequestContext,
+    @Param('id') id: string,
+  ): Promise<GetResearchActivityLogResponse> {
+    // Verify research run exists and belongs to org
+    await this.researchService.getResearchRun(id, ctx.currentOrgId);
+
+    // Get activity log entries
+    const entries = await this.researchService.getActivityLog(id);
+
+    return {
+      entries: entries.map((entry) => ({
+        id: entry.id,
+        researchRunId: entry.researchRunId,
+        itemId: entry.itemId,
+        type: entry.type,
+        message: entry.message,
+        metadata: entry.metadata || undefined,
+        status: entry.status,
+        stepId: entry.stepId || undefined,
+        timestamp: entry.timestamp.toISOString(),
+        // Include new fields if present (for forward compatibility)
+        ...(entry.operationId && { operationId: entry.operationId }),
+        ...(entry.operationType && { operationType: entry.operationType }),
+        ...(entry.eventType && { eventType: entry.eventType }),
+        ...(entry.title && { title: entry.title }),
+      })),
+    };
+  }
+
+  /**
+   * Get operation events for a research run (new format for AgentActivityFeed)
+   *
+   * GET /research-runs/:id/events
+   */
+  @Get('research-runs/:id/events')
+  async getResearchOperationEvents(
+    @ReqCtx() ctx: RequestContext,
+    @Param('id') id: string,
+  ) {
+    // Verify research run exists and belongs to org
+    await this.researchService.getResearchRun(id, ctx.currentOrgId);
+
+    // Get operation events
+    const events = await this.researchService.getOperationEvents(id);
+
+    return {
+      events,
+    };
+  }
+
   // ============================================================================
   // Phase 7 Slice 1: ItemResearch Endpoints
   // ============================================================================
@@ -199,11 +259,10 @@ export class ResearchController {
   // ============================================================================
 
   /**
-   * Resume a failed or stalled research run
+   * Resume a failed, stalled, or paused research run
    *
    * POST /research-runs/:id/resume
    */
-  @Throttle({ medium: { limit: 5, ttl: 60000 } }) // 5 requests per minute
   @Post('research-runs/:id/resume')
   async resumeResearch(
     @ReqCtx() ctx: RequestContext,
@@ -220,6 +279,17 @@ export class ResearchController {
       );
     }
 
+    // Clear pause flags if paused - update status back to running
+    if (researchRun.status === 'paused') {
+      await this.researchService.updateResearchRunStatus(
+        researchRun.id,
+        'running',
+        undefined,
+        undefined,
+      );
+      await this.researchService.clearPauseFlags(researchRun.id);
+    }
+
     // Enqueue resume job
     const job: StartResearchRunJob = {
       researchRunId: researchRun.id,
@@ -232,7 +302,68 @@ export class ResearchController {
       jobId: `resume-${researchRun.id}`, // Unique job ID for resume
     });
 
+    // Emit resume event
+    this.eventsService.emitResearchResumed(researchRun.id, researchRun.itemId, ctx.currentOrgId);
+
     return {
+      researchRun: this.researchService.toDto(researchRun),
+    };
+  }
+
+  /**
+   * Pause a running research run
+   *
+   * POST /research-runs/:id/pause
+   */
+  @Post('research-runs/:id/pause')
+  async pauseResearch(
+    @ReqCtx() ctx: RequestContext,
+    @Param('id') id: string,
+  ): Promise<PauseResearchResponse> {
+    // Verify research run exists and belongs to org
+    const researchRun = await this.researchService.pauseResearchRun(id, ctx.currentOrgId);
+
+    // Emit pause event
+    this.eventsService.emitResearchPaused(researchRun.id, researchRun.itemId, ctx.currentOrgId);
+
+    return {
+      success: true,
+      researchRun: this.researchService.toDto(researchRun),
+    };
+  }
+
+  /**
+   * Stop/cancel a research run
+   *
+   * POST /research-runs/:id/stop
+   */
+  @Post('research-runs/:id/stop')
+  async stopResearch(
+    @ReqCtx() ctx: RequestContext,
+    @Param('id') id: string,
+  ): Promise<StopResearchResponse> {
+    // Verify research run exists and belongs to org
+    const researchRun = await this.researchService.stopResearchRun(id, ctx.currentOrgId);
+
+    // Try to remove from queue if it exists
+    try {
+      const jobs = await this.aiWorkflowQueue.getJobs(['active', 'waiting', 'delayed']);
+      const job = jobs.find(
+        (j) => j.data && 'researchRunId' in j.data && j.data.researchRunId === id,
+      );
+      if (job) {
+        await job.remove();
+      }
+    } catch (error) {
+      // Log but don't fail if queue removal fails
+      console.error(`Failed to remove job from queue for run ${id}:`, error);
+    }
+
+    // Emit cancel event
+    this.eventsService.emitResearchCancelled(researchRun.id, researchRun.itemId, ctx.currentOrgId);
+
+    return {
+      success: true,
       researchRun: this.researchService.toDto(researchRun),
     };
   }

@@ -1,15 +1,16 @@
-import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
-import { useState } from 'react';
+import { createFileRoute, useSearch } from '@tanstack/react-router';
+import { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import {
   useGetOrgQuery,
   useAddOrgMemberMutation,
   useUpdateOrgMemberMutation,
   useMeQuery,
+  useGetAutoPublishSettingsQuery,
+  useUpdateAutoPublishSettingsMutation,
 } from '@listforge/api-rtk';
 import { RootState } from '@/store/store';
 import {
-  ArrowLeft,
   Users,
   Plus,
   Shield,
@@ -17,11 +18,24 @@ import {
   Crown,
   UserCircle,
   MoreVertical,
+  Zap,
+  Settings,
+  ChevronDown,
 } from 'lucide-react';
+import {
+  WorkflowSettingsCard,
+  NotificationSettingsCard,
+  TeamSettingsCard,
+  InventorySettingsCard,
+  MarketplaceDefaultsCard,
+  BillingSettingsCard,
+  SecuritySettingsCard,
+} from '@/components/settings';
 import {
   Button,
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
   Badge,
@@ -43,6 +57,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   Skeleton,
+  Switch,
+  Slider,
+  AppContent,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  Separator,
 } from '@listforge/ui';
 import { showSuccess, showError } from '@/utils/toast';
 import type { OrgRole } from '@listforge/core-types';
@@ -55,7 +76,6 @@ export const Route = createFileRoute('/_authenticated/settings/organization')({
 });
 
 function OrganizationPage() {
-  const navigate = useNavigate();
   const search = useSearch({ from: '/_authenticated/settings/organization' });
   const currentOrg = useSelector((state: RootState) => state.auth.currentOrg);
   const { data: meData } = useMeQuery();
@@ -80,6 +100,52 @@ function OrganizationPage() {
     userId: string;
     role: OrgRole;
   } | null>(null);
+
+  // Auto-publish settings (Slice 7)
+  const { data: autoPublishData, isLoading: isLoadingAutoPublish } =
+    useGetAutoPublishSettingsQuery(orgId!, { skip: !orgId });
+  const [updateAutoPublish, { isLoading: isUpdatingAutoPublish }] =
+    useUpdateAutoPublishSettingsMutation();
+
+  // Local state for auto-publish settings form
+  const [autoPublishEnabled, setAutoPublishEnabled] = useState(false);
+  const [autoPublishConfidence, setAutoPublishConfidence] = useState(90);
+  const [autoPublishMinComps, setAutoPublishMinComps] = useState(5);
+  const [autoPublishMaxPrice, setAutoPublishMaxPrice] = useState<string>('');
+
+  // Sync local state with server data
+  useEffect(() => {
+    if (autoPublishData?.settings) {
+      setAutoPublishEnabled(autoPublishData.settings.enabled);
+      setAutoPublishConfidence(Math.round(autoPublishData.settings.minConfidenceScore * 100));
+      setAutoPublishMinComps(autoPublishData.settings.minValidatedComps);
+      setAutoPublishMaxPrice(
+        autoPublishData.settings.maxPriceThreshold !== null
+          ? String(autoPublishData.settings.maxPriceThreshold)
+          : ''
+      );
+    }
+  }, [autoPublishData]);
+
+  const handleSaveAutoPublishSettings = async () => {
+    if (!orgId) return;
+
+    try {
+      await updateAutoPublish({
+        orgId,
+        data: {
+          enabled: autoPublishEnabled,
+          minConfidenceScore: autoPublishConfidence / 100,
+          minValidatedComps: autoPublishMinComps,
+          maxPriceThreshold: autoPublishMaxPrice ? Number(autoPublishMaxPrice) : null,
+        },
+      }).unwrap();
+      showSuccess('Auto-publish settings saved');
+    } catch (err: any) {
+      showError(err?.data?.message || 'Failed to save auto-publish settings');
+      console.error('Failed to save auto-publish settings:', err);
+    }
+  };
 
   const handleInviteMember = async () => {
     if (!orgId || !inviteEmail.trim()) return;
@@ -152,22 +218,29 @@ function OrganizationPage() {
 
   if (!orgId) {
     return (
-      <div className="w-full max-w-4xl mx-auto space-y-6 py-6 px-6">
-        <p className="text-muted-foreground">No organization selected</p>
-        <Button onClick={() => navigate({ to: '/settings' })}>
-          Back to Settings
-        </Button>
-      </div>
+      <AppContent
+        title="Organization Settings"
+        description="No organization selected"
+        breadcrumbs={[{ label: 'Settings', href: '/settings' }]}
+      >
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">Please select an organization</p>
+          </CardContent>
+        </Card>
+      </AppContent>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="w-full max-w-4xl mx-auto space-y-6 py-6 px-6">
-        <div className="flex items-center gap-4">
-          <Skeleton className="h-10 w-32" />
-          <Skeleton className="h-8 w-48" />
-        </div>
+      <AppContent
+        title="Loading..."
+        breadcrumbs={[
+          { label: 'Settings', href: '/settings' },
+          { label: 'Organization', href: '/settings/organization' },
+        ]}
+      >
         <Card>
           <CardHeader>
             <Skeleton className="h-6 w-32" />
@@ -178,39 +251,27 @@ function OrganizationPage() {
             ))}
           </CardContent>
         </Card>
-      </div>
+      </AppContent>
     );
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-6 py-6 px-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => navigate({ to: '/settings' })}
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Settings
-        </Button>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">{data?.org.name}</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage organization members and roles
-          </p>
-        </div>
-        {isOwnerOrAdmin && (
+    <AppContent
+      title={data?.org.name || 'Organization'}
+      description="Manage organization members and roles"
+      actions={
+        isOwnerOrAdmin && (
           <Button onClick={() => setIsInviteOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Invite Member
           </Button>
-        )}
-      </div>
-
+        )
+      }
+      breadcrumbs={[
+        { label: 'Settings', href: '/settings' },
+        { label: data?.org.name || 'Organization', href: '/settings/organization' },
+      ]}
+    >
       {/* Members List */}
       <Card>
         <CardHeader>
@@ -277,6 +338,173 @@ function OrganizationPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Auto-Publish Settings (Slice 7) */}
+      {isOwnerOrAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5" />
+              Auto-Publish Settings
+            </CardTitle>
+            <CardDescription>
+              Automatically publish high-confidence items after research completes.
+              Items must meet all criteria to be auto-published.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {isLoadingAutoPublish ? (
+              <div className="space-y-4">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ) : (
+              <>
+                {/* Enable/Disable Toggle */}
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="auto-publish-enabled" className="text-base">
+                      Enable Auto-Publish
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      Automatically publish items that meet all criteria below
+                    </p>
+                  </div>
+                  <Switch
+                    id="auto-publish-enabled"
+                    checked={autoPublishEnabled}
+                    onCheckedChange={setAutoPublishEnabled}
+                  />
+                </div>
+
+                <div className="border-t pt-4 space-y-4">
+                  {/* Confidence Threshold */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="confidence-threshold">
+                        Minimum Confidence
+                      </Label>
+                      <span className="text-sm font-medium">
+                        {autoPublishConfidence}%
+                      </span>
+                    </div>
+                    <Slider
+                      id="confidence-threshold"
+                      min={70}
+                      max={100}
+                      step={5}
+                      value={[autoPublishConfidence]}
+                      onValueChange={([value]) => setAutoPublishConfidence(value)}
+                      disabled={!autoPublishEnabled}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Items must have at least this confidence score to auto-publish
+                    </p>
+                  </div>
+
+                  {/* Minimum Comps */}
+                  <div className="space-y-2">
+                    <Label htmlFor="min-comps">Minimum Validated Comps</Label>
+                    <Input
+                      id="min-comps"
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={autoPublishMinComps}
+                      onChange={(e) =>
+                        setAutoPublishMinComps(Number(e.target.value) || 1)
+                      }
+                      disabled={!autoPublishEnabled}
+                      className="w-32"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Number of validated comparable listings required
+                    </p>
+                  </div>
+
+                  {/* Max Price Threshold */}
+                  <div className="space-y-2">
+                    <Label htmlFor="max-price">
+                      Maximum Price Threshold (Optional)
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">$</span>
+                      <Input
+                        id="max-price"
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        value={autoPublishMaxPrice}
+                        onChange={(e) => setAutoPublishMaxPrice(e.target.value)}
+                        disabled={!autoPublishEnabled}
+                        placeholder="No limit"
+                        className="w-32"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Leave empty for no price limit. Items above this price will
+                      require manual review.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Save Button */}
+                <div className="flex justify-end pt-4 border-t">
+                  <Button
+                    onClick={handleSaveAutoPublishSettings}
+                    disabled={isUpdatingAutoPublish}
+                  >
+                    {isUpdatingAutoPublish ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Settings className="mr-2 h-4 w-4" />
+                        Save Settings
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Additional Settings Sections (Owner/Admin Only) */}
+      {isOwnerOrAdmin && orgId && (
+        <>
+          <Separator className="my-6" />
+          <h2 className="text-lg font-semibold mb-4">Organization Settings</h2>
+
+          <div className="space-y-6">
+            {/* Workflow Settings */}
+            <WorkflowSettingsCard orgId={orgId} />
+
+            {/* Notification Settings */}
+            <NotificationSettingsCard orgId={orgId} />
+
+            {/* Team Settings */}
+            <TeamSettingsCard orgId={orgId} />
+
+            {/* Inventory Settings */}
+            <InventorySettingsCard orgId={orgId} />
+
+            {/* Marketplace Defaults */}
+            <MarketplaceDefaultsCard orgId={orgId} />
+
+            {/* Billing Settings */}
+            <BillingSettingsCard orgId={orgId} />
+
+            {/* Security Settings (Admin/Owner only) */}
+            <SecuritySettingsCard orgId={orgId} isAdmin={isOwnerOrAdmin} />
+          </div>
+        </>
+      )}
 
       {/* Invite Member Dialog */}
       <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
@@ -387,6 +615,6 @@ function OrganizationPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AppContent>
   );
 }

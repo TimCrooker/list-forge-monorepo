@@ -1,11 +1,14 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { Item } from '../../items/entities/item.entity';
 import { Organization } from '../../organizations/entities/organization.entity';
 import { ItemResearchRun } from '../../research/entities/item-research-run.entity';
 import { EvidenceService } from '../../evidence/evidence.service';
 import { EventsService } from '../../events/events.service';
+import { ResearchService } from '../../research/research.service';
 import {
   MarketplaceSoldEvidence,
   MarketplaceActiveEvidence,
@@ -17,18 +20,20 @@ import {
 } from '@listforge/core-types';
 import { ItemSummaryDto } from '@listforge/api-types';
 import { CompResult } from '@listforge/marketplace-adapters';
-import { ListingAgentService } from '../services/listing-agent.service';
+import { OpenAIService } from '../services/openai.service';
+import { QUEUE_AI_WORKFLOW, StartResearchRunJob } from '@listforge/queue-types';
 
 /**
- * Item Intake Workflow - Phase 6
+ * Item Intake Workflow - Phase 6 + Slice 1
  *
  * AI workflow for processing AI-captured Items.
  * Phase 6 Sub-Phase 8: Updated to use ItemResearchRun instead of WorkflowRun.
+ * Slice 1: Fast intake with async deep research.
  */
 @Injectable()
 export class ItemIntakeWorkflow {
   private readonly logger = new Logger(ItemIntakeWorkflow.name);
-  private readonly PIPELINE_VERSION = 'item-intake-v1.0';
+  private readonly PIPELINE_VERSION = 'item-intake-v2.0-fast';
 
   constructor(
     @InjectRepository(Item)
@@ -39,7 +44,10 @@ export class ItemIntakeWorkflow {
     private orgRepo: Repository<Organization>,
     private evidenceService: EvidenceService,
     private eventsService: EventsService,
-    private listingAgentService: ListingAgentService,
+    private openaiService: OpenAIService,
+    private researchService: ResearchService,
+    @InjectQueue(QUEUE_AI_WORKFLOW)
+    private aiWorkflowQueue: Queue,
   ) {}
 
   async execute(
@@ -48,6 +56,12 @@ export class ItemIntakeWorkflow {
     userId: string,
     researchRunId?: string,
   ): Promise<void> {
+    console.log('[intake] Starting intake workflow');
+    console.log('[intake] Item ID:', itemId);
+    console.log('[intake] Organization ID:', orgId);
+    console.log('[intake] User ID:', userId);
+    console.log('[intake] Research Run ID:', researchRunId || 'new');
+
     // Get or create research run
     let researchRun: ItemResearchRun;
     if (researchRunId) {
@@ -57,6 +71,7 @@ export class ItemIntakeWorkflow {
       if (!researchRun) {
         throw new NotFoundException(`Research run ${researchRunId} not found`);
       }
+      console.log('[intake] Using existing research run:', researchRunId);
     } else {
       // Create new research run if not provided
       researchRun = this.researchRunRepo.create({
@@ -67,6 +82,7 @@ export class ItemIntakeWorkflow {
         startedAt: new Date(),
       });
       researchRun = await this.researchRunRepo.save(researchRun);
+      console.log('[intake] Created new research run:', researchRun.id);
     }
 
     // Update status to running
@@ -76,6 +92,7 @@ export class ItemIntakeWorkflow {
 
     try {
       // Step 1: Load item
+      console.log('[intake] Loading item');
       const item = await this.itemRepo.findOne({
         where: { id: itemId, organizationId: orgId },
       });
@@ -84,9 +101,17 @@ export class ItemIntakeWorkflow {
         throw new NotFoundException(`Item not found: ${itemId}`);
       }
 
+      console.log('[intake] Item loaded:', {
+        title: item.title,
+        hasDescription: !!item.description,
+        mediaCount: item.media?.length || 0,
+        hasTitleHint: !!item.userTitleHint,
+      });
+
       // Load organization to get auto-approval settings
       const org = await this.orgRepo.findOne({ where: { id: orgId } });
       const autoApprovalSettings = org?.autoApprovalSettings || DEFAULT_AUTO_APPROVAL_SETTINGS;
+      console.log('[intake] Auto-approval settings:', autoApprovalSettings);
 
       // Update AI metadata
       item.aiPipelineVersion = this.PIPELINE_VERSION;
@@ -98,107 +123,102 @@ export class ItemIntakeWorkflow {
 
       // Validate media exists
       if (!item.media || item.media.length === 0) {
+        console.error('[intake] No media found for item');
         throw new Error('No photos available for analysis');
       }
 
       // Get photo URLs from media
       const photoUrls = item.media.map((m) => m.url);
+      console.log('[intake] Photo URLs prepared:', photoUrls.length);
 
-      // Run AI agent
-      const agentResult = await this.listingAgentService.run({
-        itemId,
-        orgId,
-        userId,
+      // SLICE 1: Fast Intake - Use gpt-4o-mini for quick placeholder data
+      console.log('[intake] Starting fast intake analysis');
+      const fastIntakeStart = Date.now();
+      const fastResult = await this.openaiService.fastIntakeAnalysis(
         photoUrls,
-        userHint: item.userTitleHint,
-        autoApprovalSettings,
-      });
-
-      // Create evidence bundle linked to this research run
-      const evidenceBundle = await this.evidenceService.createBundleForResearchRun(
-        itemId,
-        researchRun.id,
+        item.userTitleHint || undefined,
       );
+      const fastIntakeDuration = Date.now() - fastIntakeStart;
+      console.log('[intake] Fast intake completed in', fastIntakeDuration, 'ms');
 
-      // Map AI results to Item fields
-      item.title = agentResult.listingContent.title;
-      item.description = agentResult.listingContent.description;
-      item.condition = agentResult.extracted.condition as any;
+      // Map fast intake results to Item fields (placeholder data)
+      console.log('[intake] Mapping fast intake results to item fields');
+      // fastResult.description contains the provisional title from fast intake
+      const provisionalTitle =
+        fastResult.description ||
+        (fastResult.brand && fastResult.model
+          ? `${fastResult.brand} ${fastResult.model}`
+          : fastResult.brand || fastResult.model || fastResult.category || 'Product Item');
+      item.title = provisionalTitle;
+      item.condition = fastResult.condition as any;
+      item.categoryPath = fastResult.category ? [fastResult.category] : null;
+      item.categoryId = fastResult.category || null;
 
-      // Map category
-      item.categoryPath = agentResult.extracted.category ? [agentResult.extracted.category] : null;
-      item.categoryId = agentResult.extracted.category || null;
+      // Map basic attributes from fast intake
+      if (fastResult.brand) {
+        item.attributes.push({
+          key: 'Brand',
+          value: fastResult.brand,
+          source: 'ai',
+          confidence: 0.7,
+        });
+      }
+      if (fastResult.model) {
+        item.attributes.push({
+          key: 'Model',
+          value: fastResult.model,
+          source: 'ai',
+          confidence: 0.7,
+        });
+      }
 
-      // Map attributes from agent result
-      item.attributes = agentResult.attributes.map(attr => ({
-        key: attr.key,
-        value: attr.value,
-        source: attr.source as 'ai' | 'user' | 'imported',
-        confidence: attr.confidence,
-      }));
-
-      // Map pricing
-      item.defaultPrice = agentResult.pricing.suggested;
-      item.priceMin = agentResult.pricing.min;
-      item.priceMax = agentResult.pricing.max;
-      item.pricingStrategy = agentResult.pricing.strategy;
-
-      // Map shipping
-      item.shippingType = agentResult.shipping.type;
-      item.flatRateAmount = agentResult.shipping.flatRateAmount;
-
-      // Set AI confidence
-      item.aiConfidenceScore = agentResult.confidence;
-
-      // Keep status as draft/pending (review happens in Sub-Phase 3)
+      // Set AI metadata
+      item.aiConfidenceScore = 0.5; // Low confidence for placeholder
       item.lifecycleStatus = 'draft';
-      item.aiReviewState = 'pending';
+      item.aiReviewState = 'researching'; // New state: fast intake done, deep research queued
 
-      // Persist evidence from agent outputs
-      await this.persistCompsAsEvidence(
-        evidenceBundle.id,
-        agentResult.soldComps,
-        agentResult.activeComps,
-      );
-      await this.addPricingSummaryEvidence(
-        evidenceBundle.id,
-        agentResult.pricing.suggested,
-        agentResult.pricing.min,
-        agentResult.pricing.max,
-        agentResult.researchSnapshot,
-      );
-      await this.addContentRationaleEvidence(
-        evidenceBundle.id,
-        agentResult.extracted,
-        agentResult.listingContent,
-      );
-
-      // Save final item
+      // Save item with placeholder data
+      console.log('[intake] Saving item with placeholder data');
       await this.itemRepo.save(item);
 
-      // Emit item updated event (AI processing complete)
+      // Emit item updated event (fast intake complete)
       this.eventsService.emitItemUpdated(this.mapToDto(item));
 
-      // Emit item review queue changed (item added to review queue)
-      const summaryDto = this.mapToSummaryDto(item);
-      this.eventsService.emitItemReviewQueueChanged(
-        orgId,
-        'added',
-        item.id,
-        summaryDto,
-      );
-
-      // Update research run with summary and mark as success
-      const summary = `AI intake completed. Title: ${item.title}. Price: $${item.defaultPrice}. Category: ${item.categoryId}. Confidence: ${item.aiConfidenceScore || 0}`;
+      // Update research run status
       researchRun.status = 'success';
       researchRun.completedAt = new Date();
-      researchRun.summary = summary;
+      researchRun.summary = `Fast intake completed. Placeholder title: ${item.title}. Deep research queued.`;
       await this.researchRunRepo.save(researchRun);
 
-      this.logger.log(`Successfully completed item intake for item ${itemId}`);
+      // SLICE 1: Queue deep research job
+      console.log('[intake] Queueing deep research job');
+      const deepResearchRun = await this.researchService.createResearchRun(
+        itemId,
+        orgId,
+        'initial_intake', // Keep same runType for tracking
+      );
+
+      const researchJob: StartResearchRunJob = {
+        researchRunId: deepResearchRun.id,
+        itemId,
+        runType: 'initial_intake',
+        orgId,
+        userId,
+      };
+
+      await this.aiWorkflowQueue.add('start-research-run', researchJob);
+      console.log('[intake] Deep research job queued:', deepResearchRun.id);
+
+      console.log('[intake] Fast intake workflow completed successfully');
+      this.logger.log(`Successfully completed fast intake for item ${itemId}, deep research queued`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : undefined;
+
+      console.error('[intake] Workflow failed:', errorMessage);
+      if (errorStack) {
+        console.error('[intake] Stack trace:', errorStack);
+      }
 
       this.logger.error(
         `Workflow failed for item ${itemId}: ${errorMessage}`,

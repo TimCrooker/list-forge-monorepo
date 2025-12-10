@@ -1,10 +1,12 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { MarketplaceAccount, MarketplaceAccountStatus } from '../entities/marketplace-account.entity';
 import { EncryptionService } from './encryption.service';
+import { RevokeTokenService } from './revoke-token.service';
+import { MarketplaceAuditService } from './marketplace-audit.service';
 import { createAdapter, MarketplaceCredentials } from '@listforge/marketplace-adapters';
 import { MarketplaceAdapter } from '@listforge/marketplace-adapters';
 
@@ -34,11 +36,15 @@ const STATE_VALIDITY_MS = 15 * 60 * 1000;
 
 @Injectable()
 export class MarketplaceAccountService {
+  private readonly logger = new Logger(MarketplaceAccountService.name);
+
   constructor(
     @InjectRepository(MarketplaceAccount)
     private accountRepo: Repository<MarketplaceAccount>,
     private encryptionService: EncryptionService,
     private configService: ConfigService,
+    private revokeTokenService: RevokeTokenService,
+    private auditService: MarketplaceAuditService,
   ) {}
 
   /**
@@ -252,6 +258,8 @@ export class MarketplaceAccountService {
       ? new Date(Date.now() + tokenData.expires_in * 1000)
       : null;
 
+    let savedAccount: MarketplaceAccount;
+
     if (existingAccount) {
       existingAccount.accessToken = this.encryptionService.encrypt(tokenData.access_token);
       existingAccount.refreshToken = tokenData.refresh_token
@@ -260,23 +268,36 @@ export class MarketplaceAccountService {
       existingAccount.tokenExpiresAt = expiresAt;
       existingAccount.status = 'active';
       existingAccount.userId = userId;
-      return await this.accountRepo.save(existingAccount);
+      savedAccount = await this.accountRepo.save(existingAccount);
+    } else {
+      const account = this.accountRepo.create({
+        orgId,
+        userId,
+        marketplace: 'EBAY',
+        accessToken: this.encryptionService.encrypt(tokenData.access_token),
+        refreshToken: tokenData.refresh_token
+          ? this.encryptionService.encrypt(tokenData.refresh_token)
+          : null,
+        tokenExpiresAt: expiresAt,
+        remoteAccountId,
+        status: 'active',
+      });
+
+      savedAccount = await this.accountRepo.save(account);
     }
 
-    const account = this.accountRepo.create({
+    // Audit log: Account connected
+    await this.auditService.logAccountConnected({
       orgId,
       userId,
+      accountId: savedAccount.id,
       marketplace: 'EBAY',
-      accessToken: this.encryptionService.encrypt(tokenData.access_token),
-      refreshToken: tokenData.refresh_token
-        ? this.encryptionService.encrypt(tokenData.refresh_token)
-        : null,
-      tokenExpiresAt: expiresAt,
-      remoteAccountId,
-      status: 'active',
+      remoteAccountId: remoteAccountId || undefined,
+    }).catch(err => {
+      this.logger.error('Failed to log account connection audit', err);
     });
 
-    return await this.accountRepo.save(account);
+    return savedAccount;
   }
 
   /**
@@ -501,6 +522,8 @@ export class MarketplaceAccountService {
       ? new Date(Date.now() + tokenData.expires_in * 1000)
       : null;
 
+    let savedAccount: MarketplaceAccount;
+
     if (existingAccount) {
       existingAccount.accessToken = this.encryptionService.encrypt(tokenData.access_token);
       existingAccount.refreshToken = tokenData.refresh_token
@@ -509,31 +532,45 @@ export class MarketplaceAccountService {
       existingAccount.tokenExpiresAt = expiresAt;
       existingAccount.status = 'active';
       existingAccount.userId = userId;
-      return await this.accountRepo.save(existingAccount);
+      savedAccount = await this.accountRepo.save(existingAccount);
+    } else {
+      const account = this.accountRepo.create({
+        orgId,
+        userId,
+        marketplace: 'AMAZON',
+        accessToken: this.encryptionService.encrypt(tokenData.access_token),
+        refreshToken: tokenData.refresh_token
+          ? this.encryptionService.encrypt(tokenData.refresh_token)
+          : null,
+        tokenExpiresAt: expiresAt,
+        remoteAccountId: sellingPartnerId,
+        status: 'active',
+      });
+
+      savedAccount = await this.accountRepo.save(account);
     }
 
-    const account = this.accountRepo.create({
+    // Audit log: Account connected
+    await this.auditService.logAccountConnected({
       orgId,
       userId,
+      accountId: savedAccount.id,
       marketplace: 'AMAZON',
-      accessToken: this.encryptionService.encrypt(tokenData.access_token),
-      refreshToken: tokenData.refresh_token
-        ? this.encryptionService.encrypt(tokenData.refresh_token)
-        : null,
-      tokenExpiresAt: expiresAt,
       remoteAccountId: sellingPartnerId,
-      status: 'active',
+    }).catch(err => {
+      this.logger.error('Failed to log account connection audit', err);
     });
 
-    return await this.accountRepo.save(account);
+    return savedAccount;
   }
 
   /**
-   * Manually refresh tokens
+   * Manually refresh tokens for an account (with org validation)
+   * Supports both eBay and Amazon marketplaces
    */
-  async refreshTokens(accountId: string): Promise<void> {
+  async refreshTokens(accountId: string, orgId: string): Promise<void> {
     const account = await this.accountRepo.findOne({
-      where: { id: accountId },
+      where: { id: accountId, orgId },
     });
 
     if (!account) {
@@ -541,19 +578,55 @@ export class MarketplaceAccountService {
     }
 
     if (!account.refreshToken) {
-      throw new BadRequestException('No refresh token available');
+      throw new BadRequestException(
+        'No refresh token available. Please reconnect your account.'
+      );
     }
 
+    // Delegate to marketplace-specific refresh method
+    if (account.marketplace === 'EBAY') {
+      await this.refreshEbayTokens(account);
+    } else if (account.marketplace === 'AMAZON') {
+      await this.refreshAmazonTokens(account);
+    } else {
+      throw new BadRequestException(
+        `Token refresh not supported for marketplace: ${account.marketplace}`
+      );
+    }
+
+    this.logger.log(`Successfully refreshed tokens for account ${accountId} (${account.marketplace})`);
+
+    // Audit log: Token refreshed (manual)
+    await this.auditService.logTokenRefreshed({
+      orgId,
+      userId: orgId, // Manual refresh is user-initiated (userId should be passed in, but using orgId for now)
+      accountId,
+      marketplace: account.marketplace,
+      automatic: false,
+    }).catch(err => {
+      this.logger.error('Failed to log token refresh audit', err);
+    });
+  }
+
+  /**
+   * Refresh eBay OAuth tokens
+   * @private
+   */
+  private async refreshEbayTokens(account: MarketplaceAccount): Promise<void> {
     const appId = this.configService.get<string>('EBAY_APP_ID');
     const certId = this.configService.get<string>('EBAY_CERT_ID');
     const sandbox = this.configService.get<string>('EBAY_SANDBOX') === 'true';
+
+    if (!appId || !certId) {
+      throw new BadRequestException('eBay credentials not configured');
+    }
 
     const tokenUrl = sandbox
       ? 'https://api.sandbox.ebay.com/identity/v1/oauth2/token'
       : 'https://api.ebay.com/identity/v1/oauth2/token';
 
     const credentials = Buffer.from(`${appId}:${certId}`).toString('base64');
-    const refreshToken = this.encryptionService.decrypt(account.refreshToken);
+    const refreshToken = this.encryptionService.decrypt(account.refreshToken!);
 
     const response = await fetch(tokenUrl, {
       method: 'POST',
@@ -568,9 +641,16 @@ export class MarketplaceAccountService {
     });
 
     if (!response.ok) {
+      const error = await response.text();
+      this.logger.error(`eBay token refresh failed for account ${account.id}: ${error}`);
+
+      // Mark as expired on refresh failure
       account.status = 'expired';
       await this.accountRepo.save(account);
-      throw new BadRequestException('Failed to refresh token');
+
+      throw new BadRequestException(
+        'Failed to refresh eBay token. The refresh token may have expired. Please reconnect your account.'
+      );
     }
 
     const tokenData = await response.json() as EbayTokenResponse;
@@ -578,7 +658,67 @@ export class MarketplaceAccountService {
       ? new Date(Date.now() + tokenData.expires_in * 1000)
       : null;
 
-    await this.updateTokens(accountId, {
+    await this.updateTokens(account.id, {
+      accessToken: tokenData.access_token,
+      refreshToken: tokenData.refresh_token || refreshToken,
+      tokenExpiresAt: expiresAt,
+    });
+  }
+
+  /**
+   * Refresh Amazon SP-API OAuth tokens
+   * @private
+   */
+  private async refreshAmazonTokens(account: MarketplaceAccount): Promise<void> {
+    const clientId = this.configService.get<string>('AMAZON_CLIENT_ID');
+    const clientSecret = this.configService.get<string>('AMAZON_CLIENT_SECRET');
+
+    if (!clientId || !clientSecret) {
+      throw new BadRequestException('Amazon credentials not configured');
+    }
+
+    const tokenUrl = 'https://api.amazon.com/auth/o2/token';
+    const refreshToken = this.encryptionService.decrypt(account.refreshToken!);
+
+    const response = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: clientId,
+        client_secret: clientSecret,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      this.logger.error(`Amazon token refresh failed for account ${account.id}: ${error}`);
+
+      // Mark as expired on refresh failure
+      account.status = 'expired';
+      await this.accountRepo.save(account);
+
+      throw new BadRequestException(
+        'Failed to refresh Amazon token. The refresh token may have expired. Please reconnect your account.'
+      );
+    }
+
+    interface AmazonTokenResponse {
+      access_token: string;
+      refresh_token?: string;
+      expires_in?: number;
+      token_type?: string;
+    }
+
+    const tokenData = await response.json() as AmazonTokenResponse;
+    const expiresAt = tokenData.expires_in
+      ? new Date(Date.now() + tokenData.expires_in * 1000)
+      : null;
+
+    await this.updateTokens(account.id, {
       accessToken: tokenData.access_token,
       refreshToken: tokenData.refresh_token || refreshToken,
       tokenExpiresAt: expiresAt,
@@ -597,6 +737,11 @@ export class MarketplaceAccountService {
 
   /**
    * Revoke/disconnect a marketplace account
+   *
+   * This method attempts to revoke the token remotely at the marketplace API,
+   * then marks the account as revoked locally. Uses graceful degradation:
+   * if remote revocation fails, the account is still marked as revoked locally
+   * to prevent reuse within our system.
    */
   async revokeAccount(accountId: string, orgId: string): Promise<void> {
     const account = await this.accountRepo.findOne({
@@ -607,8 +752,51 @@ export class MarketplaceAccountService {
       throw new NotFoundException('Marketplace account not found');
     }
 
+    // Attempt remote token revocation (if token exists)
+    if (account.accessToken) {
+      try {
+        // Decrypt the access token for revocation
+        const decryptedAccessToken = this.encryptionService.decrypt(account.accessToken);
+
+        // Attempt to revoke token at marketplace API
+        const result = await this.revokeTokenService.revokeToken(
+          account.marketplace,
+          decryptedAccessToken,
+        );
+
+        if (result.success) {
+          this.logger.log(`Successfully revoked ${account.marketplace} token remotely for account ${accountId}`);
+        } else {
+          this.logger.warn(
+            `Failed to revoke ${account.marketplace} token remotely for account ${accountId}: ${result.error}. Proceeding with local revocation.`,
+          );
+        }
+      } catch (error) {
+        // Log error but don't throw - graceful degradation
+        this.logger.error(
+          `Error during remote token revocation for account ${accountId}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
+    }
+
+    // Mark account as revoked locally (always do this, regardless of remote success)
     account.status = 'revoked';
     await this.accountRepo.save(account);
+
+    this.logger.log(`Account ${accountId} marked as revoked locally`);
+
+    // Audit log: Account disconnected
+    const remoteRevoked = account.accessToken ? true : false; // If we had a token to revoke
+    await this.auditService.logAccountDisconnected({
+      orgId,
+      userId: orgId, // User ID should be passed in from controller, but using orgId for now
+      accountId,
+      marketplace: account.marketplace,
+      remoteRevoked,
+    }).catch(err => {
+      this.logger.error('Failed to log account disconnection audit', err);
+    });
   }
 
   /**

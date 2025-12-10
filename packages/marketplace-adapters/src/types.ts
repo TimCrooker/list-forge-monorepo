@@ -73,6 +73,12 @@ export interface SearchCompsParams {
 
   /** Maximum number of results */
   limit?: number;
+
+  /** Base64-encoded image for image search */
+  imageBase64?: string;
+
+  /** Image URL to fetch and search by */
+  imageUrl?: string;
 }
 
 /**
@@ -233,5 +239,119 @@ export interface MarketplaceAdapter {
    * Parse webhook payload from marketplace
    */
   parseWebhook(payload: unknown, headers: Record<string, string>): MarketplaceWebhookEvent | null;
+}
+
+// ============================================================================
+// Amazon-Specific Types for Research
+// ============================================================================
+
+/**
+ * Amazon product details from Catalog Items API
+ */
+export interface AmazonProductDetails {
+  asin: string;
+  title: string;
+  brand?: string;
+  manufacturer?: string;
+  model?: string;
+  color?: string;
+  size?: string;
+  productGroup?: string;
+  category?: string;
+  categoryPath?: string[];
+  imageUrl?: string;
+  imageUrls?: string[];
+  salesRank?: number;
+  salesRankCategory?: string;
+  bulletPoints?: string[];
+  features?: string[];
+  dimensions?: {
+    height?: { value: number; unit: string };
+    width?: { value: number; unit: string };
+    length?: { value: number; unit: string };
+    weight?: { value: number; unit: string };
+  };
+  identifiers?: {
+    upc?: string;
+    ean?: string;
+    isbn?: string;
+  };
+  lastUpdate: string;
+}
+
+/**
+ * Amazon pricing data from Product Pricing API
+ */
+export interface AmazonPricingData {
+  asin: string;
+  /** Buy box price (the price shown on product page) */
+  buyBoxPrice?: number;
+  /** Lowest new price from third-party sellers */
+  newPrice?: number;
+  /** Lowest used price */
+  usedPrice?: number;
+  /** Lowest FBA (Fulfilled by Amazon) price */
+  fbaPrice?: number;
+  /** Lowest FBM (Fulfilled by Merchant) price */
+  fbmPrice?: number;
+  /** Amazon's own price if they sell it */
+  amazonPrice?: number;
+  /** List price / MSRP */
+  listPrice?: number;
+  /** Number of new offers */
+  newOfferCount?: number;
+  /** Number of used offers */
+  usedOfferCount?: number;
+  currency: string;
+  lastUpdate: string;
+}
+
+/**
+ * Parameters for Amazon UPC/identifier lookup
+ */
+export interface AmazonIdentifierLookupParams {
+  /** UPC code */
+  upc?: string;
+  /** EAN code */
+  ean?: string;
+  /** ISBN for books */
+  isbn?: string;
+  /** ASIN if known */
+  asin?: string;
+}
+
+/**
+ * Parameters for enhanced Amazon product search
+ */
+export interface AmazonSearchParams {
+  /** Search keywords */
+  keywords?: string;
+  /** Brand filter */
+  brand?: string;
+  /** Category/browse node filter */
+  browseNode?: string;
+  /** Maximum results */
+  limit?: number;
+  /** Include sales rank data */
+  includeSalesRank?: boolean;
+}
+
+/**
+ * Amazon product match from UPC/identifier lookup
+ */
+export interface AmazonProductMatch {
+  asin: string;
+  title: string;
+  brand?: string;
+  category?: string;
+  imageUrl?: string;
+  salesRank?: number;
+  price?: number;
+  /** Confidence score 0-1 */
+  confidence: number;
+  /** Source of the match */
+  source: 'catalog-api' | 'identifier-lookup';
+  /** Matched identifier type */
+  matchedBy?: 'upc' | 'ean' | 'isbn' | 'keywords';
 }
 

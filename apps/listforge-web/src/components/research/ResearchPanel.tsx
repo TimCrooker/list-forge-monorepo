@@ -1,18 +1,33 @@
-import { useGetLatestResearchQuery, useGetResearchRunQuery, useResearchProgress } from '@listforge/api-rtk';
+import { useGetLatestResearchQuery, useGetResearchRunQuery, useGetItemQuery, useUpdateItemMutation, useResearchProgress, useResearchActivityFeed } from '@listforge/api-rtk';
 import {
   Card,
   CardContent,
   Button,
   Badge,
+  LoadingButton,
+  EmptyState,
 } from '@listforge/ui';
-import { Loader2, FlaskConical, RefreshCw, Clock, Tag, Store } from 'lucide-react';
+import { showSuccess, showError } from '@/utils/toast';
+import { FlaskConical, RefreshCw, Clock, Tag, Store } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { PriceBandsCard } from './PriceBandsCard';
 import { DemandSignalsCard } from './DemandSignalsCard';
 import { MissingInfoCard } from './MissingInfoCard';
-import { ResearchProgress } from './ResearchProgress';
+import { ResearchChecklist } from './ResearchChecklist';
+import { ResearchActivityFeed } from './ResearchActivityFeed';
 import { ResearchPanelSkeleton } from './ResearchPanelSkeleton';
+import { ResearchControlButtons } from './ResearchControlButtons';
+import { ResearchRunStatusBadge } from './ResearchRunStatusBadge';
 import { ComponentErrorBoundary } from '../common/ComponentErrorBoundary';
+// Slice 4: Marketplace Schema Awareness
+import { CategoryPathCard } from './CategoryPathCard';
+import { FieldRequirementsCard } from './FieldRequirementsCard';
+import { ListingReadinessCard } from './ListingReadinessCard';
+// Slice 5: Pricing Strategies
+import { PricingStrategySelector } from './PricingStrategySelector';
+// Slice 6: Full Listing Assembly
+import { ListingPreview } from './ListingPreview';
+import type { PricingStrategyOption } from '@listforge/core-types';
 
 interface ResearchPanelProps {
   itemId: string;
@@ -20,6 +35,7 @@ interface ResearchPanelProps {
   isResearchRunning?: boolean;
   activeRunId?: string | null;
   onResearchComplete?: () => void;
+  onPriceUpdated?: () => void; // Slice 5: Callback when price strategy is applied
 }
 
 function formatTimeAgo(dateString: string): string {
@@ -43,6 +59,7 @@ export function ResearchPanel({
   isResearchRunning = false,
   activeRunId,
   onResearchComplete,
+  onPriceUpdated, // Slice 5
 }: ResearchPanelProps) {
   const {
     data: researchResponse,
@@ -51,8 +68,15 @@ export function ResearchPanel({
     isFetching,
   } = useGetLatestResearchQuery(itemId);
 
-  // Use WebSocket-based progress tracking
+  // Slice 5: Get current item to know selected pricing strategy
+  const { data: itemResponse } = useGetItemQuery(itemId);
+  const [updateItem, { isLoading: isUpdatingPrice }] = useUpdateItemMutation();
+
+  // Use WebSocket-based progress tracking (old system for backward compatibility)
   const progress = useResearchProgress(activeRunId ?? null);
+
+  // Use new activity feed system
+  const { operationEvents, checklistStatus } = useResearchActivityFeed(activeRunId ?? null);
 
   // Fallback polling: Use RTK Query polling if WebSocket progress hasn't updated in 5 seconds
   // This provides graceful degradation if WebSocket fails
@@ -96,6 +120,29 @@ export function ResearchPanel({
     }
   }, [runStatus?.status, onResearchComplete, refetch]);
 
+  // Slice 5: Handle pricing strategy selection
+  const handleSelectStrategy = async (strategy: PricingStrategyOption) => {
+    try {
+      await updateItem({
+        id: itemId,
+        data: {
+          defaultPrice: strategy.price,
+          pricingStrategy: strategy.strategy,
+        },
+      }).unwrap();
+
+      const formattedPrice = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: strategy.currency,
+      }).format(strategy.price);
+      showSuccess('Price Updated', `Applied ${strategy.label} pricing: ${formattedPrice}`);
+
+      onPriceUpdated?.();
+    } catch (error) {
+      showError('Failed to update price', error instanceof Error ? error.message : 'An error occurred');
+    }
+  };
+
   if (isLoading) {
     return (
       <ComponentErrorBoundary context="research">
@@ -107,19 +154,41 @@ export function ResearchPanel({
   // Show loading/progress state when research is running
   if (isResearchRunning || (activeRunId && (progress.status === 'running' || runStatus?.status === 'running'))) {
     return (
-      <div className="space-y-4">
-        <Card>
-          <CardContent className="py-6">
-            <div className="text-center mb-4">
-              <h3 className="text-lg font-semibold mb-2">Research in Progress</h3>
-              <p className="text-sm text-muted-foreground">
-                Analyzing your item and searching for comparable listings...
-              </p>
-            </div>
-            <ResearchProgress researchRunId={activeRunId ?? null} />
-          </CardContent>
-        </Card>
-      </div>
+      <ComponentErrorBoundary context="research">
+        <div className="flex gap-4 h-full min-h-0 w-full overflow-hidden">
+          {/* Left sidebar - Checklist */}
+          <ResearchChecklist steps={checklistStatus} className="w-56 shrink-0" />
+
+          {/* Right panel - Activity Feed */}
+          <Card className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
+            <CardContent className="p-0 flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
+              <div className="p-4 border-b shrink-0 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold">Research Activity</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Live stream of research activities
+                  </p>
+                </div>
+                {activeRunId && runStatus && (
+                  <div className="flex items-center gap-2">
+                    <ResearchRunStatusBadge status={runStatus.status} size="sm" />
+                    <ResearchControlButtons
+                      researchRunId={activeRunId}
+                      status={runStatus.status}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-h-0 min-w-0 h-full overflow-hidden">
+                <ResearchActivityFeed
+                  operationEvents={operationEvents}
+                  isLive={true}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </ComponentErrorBoundary>
     );
   }
 
@@ -130,7 +199,18 @@ export function ResearchPanel({
       <Card>
         <CardContent className="py-12">
           <div className="text-center">
-            <h3 className="text-lg font-semibold mb-2 text-destructive">Research Failed</h3>
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <h3 className="text-lg font-semibold text-destructive">Research Failed</h3>
+              {runStatus && (
+                <>
+                  <ResearchRunStatusBadge status={runStatus.status} size="sm" />
+                  <ResearchControlButtons
+                    researchRunId={activeRunId}
+                    status={runStatus.status}
+                  />
+                </>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground mb-6">{errorMessage}</p>
             {onTriggerResearch && (
               <Button onClick={onTriggerResearch}>
@@ -144,34 +224,71 @@ export function ResearchPanel({
     );
   }
 
+  // Show paused state
+  if (activeRunId && runStatus?.status === 'paused') {
+    return (
+      <Card>
+        <CardContent className="py-12">
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <h3 className="text-lg font-semibold">Research Paused</h3>
+              <ResearchRunStatusBadge status="paused" size="sm" />
+              <ResearchControlButtons
+                researchRunId={activeRunId}
+                status="paused"
+              />
+            </div>
+            <p className="text-sm text-muted-foreground mb-6">
+              Research has been paused. You can resume it when ready.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Show cancelled state
+  if (activeRunId && runStatus?.status === 'cancelled') {
+    return (
+      <Card>
+        <CardContent className="py-12">
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <h3 className="text-lg font-semibold">Research Cancelled</h3>
+              <ResearchRunStatusBadge status="cancelled" size="sm" />
+            </div>
+            <p className="text-sm text-muted-foreground mb-6">
+              This research run was cancelled.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   // Empty state - no research yet
   if (!research) {
     return (
       <Card>
         <CardContent className="py-12">
-          <div className="text-center">
-            <FlaskConical className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-            <h3 className="text-lg font-semibold mb-2">No Research Yet</h3>
-            <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
-              Run AI research to get pricing recommendations, market demand signals, and
-              identify information that could improve listing accuracy.
-            </p>
-            {onTriggerResearch && (
-              <Button onClick={onTriggerResearch} disabled={isResearchRunning}>
-                {isResearchRunning ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Running Research...
-                  </>
-                ) : (
-                  <>
-                    <FlaskConical className="mr-2 h-4 w-4" />
-                    Run Research
-                  </>
-                )}
-              </Button>
-            )}
-          </div>
+          <EmptyState
+            icon={FlaskConical}
+            title="No Research Yet"
+            description="Run AI research to get pricing recommendations, market demand signals, and identify information that could improve listing accuracy."
+            size="lg"
+            action={
+              onTriggerResearch && (
+                <LoadingButton
+                  onClick={onTriggerResearch}
+                  isLoading={isResearchRunning}
+                  loadingText="Running Research..."
+                >
+                  <FlaskConical className="mr-2 h-4 w-4" />
+                  Run Research
+                </LoadingButton>
+              )
+            }
+          />
         </CardContent>
       </Card>
     );
@@ -203,24 +320,16 @@ export function ResearchPanel({
             <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
           </Button>
           {onTriggerResearch && (
-            <Button
+            <LoadingButton
               variant="outline"
               size="sm"
               onClick={onTriggerResearch}
-              disabled={isResearchRunning}
+              isLoading={isResearchRunning}
+              loadingText="Running..."
             >
-              {isResearchRunning ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Running...
-                </>
-              ) : (
-                <>
-                  <FlaskConical className="mr-2 h-4 w-4" />
-                  Re-run Research
-                </>
-              )}
-            </Button>
+              <FlaskConical className="mr-2 h-4 w-4" />
+              Re-run Research
+            </LoadingButton>
           )}
         </div>
       </div>
@@ -271,8 +380,68 @@ export function ResearchPanel({
         </Card>
       )}
 
+      {/* Slice 4: Listing Readiness Summary */}
+      {(data.marketplaceCategory || data.fieldCompletion) && (
+        <ListingReadinessCard
+          fieldCompletion={data.fieldCompletion}
+          marketplaceCategory={data.marketplaceCategory}
+        />
+      )}
+
+      {/* Slice 4: Marketplace Category */}
+      {data.marketplaceCategory && (
+        <CategoryPathCard marketplaceCategory={data.marketplaceCategory} />
+      )}
+
+      {/* Slice 4: Field Requirements */}
+      {data.fieldCompletion && (
+        <FieldRequirementsCard fieldCompletion={data.fieldCompletion} />
+      )}
+
       {/* Price Bands */}
       <PriceBandsCard priceBands={data.priceBands} />
+
+      {/* Slice 5: Pricing Strategy Selector */}
+      {data.pricingStrategies && data.pricingStrategies.length > 0 && (
+        <PricingStrategySelector
+          strategies={data.pricingStrategies}
+          selectedStrategy={itemResponse?.item?.pricingStrategy}
+          onSelect={handleSelectStrategy}
+          disabled={isUpdatingPrice}
+        />
+      )}
+
+      {/* Slice 6: Listing Preview */}
+      {data.listings && data.listings.length > 0 && (
+        <ListingPreview
+          listing={data.listings[0]}
+          onEditTitle={async (newTitle) => {
+            try {
+              await updateItem({
+                id: itemId,
+                data: { title: newTitle },
+              }).unwrap();
+              showSuccess('Title Updated', 'Listing title has been updated');
+              refetch();
+            } catch (error) {
+              showError('Failed to update title', error instanceof Error ? error.message : 'An error occurred');
+            }
+          }}
+          onEditDescription={async (newDescription) => {
+            try {
+              await updateItem({
+                id: itemId,
+                data: { description: newDescription },
+              }).unwrap();
+              showSuccess('Description Updated', 'Listing description has been updated');
+              refetch();
+            } catch (error) {
+              showError('Failed to update description', error instanceof Error ? error.message : 'An error occurred');
+            }
+          }}
+          disabled={isUpdatingPrice}
+        />
+      )}
 
       {/* Demand Signals */}
       <DemandSignalsCard

@@ -35,13 +35,18 @@ import { ItemsService } from './items.service';
 import { StorageService } from '../storage/storage.service';
 import { EvidenceService } from '../evidence/evidence.service';
 import { MarketplaceListingService } from '../marketplaces/services/marketplace-listing.service';
+import { AutoPublishService } from '../marketplaces/services/auto-publish.service';
 import { ChatService } from '../chat/chat.service';
 import { ChatGraphService } from '../ai-workflows/services/chat-graph.service';
+import { UPCLookupService } from '../ai-workflows/services/upc-lookup.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { OrgGuard } from '../common/guards/org.guard';
 import { ReqCtx } from '../common/decorators/req-ctx.decorator';
 import { RequestContext } from '../common/interfaces/request-context.interface';
 import { MulterFile } from '../common/types/multer-file.type';
+import { BarcodeLookupDto, BarcodeLookupResult } from './dto/barcode-lookup.dto';
+import { QuickEvalDto, QuickEvalResult } from './dto/quick-eval.dto';
+import { QuickEvalService } from './services/quick-eval.service';
 
 /**
  * Items Controller - Phase 6 Unified Item Model
@@ -56,8 +61,11 @@ export class ItemsController {
     private readonly storageService: StorageService,
     private readonly evidenceService: EvidenceService,
     private readonly marketplaceListingService: MarketplaceListingService,
+    private readonly autoPublishService: AutoPublishService,
     private readonly chatService: ChatService,
     private readonly chatGraphService: ChatGraphService,
+    private readonly upcLookupService: UPCLookupService,
+    private readonly quickEvalService: QuickEvalService,
   ) {}
 
   /**
@@ -161,6 +169,98 @@ export class ItemsController {
     );
 
     return { item };
+  }
+
+  /**
+   * Barcode / UPC Lookup
+   *
+   * POST /items/barcode-lookup
+   *
+   * Quick lookup of product information by barcode/UPC for mobile quick capture.
+   * Returns basic product info to pre-fill item details.
+   */
+  @Post('barcode-lookup')
+  async barcodeLookup(
+    @Body() dto: BarcodeLookupDto,
+  ): Promise<BarcodeLookupResult> {
+    const result = await this.upcLookupService.lookup(dto.barcode);
+
+    if (result.found) {
+      return {
+        barcode: dto.barcode,
+        found: true,
+        title: result.title,
+        description: result.description,
+        brand: result.brand,
+        category: result.category,
+        imageUrl: result.images?.[0],
+        source: 'upc',
+      };
+    }
+
+    // Not found - return empty result
+    return {
+      barcode: dto.barcode,
+      found: false,
+    };
+  }
+
+  /**
+   * Quick Evaluation
+   *
+   * POST /items/quick-eval
+   *
+   * Fast product evaluation for mobile users (5-15 second response).
+   * Takes photos + optional hints, returns quick pricing and demand analysis.
+   * User can decide to "Pass" or "Keep & Full Research".
+   */
+  @Post('quick-eval')
+  @UseInterceptors(FilesInterceptor('photos', 3))
+  async quickEval(
+    @ReqCtx() ctx: RequestContext,
+    @UploadedFiles() photos: MulterFile[],
+    @Body() body: QuickEvalDto,
+  ): Promise<QuickEvalResult> {
+    if (!photos || photos.length === 0) {
+      return {
+        success: false,
+        processingTimeMs: 0,
+        warnings: ['At least one photo is required'],
+      };
+    }
+
+    // Upload photos temporarily (for quick eval we don't save to DB)
+    const tempId = uuidv4();
+    const mediaPromises = photos.map(async (file, index) => {
+      const mediaId = uuidv4();
+      const filename = `temp/quick-eval/${ctx.currentOrgId}/${tempId}/${mediaId}-${file.originalname}`;
+      const url = await this.storageService.uploadPhoto(file.buffer, filename);
+
+      const media: ItemMedia = {
+        id: mediaId,
+        url,
+        storagePath: filename,
+        sortOrder: index,
+        isPrimary: index === 0,
+      };
+
+      return media;
+    });
+
+    const mediaItems = await Promise.all(mediaPromises);
+
+    // Run quick evaluation
+    const result = await this.quickEvalService.evaluateItem(
+      mediaItems,
+      body.title,
+      body.description,
+      body.barcode,
+    );
+
+    // Clean up temporary photos after evaluation (optional, could use TTL)
+    // For now, leave them - S3 lifecycle rules can clean up temp/* folder
+
+    return result;
   }
 
   // ============================================================================
@@ -446,6 +546,7 @@ export class ItemsController {
         price: listing.price ? Number(listing.price) : null,
         marketplaceCategoryId: listing.marketplaceCategoryId,
         marketplaceAttributes: listing.marketplaceAttributes,
+        autoPublished: listing.autoPublished, // Slice 7
         lastSyncedAt: listing.lastSyncedAt ? listing.lastSyncedAt.toISOString() : null,
         errorMessage: listing.errorMessage,
         createdAt: listing.createdAt.toISOString(),
@@ -466,6 +567,29 @@ export class ItemsController {
     @Body() body: PublishItemListingRequest,
   ): Promise<PublishItemListingResponse> {
     await this.marketplaceListingService.publish(id, body.accountIds, ctx);
+    return { success: true };
+  }
+
+  /**
+   * Retry a failed marketplace listing
+   * Slice 7: Auto-Publish & Production Polish
+   *
+   * POST /items/:id/marketplace-listings/:listingId/retry
+   */
+  @Post(':id/marketplace-listings/:listingId/retry')
+  async retryMarketplaceListing(
+    @ReqCtx() ctx: RequestContext,
+    @Param('id') id: string,
+    @Param('listingId') listingId: string,
+  ): Promise<{ success: boolean }> {
+    // Verify item belongs to org
+    await this.itemsService.getItem(ctx.currentOrgId, id);
+
+    await this.autoPublishService.retryFailedPublish(
+      listingId,
+      ctx.currentOrgId,
+      ctx.userId,
+    );
     return { success: true };
   }
 

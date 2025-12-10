@@ -29,6 +29,8 @@ export interface MarketplaceListingDto {
   price: number | null;
   marketplaceCategoryId: string | null;
   marketplaceAttributes: Record<string, string | number | boolean> | null;
+  // Slice 7: Auto-publish tracking
+  autoPublished: boolean;
   lastSyncedAt: string | null;
   errorMessage: string | null;
   createdAt: string;
@@ -91,6 +93,11 @@ export interface ListMarketplaceAccountsResponse {
 
 export interface DeleteMarketplaceAccountResponse {
   success: boolean;
+}
+
+export interface RefreshMarketplaceAccountResponse {
+  success: boolean;
+  message: string;
 }
 
 export interface SystemMetricsResponse {

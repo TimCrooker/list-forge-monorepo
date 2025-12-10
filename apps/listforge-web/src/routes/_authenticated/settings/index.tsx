@@ -10,7 +10,7 @@ import {
 } from '@listforge/api-rtk';
 import { setCurrentOrg, logout, setUser } from '@/store/authSlice';
 import { RootState } from '@/store/store';
-import { UserProfile } from '@listforge/ui';
+import { UserProfile, AppContent } from '@listforge/ui';
 import {
   Store,
   Users,
@@ -133,14 +133,10 @@ function SettingsPage() {
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-6 py-6 px-6">
-      <div>
-        <h1 className="text-3xl font-bold">Settings</h1>
-        <p className="text-muted-foreground mt-1">
-          Manage your account and preferences
-        </p>
-      </div>
-
+    <AppContent
+      title="Settings"
+      description="Manage your account and preferences"
+    >
       {/* User Profile */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
@@ -373,6 +369,6 @@ function SettingsPage() {
           </Button>
         </CardContent>
       </Card>
-    </div>
+    </AppContent>
   );
 }

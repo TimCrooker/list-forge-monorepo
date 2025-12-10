@@ -29,20 +29,49 @@ export function useSocketRoom(rooms: string | string[]): void {
       return;
     }
 
-    // Ensure socket is connected
-    if (!socket.connected) {
-      socket.connect();
-    }
-
     // Normalize rooms to array
     const roomArray = Array.isArray(rooms) ? rooms : [rooms];
 
-    // Subscribe to rooms (socket.io queues if not yet connected)
-    socket.emit('subscribe', roomArray);
+    // Helper function to subscribe to the rooms
+    const subscribeToRooms = () => {
+      if (socket.connected) {
+        socket.emit('subscribe', roomArray);
+      }
+    };
+
+    // Ensure token is set before connecting
+    if (token) {
+      socket.auth = { token };
+    }
+
+    // If socket is already connected, subscribe immediately
+    if (socket.connected) {
+      subscribeToRooms();
+    } else if (token) {
+      // Only connect if we have a token
+      socket.connect();
+    }
+
+    // Track socket connection status - subscribe when connected
+    const handleConnect = () => {
+      subscribeToRooms();
+    };
+
+    // Handle connection errors
+    const handleConnectError = (error: Error) => {
+      console.warn('[useSocketRoom] Socket connection error:', error);
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('connect_error', handleConnectError);
 
     // Cleanup: unsubscribe on unmount
     return () => {
-      socket.emit('unsubscribe', roomArray);
+      socket.off('connect', handleConnect);
+      socket.off('connect_error', handleConnectError);
+      if (socket.connected) {
+        socket.emit('unsubscribe', roomArray);
+      }
     };
   }, [socket, rooms]);
 }
@@ -61,15 +90,45 @@ export function useOrgRoom(orgId: string | null | undefined): void {
 
     const room = Rooms.org(orgId);
 
-    // Ensure socket is connected
-    if (!socket.connected) {
+    // Helper function to subscribe to the room
+    const subscribeToRoom = () => {
+      if (socket.connected) {
+        socket.emit('subscribe', [room]);
+      }
+    };
+
+    // Ensure token is set before connecting
+    if (token) {
+      socket.auth = { token };
+    }
+
+    // If socket is already connected, subscribe immediately
+    if (socket.connected) {
+      subscribeToRoom();
+    } else if (token) {
+      // Only connect if we have a token
       socket.connect();
     }
 
-    socket.emit('subscribe', [room]);
+    // Track socket connection status - subscribe when connected
+    const handleConnect = () => {
+      subscribeToRoom();
+    };
+
+    // Handle connection errors
+    const handleConnectError = (error: Error) => {
+      console.warn('[useOrgRoom] Socket connection error:', error);
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('connect_error', handleConnectError);
 
     return () => {
-      socket.emit('unsubscribe', [room]);
+      socket.off('connect', handleConnect);
+      socket.off('connect_error', handleConnectError);
+      if (socket.connected) {
+        socket.emit('unsubscribe', [room]);
+      }
     };
   }, [socket, orgId]);
 }
@@ -88,15 +147,45 @@ export function useReviewQueueRoom(orgId: string | null | undefined): void {
 
     const room = Rooms.reviewQueue(orgId);
 
-    // Ensure socket is connected
-    if (!socket.connected) {
+    // Helper function to subscribe to the room
+    const subscribeToRoom = () => {
+      if (socket.connected) {
+        socket.emit('subscribe', [room]);
+      }
+    };
+
+    // Ensure token is set before connecting
+    if (token) {
+      socket.auth = { token };
+    }
+
+    // If socket is already connected, subscribe immediately
+    if (socket.connected) {
+      subscribeToRoom();
+    } else if (token) {
+      // Only connect if we have a token
       socket.connect();
     }
 
-    socket.emit('subscribe', [room]);
+    // Track socket connection status - subscribe when connected
+    const handleConnect = () => {
+      subscribeToRoom();
+    };
+
+    // Handle connection errors
+    const handleConnectError = (error: Error) => {
+      console.warn('[useReviewQueueRoom] Socket connection error:', error);
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('connect_error', handleConnectError);
 
     return () => {
-      socket.emit('unsubscribe', [room]);
+      socket.off('connect', handleConnect);
+      socket.off('connect_error', handleConnectError);
+      if (socket.connected) {
+        socket.emit('unsubscribe', [room]);
+      }
     };
   }, [socket, orgId]);
 }
@@ -115,15 +204,45 @@ export function useItemRoom(itemId: string | null | undefined): void {
 
     const room = Rooms.item(itemId);
 
-    // Ensure socket is connected
-    if (!socket.connected) {
+    // Helper function to subscribe to the room
+    const subscribeToRoom = () => {
+      if (socket.connected) {
+        socket.emit('subscribe', [room]);
+      }
+    };
+
+    // Ensure token is set before connecting
+    if (token) {
+      socket.auth = { token };
+    }
+
+    // If socket is already connected, subscribe immediately
+    if (socket.connected) {
+      subscribeToRoom();
+    } else if (token) {
+      // Only connect if we have a token
       socket.connect();
     }
 
-    socket.emit('subscribe', [room]);
+    // Track socket connection status - subscribe when connected
+    const handleConnect = () => {
+      subscribeToRoom();
+    };
+
+    // Handle connection errors
+    const handleConnectError = (error: Error) => {
+      console.warn('[useItemRoom] Socket connection error:', error);
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('connect_error', handleConnectError);
 
     return () => {
-      socket.emit('unsubscribe', [room]);
+      socket.off('connect', handleConnect);
+      socket.off('connect_error', handleConnectError);
+      if (socket.connected) {
+        socket.emit('unsubscribe', [room]);
+      }
     };
   }, [socket, itemId]);
 }

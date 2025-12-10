@@ -5,3 +5,14 @@ export { ResearchPanel } from './ResearchPanel';
 export { ResearchPanelSkeleton } from './ResearchPanelSkeleton';
 export { ResearchProgress } from './ResearchProgress';
 export { StalledJobBanner } from './StalledJobBanner';
+// Slice 4: Marketplace Schema Awareness
+export { CategoryPathCard } from './CategoryPathCard';
+export { FieldRequirementsCard } from './FieldRequirementsCard';
+export { ListingReadinessCard } from './ListingReadinessCard';
+// Slice 5: Pricing Strategies
+export { PricingStrategySelector } from './PricingStrategySelector';
+// Slice 6: Full Listing Assembly
+export { ListingPreview } from './ListingPreview';
+export { ListingStatusBadge } from './ListingStatusBadge';
+export { ResearchControlButtons } from './ResearchControlButtons';
+export { ResearchRunStatusBadge } from './ResearchRunStatusBadge';

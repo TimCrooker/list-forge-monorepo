@@ -2,6 +2,7 @@ import { Module, Logger } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
@@ -72,18 +73,14 @@ function getRedisConfig() {
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([
-      {
-        name: 'short',
-        ttl: 10000, // 10 seconds
-        limit: 10, // 10 requests per 10 seconds
-      },
-      {
-        name: 'medium',
-        ttl: 60000, // 1 minute
-        limit: 5, // 5 requests per minute
-      },
-    ]),
+    ScheduleModule.forRoot(),
+    // Rate limiting with @nestjs/throttler
+    // Global default: 20 requests per minute
+    // Individual endpoints can override with @Throttle() decorator
+    ThrottlerModule.forRoot([{
+      ttl: 60000, // 1 minute (in milliseconds)
+      limit: 20, // 20 requests per minute (default)
+    }]),
     TypeOrmModule.forRoot({
       type: 'postgres',
       ...(process.env.DATABASE_URL
@@ -139,6 +136,8 @@ function getRedisConfig() {
     ChatModule,
   ],
   providers: [
+    // Enable rate limiting globally
+    // Individual endpoints can override with @Throttle() decorator
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

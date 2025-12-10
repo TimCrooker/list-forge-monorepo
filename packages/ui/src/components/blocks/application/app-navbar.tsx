@@ -81,6 +81,7 @@ export interface AppNavbarProps {
   onMobileMenuToggle?: () => void
   className?: string
   sticky?: boolean
+  chatButton?: React.ReactNode // Chat toggle button to render in actions area
 }
 
 export const AppNavbar = ({
@@ -97,6 +98,7 @@ export const AppNavbar = ({
   onMobileMenuToggle,
   className,
   sticky = true,
+  chatButton,
 }: AppNavbarProps) => {
   const [searchQuery, setSearchQuery] = React.useState('')
   const [isSearchFocused, setIsSearchFocused] = React.useState(false)
@@ -181,6 +183,9 @@ export const AppNavbar = ({
         <div className="flex items-center gap-2 ml-auto">
           {/* Custom Actions */}
           {actions}
+
+          {/* Chat Button */}
+          {chatButton}
 
           {/* Theme Toggle */}
           {theme && theme.onChange && (

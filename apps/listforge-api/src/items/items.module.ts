@@ -1,8 +1,9 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
 import { ItemsController } from './items.controller';
 import { ItemsService } from './items.service';
+import { QuickEvalService } from './services/quick-eval.service';
 import { Item } from './entities/item.entity';
 import { StorageModule } from '../storage/storage.module';
 import { EventsModule } from '../events/events.module';
@@ -28,11 +29,11 @@ import { QUEUE_AI_WORKFLOW } from '@listforge/queue-types';
     EventsModule,
     EvidenceModule,
     MarketplacesModule,
-    ChatModule,
-    AiWorkflowsModule,
+    forwardRef(() => ChatModule), // Handle circular dependency with ChatModule
+    forwardRef(() => AiWorkflowsModule), // Handle circular dependency with AiWorkflowsModule
   ],
   controllers: [ItemsController],
-  providers: [ItemsService],
+  providers: [ItemsService, QuickEvalService],
   exports: [ItemsService],
 })
 export class ItemsModule {}

@@ -82,6 +82,20 @@ export class MarketplaceAccount {
   })
   settings: MarketplaceAccountSettings | null;
 
+  @Column({
+    type: 'timestamp',
+    nullable: true,
+    comment: 'Last time token expiration was checked by monitoring service',
+  })
+  lastCheckedAt: Date | null;
+
+  @Column({
+    type: 'int',
+    default: 0,
+    comment: 'Number of automatic token refresh attempts (reset on success)',
+  })
+  autoRefreshAttempts: number;
+
   @CreateDateColumn()
   createdAt: Date;
 

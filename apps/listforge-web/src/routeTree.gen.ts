@@ -22,13 +22,14 @@ import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authentic
 import { Route as AuthenticatedSettingsOrganizationRouteImport } from './routes/_authenticated/settings/organization'
 import { Route as AuthenticatedSettingsMarketplacesRouteImport } from './routes/_authenticated/settings/marketplaces'
 import { Route as AuthenticatedItemsNewRouteImport } from './routes/_authenticated/items/new'
-import { Route as AuthenticatedItemsIdRouteImport } from './routes/_authenticated/items/$id'
 import { Route as AuthenticatedCaptureIdRouteImport } from './routes/_authenticated/capture/$id'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminOrgsRouteImport } from './routes/_authenticated/admin/orgs'
 import { Route as AuthenticatedAdminMarketplaceAccountsRouteImport } from './routes/_authenticated/admin/marketplace-accounts'
+import { Route as AuthenticatedItemsIdIndexRouteImport } from './routes/_authenticated/items/$id/index'
 import { Route as AuthenticatedAdminUsersIdRouteImport } from './routes/_authenticated/admin/users.$id'
 import { Route as AuthenticatedAdminOrgsIdRouteImport } from './routes/_authenticated/admin/orgs.$id'
+import { Route as AuthenticatedItemsIdResearchRunIdRouteImport } from './routes/_authenticated/items/$id/research/$runId'
 
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
@@ -100,11 +101,6 @@ const AuthenticatedItemsNewRoute = AuthenticatedItemsNewRouteImport.update({
   path: '/items/new',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedItemsIdRoute = AuthenticatedItemsIdRouteImport.update({
-  id: '/items/$id',
-  path: '/items/$id',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedCaptureIdRoute = AuthenticatedCaptureIdRouteImport.update({
   id: '/capture/$id',
   path: '/capture/$id',
@@ -126,6 +122,12 @@ const AuthenticatedAdminMarketplaceAccountsRoute =
     path: '/admin/marketplace-accounts',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedItemsIdIndexRoute =
+  AuthenticatedItemsIdIndexRouteImport.update({
+    id: '/items/$id/',
+    path: '/items/$id/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAdminUsersIdRoute =
   AuthenticatedAdminUsersIdRouteImport.update({
     id: '/$id',
@@ -138,6 +140,12 @@ const AuthenticatedAdminOrgsIdRoute =
     path: '/$id',
     getParentRoute: () => AuthenticatedAdminOrgsRoute,
   } as any)
+const AuthenticatedItemsIdResearchRunIdRoute =
+  AuthenticatedItemsIdResearchRunIdRouteImport.update({
+    id: '/items/$id/research/$runId',
+    path: '/items/$id/research/$runId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
@@ -147,7 +155,6 @@ export interface FileRoutesByFullPath {
   '/admin/orgs': typeof AuthenticatedAdminOrgsRouteWithChildren
   '/admin/users': typeof AuthenticatedAdminUsersRouteWithChildren
   '/capture/$id': typeof AuthenticatedCaptureIdRoute
-  '/items/$id': typeof AuthenticatedItemsIdRoute
   '/items/new': typeof AuthenticatedItemsNewRoute
   '/settings/marketplaces': typeof AuthenticatedSettingsMarketplacesRoute
   '/settings/organization': typeof AuthenticatedSettingsOrganizationRoute
@@ -159,6 +166,8 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/admin/orgs/$id': typeof AuthenticatedAdminOrgsIdRoute
   '/admin/users/$id': typeof AuthenticatedAdminUsersIdRoute
+  '/items/$id': typeof AuthenticatedItemsIdIndexRoute
+  '/items/$id/research/$runId': typeof AuthenticatedItemsIdResearchRunIdRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -168,7 +177,6 @@ export interface FileRoutesByTo {
   '/admin/orgs': typeof AuthenticatedAdminOrgsRouteWithChildren
   '/admin/users': typeof AuthenticatedAdminUsersRouteWithChildren
   '/capture/$id': typeof AuthenticatedCaptureIdRoute
-  '/items/$id': typeof AuthenticatedItemsIdRoute
   '/items/new': typeof AuthenticatedItemsNewRoute
   '/settings/marketplaces': typeof AuthenticatedSettingsMarketplacesRoute
   '/settings/organization': typeof AuthenticatedSettingsOrganizationRoute
@@ -180,6 +188,8 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/admin/orgs/$id': typeof AuthenticatedAdminOrgsIdRoute
   '/admin/users/$id': typeof AuthenticatedAdminUsersIdRoute
+  '/items/$id': typeof AuthenticatedItemsIdIndexRoute
+  '/items/$id/research/$runId': typeof AuthenticatedItemsIdResearchRunIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -191,7 +201,6 @@ export interface FileRoutesById {
   '/_authenticated/admin/orgs': typeof AuthenticatedAdminOrgsRouteWithChildren
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRouteWithChildren
   '/_authenticated/capture/$id': typeof AuthenticatedCaptureIdRoute
-  '/_authenticated/items/$id': typeof AuthenticatedItemsIdRoute
   '/_authenticated/items/new': typeof AuthenticatedItemsNewRoute
   '/_authenticated/settings/marketplaces': typeof AuthenticatedSettingsMarketplacesRoute
   '/_authenticated/settings/organization': typeof AuthenticatedSettingsOrganizationRoute
@@ -203,6 +212,8 @@ export interface FileRoutesById {
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/_authenticated/admin/orgs/$id': typeof AuthenticatedAdminOrgsIdRoute
   '/_authenticated/admin/users/$id': typeof AuthenticatedAdminUsersIdRoute
+  '/_authenticated/items/$id/': typeof AuthenticatedItemsIdIndexRoute
+  '/_authenticated/items/$id/research/$runId': typeof AuthenticatedItemsIdResearchRunIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -214,7 +225,6 @@ export interface FileRouteTypes {
     | '/admin/orgs'
     | '/admin/users'
     | '/capture/$id'
-    | '/items/$id'
     | '/items/new'
     | '/settings/marketplaces'
     | '/settings/organization'
@@ -226,6 +236,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/admin/orgs/$id'
     | '/admin/users/$id'
+    | '/items/$id'
+    | '/items/$id/research/$runId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -235,7 +247,6 @@ export interface FileRouteTypes {
     | '/admin/orgs'
     | '/admin/users'
     | '/capture/$id'
-    | '/items/$id'
     | '/items/new'
     | '/settings/marketplaces'
     | '/settings/organization'
@@ -247,6 +258,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/admin/orgs/$id'
     | '/admin/users/$id'
+    | '/items/$id'
+    | '/items/$id/research/$runId'
   id:
     | '__root__'
     | '/_authenticated'
@@ -257,7 +270,6 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/orgs'
     | '/_authenticated/admin/users'
     | '/_authenticated/capture/$id'
-    | '/_authenticated/items/$id'
     | '/_authenticated/items/new'
     | '/_authenticated/settings/marketplaces'
     | '/_authenticated/settings/organization'
@@ -269,6 +281,8 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/'
     | '/_authenticated/admin/orgs/$id'
     | '/_authenticated/admin/users/$id'
+    | '/_authenticated/items/$id/'
+    | '/_authenticated/items/$id/research/$runId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -370,13 +384,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedItemsNewRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/items/$id': {
-      id: '/_authenticated/items/$id'
-      path: '/items/$id'
-      fullPath: '/items/$id'
-      preLoaderRoute: typeof AuthenticatedItemsIdRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/capture/$id': {
       id: '/_authenticated/capture/$id'
       path: '/capture/$id'
@@ -405,6 +412,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminMarketplaceAccountsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/items/$id/': {
+      id: '/_authenticated/items/$id/'
+      path: '/items/$id'
+      fullPath: '/items/$id'
+      preLoaderRoute: typeof AuthenticatedItemsIdIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/admin/users/$id': {
       id: '/_authenticated/admin/users/$id'
       path: '/$id'
@@ -418,6 +432,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/orgs/$id'
       preLoaderRoute: typeof AuthenticatedAdminOrgsIdRouteImport
       parentRoute: typeof AuthenticatedAdminOrgsRoute
+    }
+    '/_authenticated/items/$id/research/$runId': {
+      id: '/_authenticated/items/$id/research/$runId'
+      path: '/items/$id/research/$runId'
+      fullPath: '/items/$id/research/$runId'
+      preLoaderRoute: typeof AuthenticatedItemsIdResearchRunIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
   }
 }
@@ -456,7 +477,6 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAdminOrgsRoute: typeof AuthenticatedAdminOrgsRouteWithChildren
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRouteWithChildren
   AuthenticatedCaptureIdRoute: typeof AuthenticatedCaptureIdRoute
-  AuthenticatedItemsIdRoute: typeof AuthenticatedItemsIdRoute
   AuthenticatedItemsNewRoute: typeof AuthenticatedItemsNewRoute
   AuthenticatedSettingsMarketplacesRoute: typeof AuthenticatedSettingsMarketplacesRoute
   AuthenticatedSettingsOrganizationRoute: typeof AuthenticatedSettingsOrganizationRoute
@@ -466,6 +486,8 @@ interface AuthenticatedRouteChildren {
   AuthenticatedNeedsWorkIndexRoute: typeof AuthenticatedNeedsWorkIndexRoute
   AuthenticatedReviewIndexRoute: typeof AuthenticatedReviewIndexRoute
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
+  AuthenticatedItemsIdIndexRoute: typeof AuthenticatedItemsIdIndexRoute
+  AuthenticatedItemsIdResearchRunIdRoute: typeof AuthenticatedItemsIdResearchRunIdRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -475,7 +497,6 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAdminOrgsRoute: AuthenticatedAdminOrgsRouteWithChildren,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRouteWithChildren,
   AuthenticatedCaptureIdRoute: AuthenticatedCaptureIdRoute,
-  AuthenticatedItemsIdRoute: AuthenticatedItemsIdRoute,
   AuthenticatedItemsNewRoute: AuthenticatedItemsNewRoute,
   AuthenticatedSettingsMarketplacesRoute:
     AuthenticatedSettingsMarketplacesRoute,
@@ -487,6 +508,9 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedNeedsWorkIndexRoute: AuthenticatedNeedsWorkIndexRoute,
   AuthenticatedReviewIndexRoute: AuthenticatedReviewIndexRoute,
   AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
+  AuthenticatedItemsIdIndexRoute: AuthenticatedItemsIdIndexRoute,
+  AuthenticatedItemsIdResearchRunIdRoute:
+    AuthenticatedItemsIdResearchRunIdRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

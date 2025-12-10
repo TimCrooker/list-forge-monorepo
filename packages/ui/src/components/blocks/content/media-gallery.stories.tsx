@@ -2,7 +2,6 @@ import React from 'react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { MediaGallery } from './media-gallery'
 import { TooltipProvider } from '../../ui/tooltip'
-import { Tabs } from '../../ui/tabs'
 
 const meta: Meta<typeof MediaGallery> = {
   title: 'Blocks/Content/MediaGallery',
@@ -13,13 +12,11 @@ const meta: Meta<typeof MediaGallery> = {
   tags: ['autodocs'],
   decorators: [
     Story => (
-      <Tabs defaultValue="grid">
-        <TooltipProvider>
-          <div className="w-[800px]">
-            <Story />
-          </div>
-        </TooltipProvider>
-      </Tabs>
+      <TooltipProvider>
+        <div className="w-[800px]">
+          <Story />
+        </div>
+      </TooltipProvider>
     ),
   ],
 }

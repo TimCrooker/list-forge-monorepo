@@ -34,6 +34,7 @@ import {
   ExchangeAmazonCodeResponse,
   ListMarketplaceAccountsResponse,
   DeleteMarketplaceAccountResponse,
+  RefreshMarketplaceAccountResponse,
   SystemMetricsResponse,
   GetEvidenceResponse,
   // Item types
@@ -57,14 +58,47 @@ import {
   ListResearchRunsResponse,
   GetResearchRunResponse,
   GetResearchRunEvidenceResponse,
+  GetResearchActivityLogResponse,
   GetLatestResearchResponse,
   GetResearchHistoryResponse,
+  PauseResearchResponse,
+  StopResearchResponse,
   // Chat types
   SendChatMessageRequest,
   SendChatMessageResponse,
   CreateChatSessionRequest,
   CreateChatSessionResponse,
   GetChatMessagesResponse,
+  ChatSessionDto,
+  CreateGeneralChatSessionRequest,
+  UpdateChatSessionRequest,
+  ListChatSessionsResponse,
+  // Auto-publish settings types (Slice 7)
+  GetAutoPublishSettingsResponse,
+  UpdateAutoPublishSettingsRequest,
+  UpdateAutoPublishSettingsResponse,
+  // Organization Settings types
+  GetWorkflowSettingsResponse,
+  UpdateWorkflowSettingsRequest,
+  UpdateWorkflowSettingsResponse,
+  GetNotificationSettingsResponse,
+  UpdateNotificationSettingsRequest,
+  UpdateNotificationSettingsResponse,
+  GetTeamSettingsResponse,
+  UpdateTeamSettingsRequest,
+  UpdateTeamSettingsResponse,
+  GetInventorySettingsResponse,
+  UpdateInventorySettingsRequest,
+  UpdateInventorySettingsResponse,
+  GetMarketplaceDefaultSettingsResponse,
+  UpdateMarketplaceDefaultSettingsRequest,
+  UpdateMarketplaceDefaultSettingsResponse,
+  GetBillingSettingsResponse,
+  UpdateBillingSettingsRequest,
+  UpdateBillingSettingsResponse,
+  GetSecuritySettingsResponse,
+  UpdateSecuritySettingsRequest,
+  UpdateSecuritySettingsResponse,
 } from '@listforge/api-types';
 import { baseQueryWithErrorHandling } from './baseQueryWithErrorHandling';
 
@@ -274,6 +308,14 @@ export const api = createApi({
       invalidatesTags: ['MarketplaceAccount'],
     }),
 
+    refreshMarketplaceAccount: builder.mutation<RefreshMarketplaceAccountResponse, string>({
+      query: (accountId) => ({
+        url: `/marketplaces/accounts/${accountId}/refresh`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['MarketplaceAccount'],
+    }),
+
     // Admin endpoints - metrics
     getSystemMetrics: builder.query<SystemMetricsResponse, void>({
       query: () => '/admin/system/metrics',
@@ -470,6 +512,11 @@ export const api = createApi({
       providesTags: (_result, _error, id) => [{ type: 'ResearchRun', id }],
     }),
 
+    getResearchActivityLog: builder.query<GetResearchActivityLogResponse, string>({
+      query: (id) => `/research-runs/${id}/activity`,
+      providesTags: (_result, _error, id) => [{ type: 'ResearchRun', id }],
+    }),
+
     // Phase 7 Slice 1: ItemResearch endpoints
     getLatestResearch: builder.query<GetLatestResearchResponse, string>({
       query: (itemId) => `/items/${itemId}/research/latest`,
@@ -496,6 +543,27 @@ export const api = createApi({
     resumeResearch: builder.mutation<TriggerResearchResponse, string>({
       query: (runId) => ({
         url: `/research-runs/${runId}/resume`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_result, _error, runId) => [
+        { type: 'ResearchRun', id: runId },
+        'ResearchRun',
+      ],
+    }),
+    // Research Flow Control endpoints
+    pauseResearch: builder.mutation<PauseResearchResponse, string>({
+      query: (runId) => ({
+        url: `/research-runs/${runId}/pause`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_result, _error, runId) => [
+        { type: 'ResearchRun', id: runId },
+        'ResearchRun',
+      ],
+    }),
+    stopResearch: builder.mutation<StopResearchResponse, string>({
+      query: (runId) => ({
+        url: `/research-runs/${runId}/stop`,
         method: 'POST',
       }),
       invalidatesTags: (_result, _error, runId) => [
@@ -547,6 +615,235 @@ export const api = createApi({
         { type: 'ChatSession', id: sessionId },
       ],
     }),
+
+    // General Purpose Chat endpoints
+    createGeneralChatSession: builder.mutation<
+      { session: ChatSessionDto },
+      CreateGeneralChatSessionRequest
+    >({
+      query: (data) => ({
+        url: '/chat/sessions',
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: ['ChatSession'],
+    }),
+
+    getChatSessions: builder.query<
+      ListChatSessionsResponse,
+      { type?: string; limit?: number }
+    >({
+      query: (params) => ({
+        url: '/chat/sessions',
+        params,
+      }),
+      providesTags: ['ChatSession'],
+    }),
+
+    getChatSession: builder.query<ChatSessionDto, { sessionId: string }>({
+      query: ({ sessionId }) => ({
+        url: `/chat/sessions/${sessionId}`,
+      }),
+      providesTags: (_result, _error, { sessionId }) => [
+        { type: 'ChatSession', id: sessionId },
+      ],
+    }),
+
+    getGeneralChatMessages: builder.query<
+      GetChatMessagesResponse,
+      { sessionId: string; page?: number; pageSize?: number }
+    >({
+      query: ({ sessionId, page, pageSize }) => ({
+        url: `/chat/sessions/${sessionId}/messages`,
+        params: {
+          ...(page !== undefined ? { page: String(page) } : {}),
+          ...(pageSize !== undefined ? { pageSize: String(pageSize) } : {}),
+        },
+      }),
+      providesTags: (_result, _error, { sessionId }) => [
+        { type: 'ChatSession', id: sessionId },
+      ],
+    }),
+
+    updateChatSession: builder.mutation<
+      ChatSessionDto,
+      { sessionId: string; updates: UpdateChatSessionRequest }
+    >({
+      query: ({ sessionId, updates }) => ({
+        url: `/chat/sessions/${sessionId}`,
+        method: 'PATCH',
+        body: updates,
+      }),
+      invalidatesTags: (_result, _error, { sessionId }) => [
+        { type: 'ChatSession', id: sessionId },
+      ],
+    }),
+
+    deleteChatSession: builder.mutation<
+      { success: boolean },
+      { sessionId: string }
+    >({
+      query: ({ sessionId }) => ({
+        url: `/chat/sessions/${sessionId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['ChatSession'],
+    }),
+
+    // Slice 7: Auto-publish settings endpoints
+    getAutoPublishSettings: builder.query<GetAutoPublishSettingsResponse, string>({
+      query: (orgId) => `/orgs/${orgId}/settings/auto-publish`,
+      providesTags: (_result, _error, orgId) => [{ type: 'Org', id: orgId }],
+    }),
+    updateAutoPublishSettings: builder.mutation<
+      UpdateAutoPublishSettingsResponse,
+      { orgId: string; data: UpdateAutoPublishSettingsRequest }
+    >({
+      query: ({ orgId, data }) => ({
+        url: `/orgs/${orgId}/settings/auto-publish`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { orgId }) => [{ type: 'Org', id: orgId }],
+    }),
+
+    // ============================================================================
+    // Organization Settings Endpoints
+    // ============================================================================
+
+    // Workflow Settings
+    getWorkflowSettings: builder.query<GetWorkflowSettingsResponse, string>({
+      query: (orgId) => `/orgs/${orgId}/settings/workflow`,
+      providesTags: (_result, _error, orgId) => [{ type: 'Org', id: orgId }],
+    }),
+    updateWorkflowSettings: builder.mutation<
+      UpdateWorkflowSettingsResponse,
+      { orgId: string; data: UpdateWorkflowSettingsRequest }
+    >({
+      query: ({ orgId, data }) => ({
+        url: `/orgs/${orgId}/settings/workflow`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { orgId }) => [{ type: 'Org', id: orgId }],
+    }),
+
+    // Notification Settings
+    getNotificationSettings: builder.query<GetNotificationSettingsResponse, string>({
+      query: (orgId) => `/orgs/${orgId}/settings/notifications`,
+      providesTags: (_result, _error, orgId) => [{ type: 'Org', id: orgId }],
+    }),
+    updateNotificationSettings: builder.mutation<
+      UpdateNotificationSettingsResponse,
+      { orgId: string; data: UpdateNotificationSettingsRequest }
+    >({
+      query: ({ orgId, data }) => ({
+        url: `/orgs/${orgId}/settings/notifications`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { orgId }) => [{ type: 'Org', id: orgId }],
+    }),
+
+    // Team Settings
+    getTeamSettings: builder.query<GetTeamSettingsResponse, string>({
+      query: (orgId) => `/orgs/${orgId}/settings/team`,
+      providesTags: (_result, _error, orgId) => [{ type: 'Org', id: orgId }],
+    }),
+    updateTeamSettings: builder.mutation<
+      UpdateTeamSettingsResponse,
+      { orgId: string; data: UpdateTeamSettingsRequest }
+    >({
+      query: ({ orgId, data }) => ({
+        url: `/orgs/${orgId}/settings/team`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { orgId }) => [{ type: 'Org', id: orgId }],
+    }),
+
+    // Inventory Settings
+    getInventorySettings: builder.query<GetInventorySettingsResponse, string>({
+      query: (orgId) => `/orgs/${orgId}/settings/inventory`,
+      providesTags: (_result, _error, orgId) => [{ type: 'Org', id: orgId }],
+    }),
+    updateInventorySettings: builder.mutation<
+      UpdateInventorySettingsResponse,
+      { orgId: string; data: UpdateInventorySettingsRequest }
+    >({
+      query: ({ orgId, data }) => ({
+        url: `/orgs/${orgId}/settings/inventory`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { orgId }) => [{ type: 'Org', id: orgId }],
+    }),
+
+    // Marketplace Default Settings
+    getMarketplaceDefaultSettings: builder.query<GetMarketplaceDefaultSettingsResponse, string>({
+      query: (orgId) => `/orgs/${orgId}/settings/marketplace-defaults`,
+      providesTags: (_result, _error, orgId) => [{ type: 'Org', id: orgId }],
+    }),
+    updateMarketplaceDefaultSettings: builder.mutation<
+      UpdateMarketplaceDefaultSettingsResponse,
+      { orgId: string; data: UpdateMarketplaceDefaultSettingsRequest }
+    >({
+      query: ({ orgId, data }) => ({
+        url: `/orgs/${orgId}/settings/marketplace-defaults`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { orgId }) => [{ type: 'Org', id: orgId }],
+    }),
+
+    // Billing Settings
+    getBillingSettings: builder.query<GetBillingSettingsResponse, string>({
+      query: (orgId) => `/orgs/${orgId}/settings/billing`,
+      providesTags: (_result, _error, orgId) => [{ type: 'Org', id: orgId }],
+    }),
+    updateBillingSettings: builder.mutation<
+      UpdateBillingSettingsResponse,
+      { orgId: string; data: UpdateBillingSettingsRequest }
+    >({
+      query: ({ orgId, data }) => ({
+        url: `/orgs/${orgId}/settings/billing`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { orgId }) => [{ type: 'Org', id: orgId }],
+    }),
+
+    // Security Settings
+    getSecuritySettings: builder.query<GetSecuritySettingsResponse, string>({
+      query: (orgId) => `/orgs/${orgId}/settings/security`,
+      providesTags: (_result, _error, orgId) => [{ type: 'Org', id: orgId }],
+    }),
+    updateSecuritySettings: builder.mutation<
+      UpdateSecuritySettingsResponse,
+      { orgId: string; data: UpdateSecuritySettingsRequest }
+    >({
+      query: ({ orgId, data }) => ({
+        url: `/orgs/${orgId}/settings/security`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { orgId }) => [{ type: 'Org', id: orgId }],
+    }),
+
+    // Slice 7: Retry failed publish endpoint
+    retryItemPublish: builder.mutation<
+      { success: boolean },
+      { itemId: string; listingId: string }
+    >({
+      query: ({ itemId, listingId }) => ({
+        url: `/items/${itemId}/marketplace-listings/${listingId}/retry`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_result, _error, { itemId }) => [
+        { type: 'Item', id: itemId },
+        'MarketplaceListing',
+      ],
+    }),
   }),
 });
 
@@ -577,6 +874,7 @@ export const {
   useExchangeAmazonCodeMutation,
   useListMarketplaceAccountsQuery,
   useDeleteMarketplaceAccountMutation,
+  useRefreshMarketplaceAccountMutation,
   useGetSystemMetricsQuery,
   // Item hooks
   useCreateAiCaptureItemMutation,
@@ -601,15 +899,44 @@ export const {
   useGetItemResearchRunsQuery,
   useGetResearchRunQuery,
   useGetResearchRunEvidenceQuery,
+  useGetResearchActivityLogQuery,
   // Phase 7 Slice 1: ItemResearch hooks
   useGetLatestResearchQuery,
   useGetResearchHistoryQuery,
   // Phase 7 Slice 4: Resume research hook
   useResumeResearchMutation,
+  usePauseResearchMutation,
+  useStopResearchMutation,
   // Chat hooks
   useSendItemChatMessageMutation,
   // Phase 7 Slice 5: Chat session hooks
   useCreateChatSessionMutation,
   useGetChatMessagesQuery,
+  // General Purpose Chat hooks
+  useCreateGeneralChatSessionMutation,
+  useGetChatSessionsQuery,
+  useGetChatSessionQuery,
+  useGetGeneralChatMessagesQuery,
+  useUpdateChatSessionMutation,
+  useDeleteChatSessionMutation,
+  // Slice 7: Auto-publish settings hooks
+  useGetAutoPublishSettingsQuery,
+  useUpdateAutoPublishSettingsMutation,
+  useRetryItemPublishMutation,
+  // Organization Settings hooks
+  useGetWorkflowSettingsQuery,
+  useUpdateWorkflowSettingsMutation,
+  useGetNotificationSettingsQuery,
+  useUpdateNotificationSettingsMutation,
+  useGetTeamSettingsQuery,
+  useUpdateTeamSettingsMutation,
+  useGetInventorySettingsQuery,
+  useUpdateInventorySettingsMutation,
+  useGetMarketplaceDefaultSettingsQuery,
+  useUpdateMarketplaceDefaultSettingsMutation,
+  useGetBillingSettingsQuery,
+  useUpdateBillingSettingsMutation,
+  useGetSecuritySettingsQuery,
+  useUpdateSecuritySettingsMutation,
 } = api;
 

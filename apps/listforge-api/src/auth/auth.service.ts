@@ -1,5 +1,5 @@
 import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -29,6 +29,7 @@ export class AuthService {
     @InjectRepository(UserOrganization)
     private userOrgRepo: Repository<UserOrganization>,
     private jwtService: JwtService,
+    @InjectDataSource()
     private dataSource: DataSource,
   ) {}
 

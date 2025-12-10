@@ -276,6 +276,80 @@ These scopes allow the application to:
 - Handle orders and fulfillment
 - Manage inventory
 
+## Marketplace Insights API (Sold Listings Data)
+
+**Important:** To access sold/completed listings data for pricing research, you need access to the **Marketplace Insights API**, which is in **Limited Release**.
+
+### What Changed?
+
+As of February 5, 2025, eBay decommissioned the Finding API (including `findCompletedItems`). The replacement is the Marketplace Insights API, which provides:
+- Sales history for items sold in the last 90 days
+- Search by keyword, GTIN, category, and product
+- More accurate pricing data for research
+
+### Current Behavior
+
+The application uses three eBay APIs for research:
+
+1. **Browse API - Keyword Search** (Available to all developers)
+   - Searches active listings by keyword
+   - No special approval needed
+
+2. **Browse API - Image Search** (Available to all developers)
+   - Searches active listings by image
+   - Uses Base64-encoded images
+   - No special approval needed
+
+3. **Marketplace Insights API - Sold Listings** (Limited Release - Requires Approval)
+   - Searches sold items from last 90 days
+   - **Requires eBay Partner Network approval**
+   - Application will work without it, but with reduced pricing confidence
+
+### Applying for Marketplace Insights API Access
+
+**Prerequisites:**
+1. Join the [eBay Partner Network (EPN)](https://partnernetwork.ebay.com/)
+2. Have an active eBay Developer Program account
+
+**Application Process:**
+1. Register for an EPN publisher account at [partnernetwork.ebay.com](https://partnernetwork.ebay.com/page/developer-questionnaire)
+2. Complete the Developer Questionnaire with:
+   - Your EPN publisher account or campaign ID
+   - Your EDP account App ID and Dev ID
+   - Business justification: Explain how your application provides value to eBay, buyers, and sellers
+3. Submit the request and wait for eBay's approval
+
+**Typical approval requirements:**
+- Rigorous business case review
+- May require signed contracts depending on use case
+- Approval timeline varies
+
+### Graceful Degradation
+
+If you don't have Marketplace Insights API access:
+- The application will continue to work
+- Research will use only active listings data
+- Pricing confidence scores will be lower
+- The system logs warnings but does not fail
+- Consider sold listings searches to return 0 results (not an error)
+
+### API Response Handling
+
+The adapter handles API access gracefully:
+```
+403 Forbidden → Logs warning, returns empty results
+Other errors → Logs warning, returns empty results (graceful degradation)
+Success → Returns sold listings data
+```
+
+### Testing Without Access
+
+For local development and testing:
+- Use **Sandbox** credentials (set `EBAY_SANDBOX=true`)
+- Test with active listings only
+- Research agent will still provide pricing estimates based on active competition
+- Apply for production API access when ready to deploy
+
 ## Additional Resources
 
 - [eBay Developers Program](https://developer.ebay.com/)

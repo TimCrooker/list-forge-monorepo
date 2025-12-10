@@ -50,6 +50,10 @@ export class ChatMessage {
     value?: unknown;
     label: string;
     applied: boolean;
+    description?: string;
+    priority?: 'low' | 'normal' | 'high';
+    autoExecute?: boolean;
+    payload?: Record<string, unknown>;
   }>;
 
   @CreateDateColumn()

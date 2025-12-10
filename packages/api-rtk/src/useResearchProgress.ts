@@ -5,12 +5,15 @@ import type {
   ResearchNodeStartedPayload,
   ResearchNodeCompletedPayload,
   ResearchJobCompletedPayload,
+  ResearchPausedPayload,
+  ResearchResumedPayload,
+  ResearchCancelledPayload,
 } from '@listforge/socket-types';
 
 export interface ResearchProgressState {
   completedNodes: Set<string>;
   currentNode: string | null;
-  status: 'pending' | 'running' | 'success' | 'error';
+  status: 'pending' | 'running' | 'paused' | 'cancelled' | 'success' | 'error';
   error: string | null;
 }
 
@@ -35,7 +38,7 @@ export function useResearchProgress(
 ): ResearchProgressState {
   const [completedNodes, setCompletedNodes] = useState<Set<string>>(new Set());
   const [currentNode, setCurrentNode] = useState<string | null>(null);
-  const [status, setStatus] = useState<'pending' | 'running' | 'success' | 'error'>('pending');
+  const [status, setStatus] = useState<'pending' | 'running' | 'paused' | 'cancelled' | 'success' | 'error'>('pending');
   const [error, setError] = useState<string | null>(null);
   const lastUpdateTimeRef = useRef<number>(Date.now());
 
@@ -51,26 +54,47 @@ export function useResearchProgress(
       return;
     }
 
-    // Ensure socket is connected
-    if (!socket.connected) {
+    // Subscribe to research run room
+    const room = Rooms.researchRun(researchRunId);
+
+    // Helper function to subscribe to the room
+    const subscribeToRoom = () => {
+      if (socket.connected) {
+        socket.emit('subscribe', [room]);
+      }
+    };
+
+    // Ensure token is set before connecting
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+    if (token) {
+      socket.auth = { token };
+    }
+
+    // If socket is already connected, subscribe immediately
+    if (socket.connected) {
+      subscribeToRoom();
+    } else if (token) {
+      // Only connect if we have a token
       socket.connect();
     }
 
-    // Subscribe to research run room
-    const room = Rooms.researchRun(researchRunId);
-    socket.emit('subscribe', [room]);
-
-    // Track socket connection status
+    // Track socket connection status - subscribe when connected
     const handleConnect = () => {
-      socket.emit('subscribe', [room]);
+      subscribeToRoom();
     };
 
     const handleDisconnect = () => {
       // Socket disconnected - fallback polling will be handled by parent component
     };
 
+    // Handle connection errors
+    const handleConnectError = (error: Error) => {
+      console.warn('[useResearchProgress] Socket connection error:', error);
+    };
+
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
+    socket.on('connect_error', handleConnectError);
 
     // Handle node started event
     const handleNodeStarted = (payload: ResearchNodeStartedPayload) => {
@@ -109,25 +133,58 @@ export function useResearchProgress(
         setStatus('success');
         setCurrentNode(null);
         setError(null);
+      } else if (payload.status === 'paused') {
+        setStatus('paused');
       } else {
         setStatus('error');
         setError(payload.error || 'Research job failed');
       }
     };
 
+    // Handle pause event
+    const handlePaused = (payload: ResearchPausedPayload) => {
+      if (payload.researchRunId !== researchRunId) return;
+      lastUpdateTimeRef.current = Date.now();
+      setStatus('paused');
+    };
+
+    // Handle resume event
+    const handleResumed = (payload: ResearchResumedPayload) => {
+      if (payload.researchRunId !== researchRunId) return;
+      lastUpdateTimeRef.current = Date.now();
+      setStatus('running');
+    };
+
+    // Handle cancel event
+    const handleCancelled = (payload: ResearchCancelledPayload) => {
+      if (payload.researchRunId !== researchRunId) return;
+      lastUpdateTimeRef.current = Date.now();
+      setStatus('cancelled');
+      setCurrentNode(null);
+    };
+
     // Register event listeners
     socket.on(SocketEvents.RESEARCH_NODE_STARTED, handleNodeStarted);
     socket.on(SocketEvents.RESEARCH_NODE_COMPLETED, handleNodeCompleted);
     socket.on(SocketEvents.RESEARCH_JOB_COMPLETED, handleJobCompleted);
+    socket.on(SocketEvents.RESEARCH_PAUSED, handlePaused);
+    socket.on(SocketEvents.RESEARCH_RESUMED, handleResumed);
+    socket.on(SocketEvents.RESEARCH_CANCELLED, handleCancelled);
 
     // Cleanup
     return () => {
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
+      socket.off('connect_error', handleConnectError);
       socket.off(SocketEvents.RESEARCH_NODE_STARTED, handleNodeStarted);
       socket.off(SocketEvents.RESEARCH_NODE_COMPLETED, handleNodeCompleted);
       socket.off(SocketEvents.RESEARCH_JOB_COMPLETED, handleJobCompleted);
-      socket.emit('unsubscribe', [room]);
+      socket.off(SocketEvents.RESEARCH_PAUSED, handlePaused);
+      socket.off(SocketEvents.RESEARCH_RESUMED, handleResumed);
+      socket.off(SocketEvents.RESEARCH_CANCELLED, handleCancelled);
+      if (socket.connected) {
+        socket.emit('unsubscribe', [room]);
+      }
     };
   }, [socket, researchRunId]);
 

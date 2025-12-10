@@ -2,6 +2,7 @@ import {
   ResearchRunType,
   ResearchRunStatus,
   ItemResearchData,
+  ResearchActivityLogEntry,
 } from '@listforge/core-types';
 import { EvidenceBundleDto } from './evidence';
 
@@ -101,6 +102,13 @@ export interface GetResearchRunEvidenceResponse {
   evidence: EvidenceBundleDto | null;
 }
 
+/**
+ * Response for getting activity log for a research run
+ */
+export interface GetResearchActivityLogResponse {
+  entries: ResearchActivityLogEntry[];
+}
+
 // ============================================================================
 // Phase 7 Slice 1: ItemResearch DTOs
 // ============================================================================
@@ -170,4 +178,34 @@ export interface ItemResearchRunWithHistoryDto extends ItemResearchRunDto {
 export interface ResumeResearchResponse {
   researchRun: ItemResearchRunDto;
   message: string;
+}
+
+// ============================================================================
+// Research Flow Control Types
+// ============================================================================
+
+/**
+ * Request to pause a research run
+ */
+export interface PauseResearchRequest {}
+
+/**
+ * Response after pausing research
+ */
+export interface PauseResearchResponse {
+  success: boolean;
+  researchRun: ItemResearchRunDto;
+}
+
+/**
+ * Request to stop/cancel a research run
+ */
+export interface StopResearchRequest {}
+
+/**
+ * Response after stopping research
+ */
+export interface StopResearchResponse {
+  success: boolean;
+  researchRun: ItemResearchRunDto;
 }

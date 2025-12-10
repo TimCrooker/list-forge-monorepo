@@ -9,24 +9,48 @@
 // ============================================================================
 
 /**
- * Chat session DTO
+ * Chat session DTO - Updated for general-purpose chat
  */
 export interface ChatSessionDto {
   id: string;
-  itemId: string;
+  conversationType: 'item_scoped' | 'general' | 'dashboard' | 'review_queue' | 'custom';
+  title: string | null;
+  itemId: string | null;
+  item?: {
+    id: string;
+    title: string;
+  };
+  userId: string;
+  organizationId: string;
+  lastActivityAt: string;
   createdAt: string;
-  lastMessageAt?: string;
+  updatedAt: string;
+  messageCount?: number;
 }
 
 /**
- * Chat action DTO (Phase 7 Slice 6 + Slice 7)
+ * Chat action DTO (Phase 7 Slice 6 + Slice 7 + General Chatbot)
  */
 export interface ChatActionDto {
-  type: 'update_field' | 'trigger_research' | 'suggest_price' | 'start_research';
+  type:
+    | 'update_field'
+    | 'trigger_research'
+    | 'suggest_price'
+    | 'start_research'
+    // Extended action types for general chatbot
+    | 'navigate'
+    | 'open_item'
+    | 'copy'
+    | 'run_tool'
+    | 'external_link';
   field?: string;
   value?: unknown;
   label: string;
   applied: boolean;
+  description?: string;
+  priority?: 'low' | 'normal' | 'high';
+  autoExecute?: boolean;
+  payload?: Record<string, unknown>;
 }
 
 /**
@@ -61,6 +85,50 @@ export interface CreateChatSessionResponse {
 export interface GetChatMessagesResponse {
   messages: ChatMessageDto[];
   total: number;
+}
+
+// ============================================================================
+// General Purpose Chat Types (New)
+// ============================================================================
+
+/**
+ * Request to create a general chat session
+ */
+export interface CreateGeneralChatSessionRequest {
+  conversationType?: 'item_scoped' | 'general' | 'dashboard' | 'review_queue' | 'custom';
+  itemId?: string;
+  title?: string;
+  contextSnapshot?: Record<string, unknown>;
+}
+
+/**
+ * Request to update a chat session
+ */
+export interface UpdateChatSessionRequest {
+  title?: string;
+  contextSnapshot?: Record<string, unknown>;
+}
+
+/**
+ * Response for listing chat sessions
+ */
+export interface ListChatSessionsResponse {
+  sessions: ChatSessionDto[];
+}
+
+/**
+ * Send message payload (for WebSocket)
+ */
+export interface SendMessagePayload {
+  sessionId: string;
+  content: string;
+  context?: {
+    pageType?: string;
+    currentRoute?: string;
+    currentItemId?: string;
+    activeTab?: string;
+    activeModal?: string;
+  };
 }
 
 // ============================================================================

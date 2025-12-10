@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ItemResearchRun } from './entities/item-research-run.entity';
 import { ItemResearch } from './entities/item-research.entity';
+import { ResearchActivityLog } from './entities/research-activity-log.entity';
 import { Item } from '../items/entities/item.entity';
 import {
   ItemResearchRunDto,
@@ -27,6 +28,8 @@ export class ResearchService {
     private readonly researchRunRepo: Repository<ItemResearchRun>,
     @InjectRepository(ItemResearch)
     private readonly itemResearchRepo: Repository<ItemResearch>,
+    @InjectRepository(ResearchActivityLog)
+    private readonly activityLogRepo: Repository<ResearchActivityLog>,
     @InjectRepository(Item)
     private readonly itemRepo: Repository<Item>,
   ) {}
@@ -136,6 +139,44 @@ export class ResearchService {
    */
   async setPipelineVersion(id: string, version: string): Promise<void> {
     await this.researchRunRepo.update(id, { pipelineVersion: version });
+  }
+
+  /**
+   * Get activity log for a research run
+   */
+  async getActivityLog(researchRunId: string): Promise<ResearchActivityLog[]> {
+    return this.activityLogRepo.find({
+      where: { researchRunId },
+      order: { timestamp: 'ASC' },
+    });
+  }
+
+  /**
+   * Get operation events for a research run (new format for AgentActivityFeed)
+   * Returns only entries that have operationId set (new format)
+   */
+  async getOperationEvents(researchRunId: string) {
+    const logs = await this.activityLogRepo.find({
+      where: { researchRunId },
+      order: { timestamp: 'ASC' },
+    });
+
+    // Filter and transform to AgentOperationEvent format
+    return logs
+      .filter((log) => log.operationId && log.operationType && log.eventType)
+      .map((log) => ({
+        id: log.id,
+        runId: log.researchRunId,
+        contextId: log.itemId,
+        operationId: log.operationId!,
+        operationType: log.operationType!,
+        eventType: log.eventType!,
+        stepId: log.stepId || undefined,
+        title: log.title || '',
+        message: log.message,
+        data: log.metadata || undefined,
+        timestamp: log.timestamp.toISOString(),
+      }));
   }
 
   /**
@@ -328,17 +369,86 @@ export class ResearchService {
     const researchRun = await this.getResearchRun(id, orgId);
 
     // Can resume if:
-    // 1. Status is 'error' or 'running' (stalled)
+    // 1. Status is 'error', 'running' (stalled), or 'paused'
     // 2. Not completed
     // 3. Has checkpoint or stepCount > 0 (has made progress)
     // 4. stepCount < max retries (30 steps = ~3 retries of 10 steps each)
     const maxSteps = 30;
 
     return (
-      (researchRun.status === 'error' || researchRun.status === 'running') &&
+      (researchRun.status === 'error' ||
+       researchRun.status === 'running' ||
+       researchRun.status === 'paused') &&
       researchRun.completedAt === null &&
       (researchRun.checkpoint !== null || researchRun.stepCount > 0) &&
       researchRun.stepCount < maxSteps
     );
+  }
+
+  // ============================================================================
+  // Research Flow Control Methods
+  // ============================================================================
+
+  /**
+   * Pause a running research run
+   */
+  async pauseResearchRun(id: string, orgId: string): Promise<ItemResearchRun> {
+    const researchRun = await this.getResearchRun(id, orgId);
+
+    if (researchRun.status !== 'running') {
+      throw new BadRequestException(
+        `Research run ${id} cannot be paused. Current status: ${researchRun.status}`,
+      );
+    }
+
+    researchRun.pauseRequested = true;
+    researchRun.pausedAt = new Date();
+    researchRun.status = 'paused';
+
+    return this.researchRunRepo.save(researchRun);
+  }
+
+  /**
+   * Stop/cancel a research run
+   */
+  async stopResearchRun(id: string, orgId: string): Promise<ItemResearchRun> {
+    const researchRun = await this.getResearchRun(id, orgId);
+
+    if (researchRun.status === 'success' || researchRun.status === 'cancelled') {
+      throw new BadRequestException(
+        `Research run ${id} cannot be stopped. Current status: ${researchRun.status}`,
+      );
+    }
+
+    researchRun.status = 'cancelled';
+    researchRun.completedAt = new Date();
+    researchRun.pauseRequested = false; // Clear pause flag if set
+
+    return this.researchRunRepo.save(researchRun);
+  }
+
+  /**
+   * Check if a research run is paused
+   */
+  async isPaused(id: string): Promise<boolean> {
+    const researchRun = await this.researchRunRepo.findOne({
+      where: { id },
+    });
+
+    if (!researchRun) {
+      return false;
+    }
+
+    return researchRun.pauseRequested || researchRun.status === 'paused';
+  }
+
+  /**
+   * Clear pause flags for a research run
+   */
+  async clearPauseFlags(id: string): Promise<void> {
+    await this.researchRunRepo.update(id, {
+      pauseRequested: false,
+      pausedAt: null,
+    });
   }
 }

@@ -3,6 +3,7 @@ import {
   WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   SubscribeMessage,
   ConnectedSocket,
   MessageBody,
@@ -16,10 +17,13 @@ import { Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
 import { ChatService } from './chat.service';
 import { ChatGraphService } from '../ai-workflows/services/chat-graph.service';
+import { ChatContextService } from '../ai-workflows/services/chat-context.service';
+import { ActionEmitterService } from '../ai-workflows/services/action-emitter.service';
 import { Rooms, SocketEvents } from '@listforge/socket-types';
 import { ChatActionDto } from '@listforge/api-types';
 import { EventsService } from '../events/events.service';
 import { OnModuleInit } from '@nestjs/common';
+import { ChatContext } from '../ai-workflows/graphs/chat/chat-graph.state';
 
 interface SocketAuthPayload {
   userId: string;
@@ -43,7 +47,7 @@ interface SocketAuthPayload {
     credentials: true,
   },
 })
-export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit {
+export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit, OnModuleInit {
   @WebSocketServer()
   server: Server;
 
@@ -52,11 +56,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
   private readonly sessionResearchJobs = new Map<string, string>();
   // Track sessions per item (itemId -> Set<sessionId>)
   private readonly itemSessions = new Map<string, Set<string>>();
-  // Rate limiting: track message timestamps per user (userId -> timestamp[])
-  private readonly messageRateLimit = new Map<string, number[]>();
-  // Rate limit: 10 messages per 10 seconds
-  private readonly RATE_LIMIT_COUNT = 10;
-  private readonly RATE_LIMIT_WINDOW = 10000; // 10 seconds
 
   constructor(
     private jwtService: JwtService,
@@ -65,7 +64,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
     private userRepo: Repository<User>,
     private chatService: ChatService,
     private chatGraphService: ChatGraphService,
+    private chatContextService: ChatContextService,
     private eventsService: EventsService,
+    private actionEmitterService: ActionEmitterService,
   ) {}
 
   /**
@@ -140,11 +141,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
       const room = Rooms.chatSession(sessionId);
       await client.join(room);
 
-      // Track session for item (Phase 7 Slice 7)
-      if (!this.itemSessions.has(session.itemId)) {
-        this.itemSessions.set(session.itemId, new Set());
+      // Track session for item (Phase 7 Slice 7) - only for item-scoped sessions
+      if (session.itemId) {
+        if (!this.itemSessions.has(session.itemId)) {
+          this.itemSessions.set(session.itemId, new Set());
+        }
+        this.itemSessions.get(session.itemId)!.add(sessionId);
       }
-      this.itemSessions.get(session.itemId)!.add(sessionId);
 
       this.logger.debug(`User ${userId} joined chat session ${sessionId}`);
 
@@ -156,63 +159,43 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
   }
 
   /**
-   * Check rate limit for a user
-   * Returns true if within limit, false if exceeded
-   */
-  private checkRateLimit(userId: string): boolean {
-    const now = Date.now();
-    const timestamps = this.messageRateLimit.get(userId) || [];
-
-    // Remove timestamps outside the window
-    const recentTimestamps = timestamps.filter(
-      (ts) => now - ts < this.RATE_LIMIT_WINDOW,
-    );
-
-    // Check if limit exceeded
-    if (recentTimestamps.length >= this.RATE_LIMIT_COUNT) {
-      return false;
-    }
-
-    // Add current timestamp
-    recentTimestamps.push(now);
-    this.messageRateLimit.set(userId, recentTimestamps);
-
-    return true;
-  }
-
-  /**
    * Handle send_message - send a message and stream response
+   * Returns acknowledgment with message ID
+   * Updated to accept optional page context from frontend
    */
   @SubscribeMessage('send_message')
   async handleSendMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { sessionId: string; content: string },
+    @MessageBody() data: {
+      sessionId: string;
+      content: string;
+      context?: {
+        pageType?: string;
+        currentRoute?: string;
+        itemId?: string;
+        activeTab?: string;
+        activeModal?: string;
+      };
+    },
   ) {
-    const { sessionId, content } = data;
+    const { sessionId, content, context } = data;
     const userId = client.data.userId;
     const orgId = client.data.currentOrgId;
 
     if (!userId || !orgId) {
-      return { error: 'Unauthorized' };
+      return { success: false, error: 'Unauthorized' };
     }
 
     if (!content || !content.trim()) {
-      return { error: 'Message content is required' };
-    }
-
-    // Check rate limit
-    if (!this.checkRateLimit(userId)) {
-      const errorMsg = 'Rate limit exceeded. Please wait a moment before sending another message.';
-      client.emit('chat:error', {
-        sessionId,
-        error: errorMsg,
-      });
-      return { error: errorMsg };
+      return { success: false, error: 'Message content is required' };
     }
 
     try {
       // Verify session belongs to user
-      const session = await this.chatService.findSession(sessionId, userId, orgId);
+      const session = await this.chatService.getSession(sessionId, userId, orgId);
+
+      // Update session activity
+      await this.chatService.updateSessionActivity(sessionId);
 
       // Save user message
       const userMessage = await this.chatService.saveMessage(sessionId, 'user', content);
@@ -229,6 +212,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
         },
       });
 
+      // Build or use provided chat context
+      const chatContext: ChatContext | undefined = context
+        ? this.chatContextService.buildChatContext(context)
+        : this.buildDefaultContext(session);
+
       // Stream assistant response
       let fullResponse = '';
       await this.chatGraphService.streamResponse({
@@ -237,10 +225,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
         userId,
         organizationId: orgId,
         userMessage: content,
+        chatContext,
         onToken: (token: string) => {
           fullResponse += token;
           // Emit token to session room
-          this.server.to(Rooms.chatSession(sessionId)).emit('chat:token', {
+          this.server.to(Rooms.chatSession(sessionId)).emit(SocketEvents.CHAT_TOKEN, {
             sessionId,
             token,
           });
@@ -290,25 +279,32 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
         },
         onError: async (error: string) => {
           // Emit error event
-          this.server.to(Rooms.chatSession(sessionId)).emit('chat:error', {
+          this.server.to(Rooms.chatSession(sessionId)).emit(SocketEvents.CHAT_ERROR, {
             sessionId,
             error,
           });
         },
       });
 
-      return { success: true };
+      // Return acknowledgment with user message ID
+      return {
+        success: true,
+        messageId: userMessage.id,
+      };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to send message to session ${sessionId}:`, error);
 
       // Emit error to client
-      client.emit('chat:error', {
+      client.emit(SocketEvents.CHAT_ERROR, {
         sessionId,
         error: errorMessage,
       });
 
-      return { error: errorMessage };
+      return {
+        success: false,
+        error: errorMessage,
+      };
     }
   }
 
@@ -385,6 +381,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
   }
 
   /**
+   * Called after the WebSocket server is initialized
+   * This is the right place to pass the server to services that need it
+   */
+  afterInit(server: Server) {
+    this.actionEmitterService.initialize(server);
+    this.logger.log('ActionEmitterService initialized with Socket.IO server');
+  }
+
+  /**
    * Initialize module - subscribe to research completion events
    * Phase 7 Slice 7
    */
@@ -423,5 +428,23 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
         this.sessionResearchJobs.delete(sessionId);
       }
     });
+  }
+
+  /**
+   * Build default chat context from session data
+   * Used as fallback when frontend doesn't provide context
+   */
+  private buildDefaultContext(session: any): ChatContext {
+    // Use session's context snapshot if available
+    if (session.contextSnapshot) {
+      return session.contextSnapshot as ChatContext;
+    }
+
+    // Build minimal context based on session type
+    return {
+      pageType: session.itemId ? 'item_detail' : 'other',
+      currentRoute: session.itemId ? `/items/${session.itemId}` : '/',
+      itemId: session.itemId || undefined,
+    };
   }
 }

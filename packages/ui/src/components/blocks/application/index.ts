@@ -4,6 +4,9 @@ export * from './app-navbar'
 export * from './app-sidebar'
 export * from './app-content'
 
+// Re-export useSidebar for convenience
+export { useSidebar } from '@/components/ui/sidebar'
+
 // Dashboard Components
 export * from './dashboard-shell'
 export * from './overview-cards'

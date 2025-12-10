@@ -11,6 +11,9 @@ export interface AppShellProps {
   sidebarCollapsible?: boolean
   sidebarDefaultOpen?: boolean
   contentClassName?: string
+  // Controlled sidebar collapse props
+  sidebarCollapsed?: boolean
+  onSidebarCollapsedChange?: (collapsed: boolean) => void
 }
 
 export const AppShell = ({
@@ -22,11 +25,30 @@ export const AppShell = ({
   sidebarCollapsible = true,
   sidebarDefaultOpen = true,
   contentClassName,
+  sidebarCollapsed: sidebarCollapsedProp,
+  onSidebarCollapsedChange,
 }: AppShellProps) => {
-  const [sidebarOpen, setSidebarOpen] = React.useState(sidebarDefaultOpen)
+  // Determine if we're in controlled or uncontrolled mode
+  const isControlled = sidebarCollapsedProp !== undefined && onSidebarCollapsedChange !== undefined
+
+  // For controlled mode, convert collapsed to open
+  const sidebarOpen = isControlled ? !sidebarCollapsedProp : sidebarDefaultOpen
+
+  const handleOpenChange = React.useCallback(
+    (open: boolean) => {
+      if (isControlled && onSidebarCollapsedChange) {
+        onSidebarCollapsedChange(!open)
+      }
+    },
+    [isControlled, onSidebarCollapsedChange],
+  )
 
   return (
-    <SidebarProvider defaultOpen={sidebarDefaultOpen}>
+    <SidebarProvider
+      defaultOpen={isControlled ? undefined : sidebarDefaultOpen}
+      open={isControlled ? sidebarOpen : undefined}
+      onOpenChange={isControlled ? handleOpenChange : undefined}
+    >
       <div className={cn('flex h-screen overflow-hidden bg-background w-full', className)}>
         {/* Sidebar */}
         {sidebar && <div className="hidden md:flex">{sidebar}</div>}

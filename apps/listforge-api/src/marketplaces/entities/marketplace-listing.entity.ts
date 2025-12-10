@@ -101,6 +101,17 @@ export class MarketplaceListing {
   marketplaceAttributes: Record<string, string | number | boolean> | null;
 
   // ============================================================================
+  // Auto-Publish Tracking (Slice 7)
+  // ============================================================================
+
+  @Column({
+    type: 'boolean',
+    default: false,
+    comment: 'Whether this listing was auto-published by the system',
+  })
+  autoPublished: boolean;
+
+  // ============================================================================
   // Sync & Error Tracking
   // ============================================================================
 

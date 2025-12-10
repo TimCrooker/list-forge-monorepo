@@ -15,11 +15,14 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarSeparator,
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
 } from '@/components/ui/sidebar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ChevronRight, type LucideIcon } from 'lucide-react'
+import { ChevronRight, ChevronLeft, type LucideIcon } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 
 export interface NavItem {
@@ -48,6 +51,7 @@ export interface NavGroup {
 
 export interface AppSidebarProps {
   logo?: React.ReactNode
+  collapsedLogo?: React.ReactNode // Logo to show when collapsed (icon logo)
   navigation: NavGroup[]
   footer?: React.ReactNode
   onNavigate?: (item: NavItem) => void
@@ -60,6 +64,7 @@ export interface AppSidebarProps {
 
 export const AppSidebar = ({
   logo,
+  collapsedLogo,
   navigation,
   footer,
   onNavigate,
@@ -80,9 +85,17 @@ export const AppSidebar = ({
       className={cn(sidebarVariants[variant], className)}
       collapsible={collapsible ? 'icon' : 'none'}
     >
-      {logo && (
-        <SidebarHeader>
-          <div className="flex items-center px-2 py-1.5">{logo}</div>
+      {(logo || collapsedLogo) && (
+        <SidebarHeader className="group-hover/sidebar-wrapper:relative">
+          <div className="flex items-center px-2 py-1.5">
+            <SidebarLogo logo={logo} collapsedLogo={collapsedLogo} />
+          </div>
+          {/* Collapse toggle button - appears on hover when expanded */}
+          {collapsible && (
+            <div className="absolute right-2 top-2 opacity-0 group-hover/sidebar-wrapper:opacity-100 transition-opacity">
+              <SidebarTrigger className="h-7 w-7" />
+            </div>
+          )}
         </SidebarHeader>
       )}
 
@@ -115,6 +128,24 @@ export const AppSidebar = ({
       {footer && <SidebarFooter>{footer}</SidebarFooter>}
     </Sidebar>
   )
+}
+
+// Component to handle logo switching based on collapsed state
+function SidebarLogo({
+  logo,
+  collapsedLogo,
+}: {
+  logo?: React.ReactNode
+  collapsedLogo?: React.ReactNode
+}) {
+  const { state } = useSidebar()
+  const isCollapsed = state === 'collapsed'
+
+  if (isCollapsed && collapsedLogo) {
+    return <>{collapsedLogo}</>
+  }
+
+  return <>{logo}</>
 }
 
 function renderNavIcon(icon: LucideIcon | React.ReactNode | undefined) {

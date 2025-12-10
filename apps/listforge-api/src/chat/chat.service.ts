@@ -27,6 +27,7 @@ export class ChatService {
 
   /**
    * Create a new chat session for an item
+   * @deprecated Use createGeneralSession for new code (supports all session types)
    */
   async createSession(
     itemId: string,
@@ -46,6 +47,9 @@ export class ChatService {
       itemId,
       userId,
       organizationId,
+      conversationType: 'item_scoped',
+      title: `Item: ${item.title}`,
+      lastActivityAt: new Date(),
     });
 
     return this.chatSessionRepo.save(session);
@@ -238,6 +242,11 @@ export class ChatService {
       throw new BadRequestException('Action missing required field or value');
     }
 
+    // Verify session is item-scoped before applying field updates
+    if (!session.itemId) {
+      throw new BadRequestException('Cannot update item field: session is not item-scoped');
+    }
+
     try {
       // Apply the action using updateItemField tool
       const result = await updateItemField(
@@ -266,6 +275,172 @@ export class ChatService {
         success: false,
         error: errorMessage,
       };
+    }
+  }
+
+  /**
+   * Create a general-purpose chat session
+   * Supports item-scoped, general, dashboard, review_queue, and custom conversations
+   */
+  async createGeneralSession(params: {
+    userId: string;
+    organizationId: string;
+    conversationType: 'item_scoped' | 'general' | 'dashboard' | 'review_queue' | 'custom';
+    itemId?: string;
+    title?: string;
+    contextSnapshot?: Record<string, unknown>;
+  }): Promise<ChatSession> {
+    // Validate: item_scoped requires itemId
+    if (params.conversationType === 'item_scoped' && !params.itemId) {
+      throw new BadRequestException('item_scoped conversation requires itemId');
+    }
+
+    // Validate item exists if provided
+    let item: Item | null = null;
+    if (params.itemId) {
+      item = await this.itemRepo.findOne({
+        where: { id: params.itemId, organizationId: params.organizationId },
+      });
+      if (!item) {
+        throw new NotFoundException(`Item ${params.itemId} not found`);
+      }
+    }
+
+    // Generate title if not provided
+    const title = params.title || this.generateSessionTitle(params.conversationType, item);
+
+    const session = this.chatSessionRepo.create({
+      userId: params.userId,
+      organizationId: params.organizationId,
+      conversationType: params.conversationType,
+      itemId: params.itemId || null,
+      title,
+      contextSnapshot: params.contextSnapshot || null,
+      lastActivityAt: new Date(),
+    });
+
+    return this.chatSessionRepo.save(session);
+  }
+
+  /**
+   * Get user's chat sessions with optional filtering
+   */
+  async getUserSessions(
+    userId: string,
+    organizationId: string,
+    options?: {
+      conversationType?: string;
+      limit?: number;
+      includeArchived?: boolean;
+    },
+  ): Promise<ChatSession[]> {
+    const qb = this.chatSessionRepo
+      .createQueryBuilder('session')
+      .leftJoinAndSelect('session.item', 'item')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.organizationId = :organizationId', { organizationId });
+
+    if (options?.conversationType) {
+      qb.andWhere('session.conversationType = :type', {
+        type: options.conversationType,
+      });
+    }
+
+    qb.orderBy('session.lastActivityAt', 'DESC');
+    qb.limit(options?.limit || 50);
+
+    return qb.getMany();
+  }
+
+  /**
+   * Get a session by ID with authorization check
+   * Supports sessions with or without itemId (general conversations)
+   */
+  async getSession(
+    sessionId: string,
+    userId: string,
+    organizationId: string,
+  ): Promise<ChatSession> {
+    const session = await this.chatSessionRepo.findOne({
+      where: { id: sessionId, userId, organizationId },
+      relations: ['item'],
+    });
+
+    if (!session) {
+      throw new NotFoundException(`Chat session ${sessionId} not found`);
+    }
+
+    return session;
+  }
+
+  /**
+   * Update session's last activity timestamp
+   */
+  async updateSessionActivity(sessionId: string): Promise<void> {
+    await this.chatSessionRepo.update(
+      { id: sessionId },
+      { lastActivityAt: new Date() },
+    );
+  }
+
+  /**
+   * Update session metadata (title, context, etc.)
+   */
+  async updateSession(
+    sessionId: string,
+    userId: string,
+    organizationId: string,
+    updates: {
+      title?: string;
+      contextSnapshot?: Record<string, unknown>;
+    },
+  ): Promise<ChatSession> {
+    // Verify session belongs to user
+    const session = await this.getSession(sessionId, userId, organizationId);
+
+    // Apply updates
+    if (updates.title !== undefined) {
+      session.title = updates.title;
+    }
+    if (updates.contextSnapshot !== undefined) {
+      session.contextSnapshot = updates.contextSnapshot;
+    }
+
+    return this.chatSessionRepo.save(session);
+  }
+
+  /**
+   * Delete a chat session (soft delete by marking inactive)
+   */
+  async deleteSession(
+    sessionId: string,
+    userId: string,
+    organizationId: string,
+  ): Promise<void> {
+    // Verify session belongs to user
+    await this.getSession(sessionId, userId, organizationId);
+
+    // Hard delete (cascade will delete messages)
+    await this.chatSessionRepo.delete({ id: sessionId });
+  }
+
+  /**
+   * Generate a session title based on conversation type
+   */
+  private generateSessionTitle(
+    conversationType: string,
+    item?: Item | null,
+  ): string {
+    switch (conversationType) {
+      case 'item_scoped':
+        return item ? `Item: ${item.title}` : 'Item Conversation';
+      case 'dashboard':
+        return 'Dashboard Questions';
+      case 'review_queue':
+        return 'Review Queue';
+      case 'general':
+      default:
+        return 'General Conversation';
     }
   }
 }

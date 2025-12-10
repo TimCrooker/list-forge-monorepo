@@ -5,6 +5,10 @@ import {
   useExchangeEbayCodeMutation,
   useExchangeAmazonCodeMutation,
   useDeleteMarketplaceAccountMutation,
+  useRefreshMarketplaceAccountMutation,
+  useMeQuery,
+  useOrgRoom,
+  getSocket,
   api,
 } from '@listforge/api-rtk';
 import { useAppDispatch } from '@/store/store';
@@ -47,14 +51,21 @@ function MarketplacesPage() {
   const { code, state, spapi_oauth_code, selling_partner_id } = search;
 
   const { data, isLoading, refetch } = useListMarketplaceAccountsQuery();
+  const { data: meData } = useMeQuery();
   const [exchangeEbayCode, { isLoading: isExchangingEbay }] = useExchangeEbayCodeMutation();
   const [exchangeAmazonCode, { isLoading: isExchangingAmazon }] = useExchangeAmazonCodeMutation();
   const [deleteAccount] = useDeleteMarketplaceAccountMutation();
+  const [refreshAccount] = useRefreshMarketplaceAccountMutation();
   const [isGettingEbayUrl, setIsGettingEbayUrl] = useState(false);
   const [isGettingAmazonUrl, setIsGettingAmazonUrl] = useState(false);
   const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
+  const [refreshingAccountId, setRefreshingAccountId] = useState<string | null>(null);
 
   const isExchanging = isExchangingEbay || isExchangingAmazon;
+
+  // Subscribe to organization room for token expiration events
+  const orgId = meData?.currentOrg?.id;
+  useOrgRoom(orgId);
 
   // Clear URL params helper
   const clearSearchParams = () => {
@@ -82,6 +93,7 @@ function MarketplacesPage() {
         })
         .catch((err) => {
           console.error('Failed to exchange eBay code:', err);
+          showError('Failed to connect eBay account. Please try again.');
           clearSearchParams();
         });
     }
@@ -89,7 +101,19 @@ function MarketplacesPage() {
 
   // Handle Amazon OAuth callback
   useEffect(() => {
-    if (spapi_oauth_code && state && selling_partner_id) {
+    // Check if Amazon OAuth parameters are present
+    if (spapi_oauth_code && state) {
+      // Validate that selling_partner_id is provided
+      if (!selling_partner_id) {
+        showError(
+          'Amazon authorization incomplete. Missing seller ID. This may indicate that authorization was declined or interrupted. Please try connecting again.'
+        );
+        console.error('Amazon OAuth callback missing selling_partner_id parameter');
+        clearSearchParams();
+        return;
+      }
+
+      // All required parameters present - exchange code for tokens
       exchangeAmazonCode({
         spapi_oauth_code,
         state,
@@ -103,10 +127,77 @@ function MarketplacesPage() {
         })
         .catch((err) => {
           console.error('Failed to exchange Amazon code:', err);
+          showError('Failed to connect Amazon account. Please try again.');
           clearSearchParams();
         });
     }
   }, [spapi_oauth_code, state, selling_partner_id, exchangeAmazonCode, navigate, refetch]);
+
+  // Listen for token expiration events
+  useEffect(() => {
+    if (!orgId) return;
+
+    const socket = getSocket();
+
+    // Handler for token expiring warning (24 hours before expiry)
+    const handleTokenExpiring = (payload: {
+      accountId: string;
+      marketplace: string;
+      expiresAt: string;
+      hoursUntilExpiry: number;
+    }) => {
+      const marketplaceName = getMarketplaceName(payload.marketplace);
+      const hours = Math.round(payload.hoursUntilExpiry);
+      showError(
+        `${marketplaceName} Token Expiring Soon`,
+        `Your ${marketplaceName} account token will expire in ${hours} hours. Consider reconnecting.`
+      );
+      // Refetch to update UI with any status changes
+      refetch();
+    };
+
+    // Handler for token expired
+    const handleTokenExpired = (payload: {
+      accountId: string;
+      marketplace: string;
+      expiredAt: string;
+    }) => {
+      const marketplaceName = getMarketplaceName(payload.marketplace);
+      showError(
+        `${marketplaceName} Token Expired`,
+        `Your ${marketplaceName} account token has expired. Please reconnect your account.`
+      );
+      // Refetch to show expired status in UI
+      refetch();
+    };
+
+    // Handler for successful token refresh
+    const handleTokenRefreshed = (payload: {
+      accountId: string;
+      marketplace: string;
+      refreshedAt: string;
+    }) => {
+      const marketplaceName = getMarketplaceName(payload.marketplace);
+      showSuccess(
+        `${marketplaceName} Token Refreshed`,
+        `Your ${marketplaceName} account token has been automatically refreshed.`
+      );
+      // Refetch to update UI with refreshed status
+      refetch();
+    };
+
+    // Register event listeners
+    socket.on('marketplace:token:expiring', handleTokenExpiring);
+    socket.on('marketplace:token:expired', handleTokenExpired);
+    socket.on('marketplace:token:refreshed', handleTokenRefreshed);
+
+    // Cleanup on unmount
+    return () => {
+      socket.off('marketplace:token:expiring', handleTokenExpiring);
+      socket.off('marketplace:token:expired', handleTokenExpired);
+      socket.off('marketplace:token:refreshed', handleTokenRefreshed);
+    };
+  }, [orgId, refetch]);
 
   const handleConnectEbay = async () => {
     try {
@@ -159,6 +250,29 @@ function MarketplacesPage() {
       console.error('Failed to delete account:', err);
     } finally {
       setDeletingAccountId(null);
+    }
+  };
+
+  const handleRefreshAccount = async (accountId: string, marketplace: string) => {
+    try {
+      setRefreshingAccountId(accountId);
+      await refreshAccount(accountId).unwrap();
+      await refetch();
+      showSuccess(
+        'Tokens Refreshed',
+        `Your ${getMarketplaceName(marketplace)} account tokens have been refreshed successfully.`
+      );
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      showError(
+        'Failed to Refresh Tokens',
+        errorMessage.includes('No refresh token')
+          ? 'No refresh token available. Please reconnect your account.'
+          : 'Failed to refresh tokens. The refresh token may have expired. Please try reconnecting your account.'
+      );
+      console.error('Failed to refresh account:', err);
+    } finally {
+      setRefreshingAccountId(null);
     }
   };
 
@@ -328,13 +442,30 @@ function MarketplacesPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {account.status === 'expired' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleReconnect(account.marketplace)}
-                      >
-                        Reconnect
-                      </Button>
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleRefreshAccount(account.id, account.marketplace)}
+                          disabled={refreshingAccountId === account.id}
+                        >
+                          {refreshingAccountId === account.id ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Refreshing...
+                            </>
+                          ) : (
+                            'Try Refresh'
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleReconnect(account.marketplace)}
+                        >
+                          Reconnect
+                        </Button>
+                      </>
                     )}
                     <AlertDialog>
                       <AlertDialogTrigger asChild>

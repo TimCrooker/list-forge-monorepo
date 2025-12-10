@@ -14,6 +14,7 @@ import {
   ErrorMessages,
   ErrorCode,
 } from '@listforge/api-types';
+import { MarketplaceErrorSanitizer } from '../../marketplaces/utils/error-sanitizer';
 
 /**
  * Custom application exception with error code
@@ -35,6 +36,7 @@ export class AppException extends HttpException {
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger('ExceptionFilter');
+  private readonly isProduction = process.env.NODE_ENV === 'production';
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
@@ -43,7 +45,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     const errorResponse = this.buildErrorResponse(exception, request);
 
-    // Log the error with appropriate level
+    // Log the UNSANITIZED error with appropriate level (for server-side debugging)
     if (errorResponse.statusCode >= 500) {
       this.logger.error(
         `${request.method} ${request.url} - ${errorResponse.statusCode}`,
@@ -51,11 +53,21 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       );
     } else {
       this.logger.warn(
-        `${request.method} ${request.url} - ${errorResponse.statusCode}: ${errorResponse.message}`,
+        `${request.method} ${request.url} - ${errorResponse.statusCode}: ${this.extractOriginalMessage(exception)}`,
       );
     }
 
     response.status(errorResponse.statusCode).json(errorResponse);
+  }
+
+  /**
+   * Extract original error message for server-side logging (unsanitized)
+   */
+  private extractOriginalMessage(exception: unknown): string {
+    if (exception instanceof Error) {
+      return exception.message;
+    }
+    return String(exception);
   }
 
   private buildErrorResponse(
@@ -114,14 +126,29 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         message = 'An error occurred';
       }
 
+      // Sanitize message and details to prevent credential/path leakage
+      const sanitizedMessage = MarketplaceErrorSanitizer.redactSensitiveData(message);
+      const sanitizedDetails = details?.map(detail =>
+        MarketplaceErrorSanitizer.redactSensitiveData(detail),
+      );
+
+      // In production, use safe categorized messages for marketplace errors
+      const isMarketplaceError = this.isMarketplaceRelated(request.path);
+      let finalMessage = sanitizedMessage;
+
+      if (this.isProduction && isMarketplaceError) {
+        const safeError = MarketplaceErrorSanitizer.sanitizeError(exception, true);
+        finalMessage = safeError.message;
+      }
+
       // Map HTTP status to error code
       const errorCode = this.statusToErrorCode(status);
 
       return {
         statusCode: status,
         errorCode,
-        message,
-        details,
+        message: finalMessage,
+        details: sanitizedDetails,
         timestamp,
         path,
       };
@@ -133,13 +160,30 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       exception instanceof Error ? exception.stack : String(exception),
     );
 
+    // In production, never expose internal error details
+    const message = this.isProduction
+      ? ErrorMessages.INTERNAL_ERROR
+      : MarketplaceErrorSanitizer.redactSensitiveData(
+          exception instanceof Error ? exception.message : String(exception),
+        );
+
     return {
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       errorCode: ErrorCodes.INTERNAL_ERROR,
-      message: ErrorMessages.INTERNAL_ERROR,
+      message,
       timestamp,
       path,
     };
+  }
+
+  /**
+   * Check if request path is marketplace-related
+   *
+   * This helps determine if we should apply stricter sanitization
+   * for marketplace API errors.
+   */
+  private isMarketplaceRelated(path: string): boolean {
+    return path.includes('/marketplaces') || path.includes('/ebay') || path.includes('/amazon');
   }
 
   private statusToErrorCode(status: number): ErrorCode {

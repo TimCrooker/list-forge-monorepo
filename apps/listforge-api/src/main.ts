@@ -19,7 +19,11 @@ async function bootstrap() {
 
   let app;
   try {
-    app = await NestFactory.create(AppModule);
+    // Enable raw body for webhook signature verification
+    // This preserves the raw request body needed for HMAC verification
+    app = await NestFactory.create(AppModule, {
+      rawBody: true,
+    });
   } catch (error) {
     logger.error('Failed to create NestJS application:', error);
     // Log helpful error message

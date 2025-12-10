@@ -1,0 +1,14 @@
+diff --git a/lib/request.js b/lib/request.js
+index 1234567..abcdefg 100644
+--- a/lib/request.js
++++ b/lib/request.js
+@@ -8,9 +8,6 @@ const debug_1 = __importDefault(require("debug"));
+ const qs_1 = __importDefault(require("qs"));
+ const log = (0, debug_1.default)('ebay:request');
+ exports.defaultGlobalHeaders = {
+-    'Access-Control-Allow-Origin': '*',
+-    'Access-Control-Allow-Headers': 'X-Requested-With, Origin, Content-Type, X-Auth-Token',
+-    'Access-Control-Allow-Methods': 'GET, PUT, POST, DELETE'
+ };
+ exports.multipartHeader = {
+     'Content-Type': 'multipart/form-data'

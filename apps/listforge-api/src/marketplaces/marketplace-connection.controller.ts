@@ -8,12 +8,14 @@ import {
   UseGuards,
   BadRequestException,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { OrgGuard } from '../common/guards/org.guard';
 import { ReqCtx } from '../common/decorators/req-ctx.decorator';
 import { RequestContext } from '../common/interfaces/request-context.interface';
 import { MarketplaceAccountService } from './services/marketplace-account.service';
 import { MarketplaceListingService } from './services/marketplace-listing.service';
+import { MARKETPLACE_THROTTLER_OPTIONS, createThrottleOptions } from './config/throttler.config';
 
 @Controller('marketplaces')
 @UseGuards(JwtAuthGuard, OrgGuard)
@@ -25,7 +27,12 @@ export class MarketplaceConnectionController {
 
   // ============ eBay OAuth Endpoints ============
 
+  /**
+   * Generate eBay OAuth authorization URL
+   * Rate limit: 5 requests per minute (prevent state enumeration)
+   */
   @Get('ebay/auth-url')
+  @Throttle(createThrottleOptions(MARKETPLACE_THROTTLER_OPTIONS.getAuthUrl))
   getEbayAuthUrl(@ReqCtx() ctx: RequestContext) {
     const url = this.accountService.getEbayAuthUrl(ctx.currentOrgId, ctx.userId);
     return { authUrl: url };
@@ -34,8 +41,10 @@ export class MarketplaceConnectionController {
   /**
    * Exchange OAuth authorization code for tokens
    * Called by frontend after eBay redirects back with code
+   * Rate limit: 10 requests per 5 minutes (prevent brute force)
    */
   @Post('ebay/exchange-code')
+  @Throttle(createThrottleOptions(MARKETPLACE_THROTTLER_OPTIONS.exchangeCode))
   async exchangeEbayCode(
     @Body() body: { code: string; state: string },
     @ReqCtx() ctx: RequestContext,
@@ -68,7 +77,12 @@ export class MarketplaceConnectionController {
 
   // ============ Amazon OAuth Endpoints ============
 
+  /**
+   * Generate Amazon OAuth authorization URL
+   * Rate limit: 5 requests per minute (prevent state enumeration)
+   */
   @Get('amazon/auth-url')
+  @Throttle(createThrottleOptions(MARKETPLACE_THROTTLER_OPTIONS.getAuthUrl))
   getAmazonAuthUrl(@ReqCtx() ctx: RequestContext) {
     const url = this.accountService.getAmazonAuthUrl(ctx.currentOrgId, ctx.userId);
     return { authUrl: url };
@@ -77,8 +91,10 @@ export class MarketplaceConnectionController {
   /**
    * Exchange Amazon OAuth authorization code for tokens
    * Called by frontend after Amazon redirects back with code
+   * Rate limit: 10 requests per 5 minutes (prevent brute force)
    */
   @Post('amazon/exchange-code')
+  @Throttle(createThrottleOptions(MARKETPLACE_THROTTLER_OPTIONS.exchangeCode))
   async exchangeAmazonCode(
     @Body() body: { spapi_oauth_code: string; state: string; selling_partner_id: string },
     @ReqCtx() ctx: RequestContext,
@@ -114,7 +130,12 @@ export class MarketplaceConnectionController {
     };
   }
 
+  /**
+   * List all marketplace accounts for organization
+   * Rate limit: 20 requests per minute (normal API usage)
+   */
   @Get('accounts')
+  @Throttle(createThrottleOptions(MARKETPLACE_THROTTLER_OPTIONS.listAccounts))
   async listAccounts(@ReqCtx() ctx: RequestContext) {
     const accounts = await this.accountService.listAccounts(ctx.currentOrgId);
     return {
@@ -129,7 +150,30 @@ export class MarketplaceConnectionController {
     };
   }
 
+  /**
+   * Manually refresh marketplace account tokens
+   * Supports both eBay and Amazon marketplaces
+   * Rate limit: 3 requests per minute (prevent abuse)
+   */
+  @Post('accounts/:id/refresh')
+  @Throttle(createThrottleOptions(MARKETPLACE_THROTTLER_OPTIONS.refreshTokens))
+  async refreshAccountTokens(
+    @Param('id') id: string,
+    @ReqCtx() ctx: RequestContext,
+  ) {
+    await this.accountService.refreshTokens(id, ctx.currentOrgId);
+    return {
+      success: true,
+      message: 'Tokens refreshed successfully',
+    };
+  }
+
+  /**
+   * Disconnect/revoke marketplace account
+   * Rate limit: 5 requests per minute (prevent abuse)
+   */
   @Delete('accounts/:id')
+  @Throttle(createThrottleOptions(MARKETPLACE_THROTTLER_OPTIONS.deleteAccount))
   async revokeAccount(
     @Param('id') id: string,
     @ReqCtx() ctx: RequestContext,

@@ -23,10 +23,11 @@ export type LifecycleStatus =
  * AI review state - how the AI flow was used and evaluated
  */
 export type AiReviewState =
-  | 'none'      // No AI review/pipeline involved (e.g., manually created items)
-  | 'pending'   // AI processing/review in progress or awaiting human approval
-  | 'approved'  // AI-produced details were accepted as "good enough"
-  | 'rejected'; // AI output was not sufficient; human intervention required
+  | 'none'         // No AI review/pipeline involved (e.g., manually created items)
+  | 'pending'      // AI processing/review in progress or awaiting human approval
+  | 'researching'  // Fast intake complete, deep research in progress
+  | 'approved'     // AI-produced details were accepted as "good enough"
+  | 'rejected';    // AI output was not sufficient; human intervention required
 
 /**
  * Item source - how the item was created

@@ -2,6 +2,7 @@ import { ResearchGraphState } from '../research-graph.state';
 import { PriceBand, DemandSignal } from '@listforge/core-types';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
+import { withTimeout, LLM_CALL_TIMEOUT_MS } from '../../../utils/timeout';
 
 /**
  * Tools interface for price calculation
@@ -146,30 +147,34 @@ export async function calculatePriceNode(
 
   const stats = calculatePriceStats(prices);
 
-  // LLM reasoning for price bands
-  const response = await llm.invoke([
-    new SystemMessage(PRICING_PROMPT),
-    new HumanMessage(
-      JSON.stringify(
-        {
-          item: {
-            title: state.item?.title,
-            condition: state.item?.condition,
+  // LLM reasoning for price bands - PERFORMANCE FIX: Wrapped with timeout
+  const response = await withTimeout(
+    () => llm.invoke([
+      new SystemMessage(PRICING_PROMPT),
+      new HumanMessage(
+        JSON.stringify(
+          {
+            item: {
+              title: state.item?.title,
+              condition: state.item?.condition,
+            },
+            productId: state.productIdentification,
+            comps: relevantComps.slice(0, 10).map((c) => ({
+              title: c.title,
+              price: c.price,
+              condition: c.condition,
+              relevanceScore: c.relevanceScore,
+            })),
+            stats,
           },
-          productId: state.productIdentification,
-          comps: relevantComps.slice(0, 10).map((c) => ({
-            title: c.title,
-            price: c.price,
-            condition: c.condition,
-            relevanceScore: c.relevanceScore,
-          })),
-          stats,
-        },
-        null,
-        2,
+          null,
+          2,
+        ),
       ),
-    ),
-  ]);
+    ]),
+    LLM_CALL_TIMEOUT_MS,
+    'Price calculation LLM call timed out',
+  );
 
   // Parse price bands
   const content = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);

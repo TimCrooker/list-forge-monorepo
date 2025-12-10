@@ -75,4 +75,14 @@ export class ItemResearchRun {
     status: 'running' | 'success' | 'error';
     error?: string;
   }> | null;
+
+  // ============================================================================
+  // Research Flow Control Support
+  // ============================================================================
+
+  @Column({ type: 'boolean', default: false, name: 'pause_requested' })
+  pauseRequested: boolean;
+
+  @Column({ type: 'timestamp', nullable: true, name: 'paused_at' })
+  pausedAt: Date | null;
 }

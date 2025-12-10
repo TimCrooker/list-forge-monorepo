@@ -29,6 +29,7 @@ import { Organization } from '../organizations/entities/organization.entity';
 import { UserOrganization } from '../organizations/entities/user-organization.entity';
 import { Item } from '../items/entities/item.entity';
 import { MarketplaceAccount } from '../marketplaces/entities/marketplace-account.entity';
+import { MarketplaceAuditLog } from '../marketplaces/entities/marketplace-audit-log.entity';
 import { WorkflowRun } from '../ai-workflows/entities/workflow-run.entity';
 import { QUEUE_AI_WORKFLOW, QUEUE_MARKETPLACE_PUBLISH, QUEUE_MARKETPLACE_SYNC } from '@listforge/queue-types';
 
@@ -45,6 +46,8 @@ export class AdminService {
     private itemRepo: Repository<Item>,
     @InjectRepository(MarketplaceAccount)
     private marketplaceAccountRepo: Repository<MarketplaceAccount>,
+    @InjectRepository(MarketplaceAuditLog)
+    private marketplaceAuditLogRepo: Repository<MarketplaceAuditLog>,
     @InjectRepository(WorkflowRun)
     private workflowRunRepo: Repository<WorkflowRun>,
     @InjectQueue(QUEUE_AI_WORKFLOW)
@@ -385,6 +388,49 @@ export class AdminService {
         completedAt: run.completedAt?.toISOString(),
         error: run.error,
       })),
+    };
+  }
+
+  /**
+   * Get marketplace audit logs with optional filters
+   */
+  async getMarketplaceAuditLogs(params: {
+    orgId?: string;
+    accountId?: string;
+    userId?: string;
+    eventType?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    const where: any = {};
+    if (params.orgId) where.orgId = params.orgId;
+    if (params.accountId) where.accountId = params.accountId;
+    if (params.userId) where.userId = params.userId;
+    if (params.eventType) where.eventType = params.eventType;
+
+    const logs = await this.marketplaceAuditLogRepo.find({
+      where,
+      order: { timestamp: 'DESC' },
+      take: params.limit || 100,
+      skip: params.offset || 0,
+      relations: ['organization', 'user', 'account'],
+    });
+
+    return {
+      logs: logs.map((log) => ({
+        id: log.id,
+        orgId: log.orgId,
+        userId: log.userId,
+        accountId: log.accountId,
+        marketplace: log.marketplace,
+        eventType: log.eventType,
+        message: log.message,
+        metadata: log.metadata,
+        ipAddress: log.ipAddress,
+        userAgent: log.userAgent,
+        timestamp: log.timestamp.toISOString(),
+      })),
+      total: logs.length,
     };
   }
 }

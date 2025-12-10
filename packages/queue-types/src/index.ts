@@ -14,6 +14,8 @@ export interface PublishItemListingJob {
   marketplaceAccountId: string;
   orgId: string;
   userId: string;
+  /** Whether this publish was triggered automatically by the system (Slice 7) */
+  autoPublished?: boolean;
 }
 
 export const QUEUE_MARKETPLACE_SYNC = 'queue-marketplace-sync';

@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useGetItemQuery } from '@listforge/api-rtk';
+import { useGetItemQuery, useItemRoom } from '@listforge/api-rtk';
 import {
   Button,
   Card,
@@ -8,9 +8,9 @@ import {
   CardTitle,
   Badge,
   Skeleton,
+  AppContent,
 } from '@listforge/ui';
 import {
-  ArrowLeft,
   Loader2,
   Clock,
   CheckCircle,
@@ -26,6 +26,9 @@ function ItemDetailPage() {
   const navigate = useNavigate();
   const { id } = Route.useParams();
   const { data, isLoading, error } = useGetItemQuery(id);
+
+  // Subscribe to item room for real-time updates
+  useItemRoom(id);
 
   const getStatusBadge = (lifecycleStatus: string, aiReviewState: string) => {
     if (lifecycleStatus === 'ready' && aiReviewState === 'approved') {
@@ -52,6 +55,14 @@ function ItemDetailPage() {
         </Badge>
       );
     }
+    if (lifecycleStatus === 'draft' && aiReviewState === 'researching') {
+      return (
+        <Badge variant="outline" className="gap-1">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Researching...
+        </Badge>
+      );
+    }
     if (lifecycleStatus === 'listed') {
       return (
         <Badge variant="default" className="gap-1">
@@ -70,39 +81,31 @@ function ItemDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 max-w-4xl mx-auto pb-20">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate({ to: '/capture' })}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <Skeleton className="h-8 w-64" />
-        </div>
+      <AppContent
+        title="Loading..."
+        breadcrumbs={[
+          { label: 'Capture', href: '/capture' },
+          { label: 'Item', href: `/capture/${id}` },
+        ]}
+      >
         <Card>
           <CardContent className="pt-6">
             <Skeleton className="h-64 w-full" />
           </CardContent>
         </Card>
-      </div>
+      </AppContent>
     );
   }
 
   if (error || !data?.item) {
     return (
-      <div className="space-y-6 max-w-4xl mx-auto pb-20">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate({ to: '/capture' })}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <h1 className="text-2xl font-bold">Item Not Found</h1>
-        </div>
+      <AppContent
+        title="Item Not Found"
+        breadcrumbs={[
+          { label: 'Capture', href: '/capture' },
+          { label: 'Not Found', href: `/capture/${id}` },
+        ]}
+      >
         <Card>
           <CardContent className="pt-6">
             <p className="text-muted-foreground">
@@ -110,38 +113,30 @@ function ItemDetailPage() {
             </p>
           </CardContent>
         </Card>
-      </div>
+      </AppContent>
     );
   }
 
   const item = data.item;
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto pb-20">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate({ to: '/capture' })}
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold">
-            {item.title || item.userTitleHint || 'Untitled Item'}
-          </h1>
-          <div className="flex items-center gap-2 mt-1">
-            {getStatusBadge(item.lifecycleStatus, item.aiReviewState)}
-            {item.defaultPrice && (
-              <span className="text-sm text-muted-foreground">
-                ${item.defaultPrice.toFixed(2)} {item.currency}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
+    <AppContent
+      title={item.title || item.userTitleHint || 'Untitled Item'}
+      badges={
+        <>
+          {getStatusBadge(item.lifecycleStatus, item.aiReviewState)}
+          {item.defaultPrice && (
+            <Badge variant="outline">
+              ${item.defaultPrice.toFixed(2)} {item.currency}
+            </Badge>
+          )}
+        </>
+      }
+      breadcrumbs={[
+        { label: 'Capture', href: '/capture' },
+        { label: item.title || 'Untitled', href: `/capture/${id}` },
+      ]}
+    >
       {/* Media Gallery */}
       {item.media.length > 0 && (
         <Card>
@@ -296,6 +291,6 @@ function ItemDetailPage() {
           </CardContent>
         </Card>
       )}
-    </div>
+    </AppContent>
   );
 }

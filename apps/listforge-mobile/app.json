@@ -1,0 +1,100 @@
+{
+  "expo": {
+    "name": "ListForge",
+    "slug": "listforge-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "listforge",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.listforge.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "ListForge needs access to your camera to capture item photos for listing.",
+        "NSPhotoLibraryUsageDescription": "ListForge needs access to your photo library to select item photos.",
+        "NSMicrophoneUsageDescription": "ListForge needs access to your microphone for voice notes.",
+        "NSUserNotificationsUsageDescription": "ListForge sends notifications when item research completes."
+      },
+      "associatedDomains": [
+        "applinks:listforge.app",
+        "applinks:www.listforge.app"
+      ]
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.listforge.mobile",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
+      ],
+      "googleServicesFile": "./google-services.json",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "listforge.app",
+              "pathPrefix": "/"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-camera",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#0ea5e9",
+          "sounds": [
+            "./assets/notification.wav"
+          ]
+        }
+      ],
+      "expo-secure-store",
+      "expo-sqlite",
+      "@sentry/react-native/expo"
+    ],
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#0ea5e9",
+      "androidMode": "default",
+      "androidCollapsedTitle": "New ListForge notification"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "your-project-id"
+      }
+    }
+  }
+}

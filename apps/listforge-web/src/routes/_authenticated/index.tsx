@@ -5,6 +5,7 @@ import {
   OverviewCards,
   OverviewMetricCard,
   QuickActions,
+  AppContent,
 } from '@listforge/ui';
 import {
   useListItemsQuery,
@@ -115,14 +116,11 @@ function DashboardPage() {
   ];
 
   return (
-    <div className="w-full max-w-none space-y-6 py-6 px-6">
-      <div>
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="mt-2 text-muted-foreground">
-          Welcome back, {user?.name}! You're in {currentOrg?.name || 'no organization'}.
-        </p>
-      </div>
-
+    <AppContent
+      title="Dashboard"
+      description={`Welcome back, ${user?.name}! You're in ${currentOrg?.name || 'no organization'}.`}
+      fullWidth
+    >
       <OverviewCards cards={overviewCards} columns={4} />
 
       <QuickActions actions={quickActions} />
@@ -160,7 +158,7 @@ function DashboardPage() {
           )}
         </div>
       </div>
-    </div>
+    </AppContent>
   );
 }
 

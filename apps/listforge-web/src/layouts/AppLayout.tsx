@@ -1,16 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
-import { AppShell, AppSidebar, AppNavbar, useTheme, type NavGroup } from '@listforge/ui';
+import { AppShell, AppSidebar, AppNavbar, useTheme, type NavGroup, Button } from '@listforge/ui';
 import { logout } from '../store/authSlice';
 import { RootState } from '../store/store';
-import { Package, Settings, Users, LayoutDashboard, Camera, ClipboardCheck, Wrench } from 'lucide-react';
+import { Package, Settings, Users, LayoutDashboard, Camera, ClipboardCheck, Wrench, MessageSquare } from 'lucide-react';
+import { ChatProvider, useChat } from '../contexts/ChatContext';
+import { ChatSidebar } from '../components/chat/ChatSidebar';
+import { useSidebar } from '@listforge/ui';
 
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
-export default function AppLayout({ children }: AppLayoutProps) {
+function AppLayoutContent({ children }: AppLayoutProps) {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const router = useRouterState();
@@ -18,7 +21,44 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const user = useSelector((state: RootState) => state.auth.user);
   const currentOrg = useSelector((state: RootState) => state.auth.currentOrg);
   const { setMode } = useTheme();
+  const { toggleChat } = useChat();
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
+
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 768;
+  });
+
+  // Responsive sidebar state: collapsed on small screens, open on large
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    // Always collapsed on mobile
+    if (window.innerWidth < 768) return true;
+    // On desktop, check localStorage
+    const stored = localStorage.getItem('nav-sidebar-collapsed');
+    if (stored !== null) return stored === 'true';
+    return false;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      // Force collapse on mobile
+      if (mobile) {
+        setSidebarCollapsed(true);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    // Only persist on desktop
+    if (!isMobile) {
+      localStorage.setItem('nav-sidebar-collapsed', String(sidebarCollapsed));
+    }
+  }, [sidebarCollapsed, isMobile]);
 
   const navGroups: NavGroup[] = [
     {
@@ -137,6 +177,15 @@ export default function AppLayout({ children }: AppLayoutProps) {
           />
         </div>
       }
+      collapsedLogo={
+        <div className="flex items-center justify-center px-2 py-1.5">
+          <img
+            src="/assets/icon_logo.png"
+            alt="ListForge"
+            className="h-8 w-8"
+          />
+        </div>
+      }
       navigation={navGroups}
       onNavigate={(item) => {
         if (item.onClick) {
@@ -145,17 +194,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
       }}
       footer={
         currentOrg && (
-          <div className="p-4 border-t">
-            <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-semibold">
-                {currentOrg.name.charAt(0).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{currentOrg.name}</p>
-                <p className="text-xs text-muted-foreground truncate">Current Organization</p>
-              </div>
-            </div>
-          </div>
+          <SidebarFooterContent
+            orgName={currentOrg.name}
+          />
         )
       }
     />
@@ -181,12 +222,72 @@ export default function AppLayout({ children }: AppLayoutProps) {
         onSettings: handleProfileClick,
         onLogout: handleLogout,
       }}
+      chatButton={
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleChat}
+          className="h-8 w-8"
+        >
+          <MessageSquare className="h-4 w-4" />
+          <span className="sr-only">Toggle chat</span>
+        </Button>
+      }
     />
   );
 
   return (
-    <AppShell sidebar={sidebar} navbar={navbar} contentClassName="w-full">
-      {children}
+    <AppShell
+      sidebar={sidebar}
+      navbar={navbar}
+      contentClassName="w-full"
+      sidebarCollapsed={sidebarCollapsed}
+      onSidebarCollapsedChange={setSidebarCollapsed}
+    >
+      <div className="flex h-full">
+        <div className="flex-1 min-w-0 overflow-auto">
+          {children}
+        </div>
+        <ChatSidebar />
+      </div>
     </AppShell>
+  );
+}
+
+// Footer component that adapts to collapsed state
+function SidebarFooterContent({ orgName }: { orgName: string }) {
+  const { state } = useSidebar();
+  const isCollapsed = state === 'collapsed';
+
+  if (isCollapsed) {
+    return (
+      <div className="p-2 flex items-center justify-center">
+        <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-semibold">
+          {orgName.charAt(0).toUpperCase()}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 border-t">
+      <div className="flex items-center gap-3">
+        <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-semibold">
+          {orgName.charAt(0).toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{orgName}</p>
+          <p className="text-xs text-muted-foreground truncate">Current Organization</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function AppLayout({ children }: AppLayoutProps) {
+  return (
+    <ChatProvider>
+      <AppLayoutContent>{children}</AppLayoutContent>
+    </ChatProvider>
   );
 }

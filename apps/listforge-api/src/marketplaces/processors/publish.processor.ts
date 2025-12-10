@@ -16,10 +16,11 @@ import { MarketplaceAccountService } from '../services/marketplace-account.servi
 import { CanonicalListing } from '@listforge/marketplace-adapters';
 
 /**
- * PublishProcessor - Phase 6 Sub-Phase 7
+ * PublishProcessor - Phase 6 Sub-Phase 7 + Slice 7
  *
  * Updated to work with unified Item model instead of ListingDraft.
  * Syncs Item.lifecycleStatus when listing goes live.
+ * Slice 7: Persists autoPublished flag from job data.
  */
 @Processor(QUEUE_MARKETPLACE_PUBLISH)
 @Injectable()
@@ -39,8 +40,8 @@ export class PublishProcessor extends WorkerHost {
   }
 
   async process(job: Job<PublishItemListingJob>): Promise<void> {
-    const { itemId, marketplaceAccountId, orgId } = job.data;
-    this.logger.log(`Processing publish job: Item ${itemId} to account ${marketplaceAccountId}`);
+    const { itemId, marketplaceAccountId, orgId, autoPublished } = job.data;
+    this.logger.log(`Processing publish job: Item ${itemId} to account ${marketplaceAccountId}${autoPublished ? ' (auto-publish)' : ''}`);
 
     // Load item
     const item = await this.itemRepo.findOne({
@@ -77,10 +78,15 @@ export class PublishProcessor extends WorkerHost {
         itemId,
         marketplaceAccountId,
         status: 'listing_pending',
+        autoPublished: autoPublished ?? false,
       });
     } else {
       listing.status = 'listing_pending';
       listing.errorMessage = null;
+      // Preserve autoPublished if already set, or set from job data
+      if (autoPublished !== undefined) {
+        listing.autoPublished = autoPublished;
+      }
     }
 
     await this.listingRepo.save(listing);

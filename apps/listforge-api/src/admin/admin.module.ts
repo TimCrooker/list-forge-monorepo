@@ -8,6 +8,7 @@ import { Organization } from '../organizations/entities/organization.entity';
 import { UserOrganization } from '../organizations/entities/user-organization.entity';
 import { Item } from '../items/entities/item.entity';
 import { MarketplaceAccount } from '../marketplaces/entities/marketplace-account.entity';
+import { MarketplaceAuditLog } from '../marketplaces/entities/marketplace-audit-log.entity';
 import { WorkflowRun } from '../ai-workflows/entities/workflow-run.entity';
 import { QUEUE_AI_WORKFLOW, QUEUE_MARKETPLACE_PUBLISH, QUEUE_MARKETPLACE_SYNC } from '@listforge/queue-types';
 
@@ -19,6 +20,7 @@ import { QUEUE_AI_WORKFLOW, QUEUE_MARKETPLACE_PUBLISH, QUEUE_MARKETPLACE_SYNC } 
       UserOrganization,
       Item,
       MarketplaceAccount,
+      MarketplaceAuditLog,
       WorkflowRun,
     ]),
     BullModule.registerQueue(
