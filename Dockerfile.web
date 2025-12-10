@@ -36,8 +36,7 @@ COPY --from=pruner   /repo/out/full/      ./
 COPY --from=installer /repo/pnpm-lock.yaml       ./pnpm-lock.yaml
 COPY --from=installer /repo/pnpm-workspace.yaml  ./pnpm-workspace.yaml
 
-# Copy tsconfig.base.json (not included by turbo prune but needed)
-COPY tsconfig.base.json ./tsconfig.base.json 2>/dev/null || true
+# Note: tsconfig.base.json not needed - workspace packages handle this
 
 # IMPORTANT: relink workspaces now that full sources are present
 RUN pnpm install --frozen-lockfile --prod=false
