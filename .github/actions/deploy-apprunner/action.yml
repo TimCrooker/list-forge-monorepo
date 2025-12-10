@@ -74,6 +74,8 @@ runs:
       env:
         SERVICE_ARN: ${{ inputs.service-arn }}
         AWS_REGION: ${{ inputs.aws-region }}
+        TIMEOUT: ${{ inputs.timeout }}
+        POLL_INTERVAL: ${{ inputs.poll-interval }}
       run: |
         echo "🚀 Triggering deployment..."
         
@@ -85,6 +87,69 @@ runs:
         OPERATION_ID=$(echo "$RESULT" | jq -r '.OperationId')
         echo "deployment-id=${OPERATION_ID}" >> $GITHUB_OUTPUT
         
+        echo "✅ Deployment triggered (Operation ID: ${OPERATION_ID})"
+        echo "⏳ Waiting for deployment to complete..."
+        
+        # Wait for deployment to complete
+        ELAPSED=0
+        LAST_STATUS=""
+        while [ $ELAPSED -lt $TIMEOUT ]; do
+          # Get the latest operation status
+          OPERATION=$(aws apprunner list-operations \
+            --service-arn "$SERVICE_ARN" \
+            --region "$AWS_REGION" \
+            --output json | jq -r ".OperationSummaryList[0]")
+          
+          OP_ID=$(echo "$OPERATION" | jq -r '.Id')
+          OP_TYPE=$(echo "$OPERATION" | jq -r '.Type')
+          OP_STATUS=$(echo "$OPERATION" | jq -r '.Status')
+          
+          # Only show status changes
+          if [ "$OP_STATUS" != "$LAST_STATUS" ]; then
+            echo "Operation Status: $OP_STATUS (${ELAPSED}s elapsed)"
+            LAST_STATUS="$OP_STATUS"
+          fi
+          
+          # Check if this is our operation
+          if [ "$OP_ID" = "$OPERATION_ID" ] || [ "$OP_TYPE" = "START_DEPLOYMENT" ]; then
+            case "$OP_STATUS" in
+              "SUCCEEDED")
+                echo "✅ Deployment completed successfully!"
+                break
+                ;;
+              "FAILED"|"ROLLBACK_SUCCEEDED"|"ROLLBACK_FAILED")
+                echo "❌ Deployment failed with status: $OP_STATUS"
+                echo "Checking service logs for errors..."
+                
+                # Get recent service status
+                SERVICE_STATUS=$(aws apprunner describe-service \
+                  --service-arn "$SERVICE_ARN" \
+                  --region "$AWS_REGION" \
+                  --query 'Service.Status' --output text)
+                
+                echo "Service status: $SERVICE_STATUS"
+                echo "::error::Deployment rolled back. Status: $OP_STATUS"
+                exit 1
+                ;;
+              "IN_PROGRESS"|"PENDING")
+                # Continue waiting
+                ;;
+              *)
+                echo "⚠️  Unknown operation status: $OP_STATUS"
+                ;;
+            esac
+          fi
+          
+          sleep $POLL_INTERVAL
+          ELAPSED=$((ELAPSED + POLL_INTERVAL))
+        done
+        
+        if [ $ELAPSED -ge $TIMEOUT ]; then
+          echo "❌ Timeout waiting for deployment to complete"
+          echo "::error::Deployment timeout after ${TIMEOUT}s"
+          exit 1
+        fi
+        
         # Get service URL
         SERVICE_URL=$(aws apprunner describe-service \
           --service-arn "$SERVICE_ARN" \
@@ -92,7 +157,5 @@ runs:
           --query 'Service.ServiceUrl' --output text)
         
         echo "service-url=${SERVICE_URL}" >> $GITHUB_OUTPUT
-        
-        echo "✅ Deployment triggered (Operation ID: ${OPERATION_ID})"
         echo "🌐 Service URL: https://${SERVICE_URL}"
 
