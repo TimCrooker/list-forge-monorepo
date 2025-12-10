@@ -13,6 +13,7 @@ RUN pnpm dlx turbo prune listforge-api --docker
 FROM base AS installer
 COPY --from=pruner /repo/out/json/ ./
 COPY --from=pruner /repo/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY patches ./patches
 
 # dev deps are needed to build (nest, typescript, etc)
 RUN pnpm install --frozen-lockfile --prod=false
