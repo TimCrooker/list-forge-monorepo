@@ -25,24 +25,35 @@ COPY --from=pruner /app/out/full/ .
 # Build all packages and API
 RUN pnpm turbo build --filter=listforge-api
 
-# Stage 3: Production runtime (keep full node_modules with symlinks)
+# Stage 3: Production runtime
 FROM node:20-alpine AS runner
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Copy everything needed for runtime
+# Copy node_modules (includes all dependencies)
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/packages ./packages
+
+# Copy workspace packages - these are needed because they're imported at runtime
+# Copy the built JS files from packages (not just source)
+COPY --from=builder /app/packages/api-types/dist ./node_modules/@listforge/api-types/dist
+COPY --from=builder /app/packages/api-types/package.json ./node_modules/@listforge/api-types/
+
+COPY --from=builder /app/packages/core-types/dist ./node_modules/@listforge/core-types/dist
+COPY --from=builder /app/packages/core-types/package.json ./node_modules/@listforge/core-types/
+
+COPY --from=builder /app/packages/queue-types/dist ./node_modules/@listforge/queue-types/dist
+COPY --from=builder /app/packages/queue-types/package.json ./node_modules/@listforge/queue-types/
+
+COPY --from=builder /app/packages/socket-types/dist ./node_modules/@listforge/socket-types/dist
+COPY --from=builder /app/packages/socket-types/package.json ./node_modules/@listforge/socket-types/
+
+COPY --from=builder /app/packages/marketplace-adapters/dist ./node_modules/@listforge/marketplace-adapters/dist
+COPY --from=builder /app/packages/marketplace-adapters/package.json ./node_modules/@listforge/marketplace-adapters/
+
+# Copy API dist and package.json
 COPY --from=builder /app/apps/listforge-api/dist ./dist
 COPY --from=builder /app/apps/listforge-api/package.json ./
-
-# Create symlinks for workspace packages
-RUN mkdir -p node_modules/@listforge && \
-    ln -sf /app/packages/api-types node_modules/@listforge/api-types && \
-    ln -sf /app/packages/core-types node_modules/@listforge/core-types && \
-    ln -sf /app/packages/queue-types node_modules/@listforge/queue-types && \
-    ln -sf /app/packages/marketplace-adapters node_modules/@listforge/marketplace-adapters
 
 EXPOSE 3001
 CMD ["node", "dist/main.js"]
