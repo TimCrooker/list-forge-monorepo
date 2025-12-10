@@ -6,17 +6,17 @@ WORKDIR /app
 COPY . .
 RUN pnpm dlx turbo prune listforge-api --docker
 
-# Stage 2: Install dependencies only
+# Stage 2: Install dependencies
 FROM node:20-alpine AS installer
 RUN apk add --no-cache libc6-compat
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 WORKDIR /app
 
-# Copy pruned package manifests
+# Copy pruned lockfile and package.json files
 COPY --from=pruner /app/out/json/ .
 COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
 
-# Install dependencies with frozen lockfile
+# Install ALL dependencies (needed for build)
 RUN pnpm install --frozen-lockfile
 
 # Stage 3: Build application
@@ -25,24 +25,31 @@ RUN apk add --no-cache libc6-compat
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 WORKDIR /app
 
-# Copy installed dependencies
+# Copy dependencies
 COPY --from=installer /app/ .
 
-# Copy pruned source code
+# Copy source code
 COPY --from=pruner /app/out/full/ .
 
-# Build the API and all its dependencies
+# Build (webpack bundles everything)
 RUN pnpm turbo build --filter=listforge-api
 
 # Stage 4: Production runtime
 FROM node:20-alpine AS runner
 RUN apk add --no-cache libc6-compat
+RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Copy the entire built workspace structure
-# This includes node_modules with proper pnpm workspace links
-COPY --from=builder /app/ .
+# Copy package files for production install
+COPY --from=pruner /app/out/json/ .
+COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+
+# Install ONLY production dependencies
+RUN pnpm install --prod --frozen-lockfile
+
+# Copy built application
+COPY --from=builder /app/apps/listforge-api/dist ./dist
 
 EXPOSE 3001
-CMD ["node", "apps/listforge-api/dist/main.js"]
+CMD ["node", "dist/main.js"]
