@@ -44,8 +44,5 @@ ENV NODE_ENV=production
 # This includes node_modules with proper pnpm workspace links
 COPY --from=builder /app/ .
 
-# Clean up dev dependencies to reduce image size
-RUN pnpm prune --prod
-
 EXPOSE 3001
 CMD ["node", "apps/listforge-api/dist/main.js"]
