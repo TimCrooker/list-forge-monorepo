@@ -192,7 +192,7 @@ export class ResearchGraphService {
       // Track node execution for event emission and step history
       let finalResult: ResearchGraphState | null = null;
       let previousNode: string | null = null;
-      // Field-driven research graph node order
+      // Field-driven research graph node order (must include ALL nodes in the graph)
       const nodeOrder = [
         // Phase 0: Setup
         'load_context',
@@ -205,8 +205,14 @@ export class ResearchGraphService {
         'evaluate_fields',
         'plan_next_research',
         'execute_research',
-        // Phase 3: Validation and Persistence
+        // Phase 3: Validation
         'validate_readiness',
+        // Phase 4: Core Market Research Operations
+        'search_comps',
+        'analyze_comps',
+        'calculate_price',
+        'assemble_listing',
+        // Phase 5: Persistence
         'persist_results',
       ];
 
@@ -216,7 +222,18 @@ export class ResearchGraphService {
       const stream = await graph.stream(initialState, {
         configurable: {
           thread_id: researchRunId,
-          tools,
+          // Pass the tools object that nodes expect
+          tools: {
+            ...tools,
+            // Include field-driven research services in the tools object
+            fieldStateManager: this.fieldStateManager,
+            researchPlanner: this.researchPlanner,
+            fieldResearchService: this.fieldResearchService,
+            // Include marketplace schema service for initialize_field_states
+            marketplaceSchema: this.marketplaceSchemaService,
+            keepaService: this.keepaService,
+            upcLookupService: this.upcLookupService,
+          },
           llm,
           activityLogger: this.activityLogger,
           // Slice 4: Marketplace Schema Awareness

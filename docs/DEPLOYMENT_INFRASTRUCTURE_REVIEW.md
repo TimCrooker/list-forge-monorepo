@@ -12,7 +12,7 @@ Comprehensive review of the ListForge deployment infrastructure, including issue
 
 **Problem**: `list-forge.ai` was not resolving - no DNS records existed in Route 53.
 
-**Root Cause**: 
+**Root Cause**:
 - Terraform module created App Runner custom domain association
 - BUT did not create the actual DNS records in Route 53
 - App Runner requires manual DNS setup
@@ -218,7 +218,7 @@ encrypt        = true
 
 **Issue**: DNS protocol doesn't allow CNAME records at apex/root domains.
 
-**Current Workaround**: 
+**Current Workaround**:
 - Manual A records with App Runner service IPs
 - IPs are relatively stable but could theoretically change
 
@@ -231,14 +231,14 @@ encrypt        = true
 
 **Risk**: A records point to current IPs which could change during major AWS events.
 
-**Mitigation**: 
+**Mitigation**:
 - Monitor for DNS resolution failures
 - Re-query App Runner service IPs if needed
 - Consider implementing health checks
 
 ### 3. Secrets Management
 
-**Current State**: 
+**Current State**:
 - Infrastructure secrets (DB password, JWT secret) in Terraform
 - External API keys manually set in App Runner console
 - No centralized secrets management
