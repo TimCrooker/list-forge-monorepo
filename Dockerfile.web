@@ -19,8 +19,8 @@ ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 
 COPY --from=pruner /repo/out/json/ ./
-COPY --from=pruner /repo/pnpm-lock.yaml ./pnpm-lock.yaml
-COPY patches ./patches
+COPY --from=pruner /repo/out/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=pruner /repo/patches ./patches
 
 # dev deps are needed to build (vite, typescript, etc)
 RUN pnpm install --frozen-lockfile --prod=false
