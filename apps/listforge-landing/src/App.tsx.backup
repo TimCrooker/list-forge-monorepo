@@ -1,0 +1,40 @@
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { Navbar } from '@/components/Navbar'
+import { Footer } from '@/components/Footer'
+import { CursorGlow } from '@/components/effects/CursorGlow'
+import { BackToTop } from '@/components/ui/BackToTop'
+import { Home } from '@/pages/Home'
+import { Careers } from '@/pages/Careers'
+import { About } from '@/pages/About'
+import { Contact } from '@/pages/Contact'
+import { Documentation } from '@/pages/Documentation'
+import { CookiePolicy } from '@/pages/CookiePolicy'
+import { ApiReference } from '@/pages/ApiReference'
+
+function App() {
+  return (
+    <Router>
+      <div className="min-h-screen bg-background">
+        {/* Cursor glow effect - only shows on desktop */}
+        <CursorGlow />
+
+        <Navbar />
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/careers" element={<Careers />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="/docs" element={<Documentation />} />
+          <Route path="/api" element={<ApiReference />} />
+          <Route path="/cookie-policy" element={<CookiePolicy />} />
+        </Routes>
+        <Footer />
+
+        {/* Back to top with scroll progress */}
+        <BackToTop />
+      </div>
+    </Router>
+  )
+}
+
+export default App
