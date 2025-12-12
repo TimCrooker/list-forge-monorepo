@@ -14,27 +14,27 @@ export const listForgeLogo = {
 export const marketplaceLogos: Logo[] = [
   {
     name: 'eBay',
-    src: 'https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg',
+    src: 'https://img.logo.dev/ebay.com?format=png',
     href: 'https://www.ebay.com',
   },
   {
     name: 'Amazon',
-    src: 'https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg',
+    src: 'https://img.logo.dev/amazon.com?format=png',
     href: 'https://www.amazon.com',
   },
   {
     name: 'Facebook Marketplace',
-    src: 'https://upload.wikimedia.org/wikipedia/commons/5/5c/Facebook_Marketplace_Logo.png',
+    src: 'https://img.logo.dev/facebook.com?format=png',
     href: 'https://www.facebook.com/marketplace',
   },
   {
     name: 'Etsy',
-    src: 'https://upload.wikimedia.org/wikipedia/commons/8/8b/Etsy_logo.svg',
+    src: 'https://img.logo.dev/etsy.com?format=png',
     href: 'https://www.etsy.com',
   },
   {
     name: 'Poshmark',
-    src: 'https://upload.wikimedia.org/wikipedia/commons/3/3e/Poshmark_logo.png',
+    src: 'https://img.logo.dev/poshmark.com?format=png',
     href: 'https://www.poshmark.com',
   },
 ]
