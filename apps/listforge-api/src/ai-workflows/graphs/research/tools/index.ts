@@ -16,6 +16,7 @@ export {
 export {
   detectCategory,
   createDetectCategoryTool,
+  DetectCategoryToolSchema,
   type DetectCategoryInput,
   type DetectCategoryOutput,
 } from './detect-category.tool';

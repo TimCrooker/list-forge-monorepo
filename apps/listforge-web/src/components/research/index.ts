@@ -18,3 +18,4 @@ export { ResearchControlButtons } from './ResearchControlButtons';
 export { ResearchRunStatusBadge } from './ResearchRunStatusBadge';
 export { ResearchActivityLogsToggle } from './ResearchActivityLogsToggle';
 export { ResearchActivityLogsSidebar } from './ResearchActivityLogsSidebar';
+export { ResearchHistoryCard } from './ResearchHistoryCard';

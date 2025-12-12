@@ -38,7 +38,7 @@ importers:
         version: 1.1.4(@opentelemetry/api@1.9.0)(openai@6.10.0)
       '@langchain/langgraph':
         specifier: ^1.0.4
-        version: 1.0.4(@langchain/core@1.1.4)(zod@3.25.76)
+        version: 1.0.4(@langchain/core@1.1.4)(zod-to-json-schema@3.25.0)(zod@3.25.76)
       '@langchain/langgraph-checkpoint-postgres':
         specifier: ^1.0.0
         version: 1.0.0(@langchain/core@1.1.4)(@langchain/langgraph-checkpoint@1.0.0)
@@ -150,6 +150,9 @@ importers:
       zod:
         specifier: ^3.23.8
         version: 3.25.76
+      zod-to-json-schema:
+        specifier: ^3.25.0
+        version: 3.25.0(zod@3.25.76)
     devDependencies:
       '@listforge/config':
         specifier: workspace:*
@@ -4157,7 +4160,7 @@ packages:
       uuid: 9.0.1
     dev: false
 
-  /@langchain/langgraph@1.0.4(@langchain/core@1.1.4)(zod@3.25.76):
+  /@langchain/langgraph@1.0.4(@langchain/core@1.1.4)(zod-to-json-schema@3.25.0)(zod@3.25.76):
     resolution: {integrity: sha512-EYLyN/uv1ubMBd3RN/y+eAxY0FJWKrnzRw8HuDJdmDcyomgV9btyHK2zDN70sO3QDDuAU9voLNNUZeFBQkBYMQ==}
     engines: {node: '>=18'}
     peerDependencies:
@@ -4173,6 +4176,7 @@ packages:
       '@langchain/langgraph-sdk': 1.2.0(@langchain/core@1.1.4)
       uuid: 10.0.0
       zod: 3.25.76
+      zod-to-json-schema: 3.25.0(zod@3.25.76)
     transitivePeerDependencies:
       - react
       - react-dom
@@ -19592,6 +19596,14 @@ packages:
   /yocto-queue@0.1.0:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
+
+  /zod-to-json-schema@3.25.0(zod@3.25.76):
+    resolution: {integrity: sha512-HvWtU2UG41LALjajJrML6uQejQhNJx+JBO9IflpSja4R03iNWfKXrj6W2h7ljuLyc1nKS+9yDyL/9tD1U/yBnQ==}
+    peerDependencies:
+      zod: ^3.25 || ^4
+    dependencies:
+      zod: 3.25.76
+    dev: false
 
   /zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}

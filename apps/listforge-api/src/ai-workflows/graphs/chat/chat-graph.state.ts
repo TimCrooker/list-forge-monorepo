@@ -13,15 +13,18 @@ import { PAGE_TYPES, RESEARCH_STATUS, USER_TYPES, MAX_AGENT_ITERATIONS } from '.
  * Prevents unbounded memory growth in long-running sessions
  * Keeps last N messages (includes system, user, assistant, and tool messages)
  */
-const MAX_MESSAGES = 100;
+export const MAX_MESSAGES = 100;
 
 /**
  * Create a bounded message reducer that limits array length
  * Uses LangGraph's built-in messagesStateReducer, then trims if needed
  */
-function boundedMessagesReducer(existing: BaseMessage[] | undefined, update: BaseMessage[]): BaseMessage[] {
+export function boundedMessagesReducer(existing: BaseMessage[] | undefined, update: BaseMessage[]): BaseMessage[] {
+  // Handle undefined by treating it as empty array (messagesStateReducer has issues with undefined)
+  const existingArray = existing ?? [];
+
   // First, apply the standard messages reducer
-  const merged = messagesStateReducer(existing, update);
+  const merged = messagesStateReducer(existingArray, update);
 
   // If we exceed max length, keep only the most recent messages
   if (merged.length > MAX_MESSAGES) {

@@ -6,14 +6,14 @@ import { ChatToolDependencies, getToolContext, DashboardStats, ReviewQueueStats 
 // Schemas
 // ============================================================================
 
-const GetDashboardStatsSchema = z.object({});
+export const GetDashboardStatsSchema = z.object({});
 
-const GetReviewQueueSummarySchema = z.object({
+export const GetReviewQueueSummarySchema = z.object({
   includeItems: z.boolean().default(false).describe('Include list of items in queue'),
   limit: z.number().min(1).max(20).default(5).describe('Max items to include if includeItems is true'),
 });
 
-const GetInventoryValueSchema = z.object({
+export const GetInventoryValueSchema = z.object({
   status: z.enum(['all', 'draft', 'ready', 'listed', 'sold']).default('all').describe('Filter by status'),
   currency: z.string().default('USD').describe('Currency for totals'),
 });

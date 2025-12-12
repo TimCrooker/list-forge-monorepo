@@ -11,3 +11,4 @@ export * from './chat';
 export * from './settings-audit';
 export * from './domain-expertise';
 export * from './learning';
+export * from './tool-debugger';

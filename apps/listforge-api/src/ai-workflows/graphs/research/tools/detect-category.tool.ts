@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { tool, StructuredTool } from '@langchain/core/tools';
 import type {
   MarketplaceCategory,
   FieldRequirement,
@@ -182,51 +183,57 @@ export async function detectCategory(
 }
 
 /**
+ * Zod schema for category detection tool input
+ */
+export const DetectCategoryToolSchema = z.object({
+  brand: z.string().optional().describe('The product brand name'),
+  model: z.string().optional().describe('The product model name'),
+  title: z.string().optional().describe('The product title or description'),
+  category: z.string().optional().describe('An initial category guess'),
+});
+
+/**
  * LangChain tool for category detection
  * Can be used in agentic flows
- * Note: Simplified implementation to avoid excessive type depth issues
+ *
+ * Note: Uses type assertion to avoid excessive type depth issues with LangChain's tool() function.
+ * This is a known issue with complex Zod schemas and LangChain's type inference.
  */
-export function createDetectCategoryTool(schemaService: MarketplaceSchemaService) {
-  const detectCategoryFunc = async (input: { brand?: string; model?: string; title?: string; category?: string }) => {
-    const productInfo: ProductInfo = {
-      brand: input.brand,
-      model: input.model,
-      title: input.title,
-    };
-    if (input.category) {
-      productInfo.category = [input.category];
-    }
+export function createDetectCategoryTool(schemaService: MarketplaceSchemaService): StructuredTool {
+  return tool(
+    async (input: z.infer<typeof DetectCategoryToolSchema>) => {
+      const productInfo: ProductInfo = {
+        brand: input.brand,
+        model: input.model,
+        title: input.title,
+      };
+      if (input.category) {
+        productInfo.category = [input.category];
+      }
 
-    const detection = await schemaService.detectCategory(productInfo);
+      const detection = await schemaService.detectCategory(productInfo);
 
-    if (!detection) {
+      if (!detection) {
+        return JSON.stringify({
+          success: false,
+          message: 'Could not detect category - insufficient product information',
+        });
+      }
+
       return JSON.stringify({
-        success: false,
-        message: 'Could not detect category - insufficient product information',
+        success: true,
+        categoryId: detection.categoryId,
+        categoryPath: detection.categoryPath,
+        categoryName: detection.categoryName,
+        confidence: detection.confidence,
+        requiredFieldCount: detection.requiredFields.length,
+        recommendedFieldCount: detection.recommendedFields.length,
       });
-    }
-
-    return JSON.stringify({
-      success: true,
-      categoryId: detection.categoryId,
-      categoryPath: detection.categoryPath,
-      categoryName: detection.categoryName,
-      confidence: detection.confidence,
-      requiredFieldCount: detection.requiredFields.length,
-      recommendedFieldCount: detection.recommendedFields.length,
-    });
-  };
-
-  // Return a simplified tool interface to avoid type issues
-  return {
-    name: 'detect_ebay_category',
-    description: 'Detect the best eBay category for a product based on brand, model, and title',
-    func: detectCategoryFunc,
-    schema: z.object({
-      brand: z.string().optional().describe('The product brand name'),
-      model: z.string().optional().describe('The product model name'),
-      title: z.string().optional().describe('The product title or description'),
-      category: z.string().optional().describe('An initial category guess'),
-    }),
-  };
+    },
+    {
+      name: 'detect_ebay_category',
+      description: 'Detect the best eBay category for a product based on brand, model, and title',
+      schema: DetectCategoryToolSchema,
+    },
+  ) as StructuredTool;
 }

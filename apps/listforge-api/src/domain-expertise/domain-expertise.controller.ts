@@ -561,9 +561,9 @@ export class DomainExpertiseController {
   @Post('modules/:moduleId/test-decode')
   async testDecodePipeline(
     @Param('moduleId') moduleId: string,
-    @Body() body: { identifierType?: string; value: string },
+    @Body() body: { identifierType?: string; input: string },
   ): Promise<TestDecoderResponse & { decoderName?: string }> {
-    return this.service.testDecodePipeline(moduleId, body.identifierType || '', body.value);
+    return this.service.testDecodePipeline(moduleId, body.identifierType || '', body.input);
   }
 
   /**

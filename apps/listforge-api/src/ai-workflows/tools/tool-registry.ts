@@ -19,7 +19,23 @@ import {
 import {
   getDashboardStatsTool,
   getReviewQueueSummaryTool,
+  getInventoryValueTool,
 } from './aggregate.tools';
+import {
+  decodeIdentifierTool,
+  checkAuthenticityTool,
+  getValueDriversTool,
+  explainPricingTool,
+  validateCompTool,
+} from './domain.tools';
+import {
+  lookupUpcTool,
+  webSearchProductTool,
+  reverseImageSearchTool,
+  detectCategoryTool,
+  extractTextFromImageTool,
+  compareImagesTool,
+} from './research-advanced.tools';
 
 /**
  * Tool Metadata for Context-Aware Tool Selection
@@ -37,7 +53,7 @@ export interface ToolMetadata {
   factory: (deps: ChatToolDependencies) => StructuredTool;
 
   /** Category for organizing tools */
-  category: 'item' | 'research' | 'search' | 'aggregate' | 'action';
+  category: 'item' | 'research' | 'search' | 'aggregate' | 'action' | 'domain' | 'research-advanced';
 
   /** Required context for this tool to function */
   requiredContext: {
@@ -167,6 +183,13 @@ export const TOOL_REGISTRY: ToolMetadata[] = [
     // Useful on review page and dashboard
     availableInPages: ['review', 'dashboard', 'other'],
   },
+  {
+    name: 'get_inventory_value',
+    factory: getInventoryValueTool,
+    category: 'aggregate',
+    requiredContext: { organizationId: true },
+    availableInPages: ['dashboard', 'items', 'other'],
+  },
 
   // ==========================================================================
   // Action Tools (always available for UI integration)
@@ -178,6 +201,102 @@ export const TOOL_REGISTRY: ToolMetadata[] = [
     requiredContext: { organizationId: true },
     availableInPages: [], // Empty = all pages
     alwaysAvailable: true,
+  },
+
+  // ==========================================================================
+  // Domain Knowledge Tools (Slice 1 - explain and decode)
+  // ==========================================================================
+  {
+    name: 'decode_identifier',
+    factory: decodeIdentifierTool,
+    category: 'domain',
+    requiredContext: { organizationId: true },
+    // Available on item pages and capture (where identifiers are found)
+    availableInPages: ['item_detail', 'review', 'capture'],
+  },
+  {
+    name: 'check_authenticity',
+    factory: checkAuthenticityTool,
+    category: 'domain',
+    requiredContext: { itemId: true, organizationId: true },
+    // Available on item pages for authenticity assessment
+    availableInPages: ['item_detail', 'review'],
+  },
+  {
+    name: 'get_value_drivers',
+    factory: getValueDriversTool,
+    category: 'domain',
+    requiredContext: { itemId: true, organizationId: true },
+    // Available where users need to understand value
+    availableInPages: ['item_detail', 'review'],
+  },
+  {
+    name: 'explain_pricing',
+    factory: explainPricingTool,
+    category: 'domain',
+    requiredContext: { itemId: true, organizationId: true },
+    // Available where users need pricing explanations
+    availableInPages: ['item_detail', 'review'],
+  },
+  {
+    name: 'validate_comp',
+    factory: validateCompTool,
+    category: 'domain',
+    requiredContext: { itemId: true, organizationId: true },
+    // Available where users review comps
+    availableInPages: ['item_detail', 'review'],
+  },
+
+  // ==========================================================================
+  // Advanced Research Tools (Slice 2 - external lookups and AI analysis)
+  // ==========================================================================
+  {
+    name: 'lookup_upc',
+    factory: lookupUpcTool,
+    category: 'research-advanced',
+    requiredContext: { organizationId: true },
+    // Available anywhere - can look up UPC without item context
+    availableInPages: ['item_detail', 'review', 'capture', 'other'],
+  },
+  {
+    name: 'web_search_product',
+    factory: webSearchProductTool,
+    category: 'research-advanced',
+    requiredContext: { organizationId: true },
+    // Available on item pages and general pages
+    availableInPages: ['item_detail', 'review', 'capture', 'other'],
+  },
+  {
+    name: 'reverse_image_search',
+    factory: reverseImageSearchTool,
+    category: 'research-advanced',
+    requiredContext: { organizationId: true },
+    // Available where images exist or can be provided
+    availableInPages: ['item_detail', 'review', 'capture'],
+  },
+  {
+    name: 'detect_category',
+    factory: detectCategoryTool,
+    category: 'research-advanced',
+    requiredContext: { organizationId: true },
+    // Available on item pages for categorization
+    availableInPages: ['item_detail', 'review', 'capture'],
+  },
+  {
+    name: 'extract_text_from_image',
+    factory: extractTextFromImageTool,
+    category: 'research-advanced',
+    requiredContext: { organizationId: true },
+    // Available where images exist
+    availableInPages: ['item_detail', 'review', 'capture'],
+  },
+  {
+    name: 'compare_images',
+    factory: compareImagesTool,
+    category: 'research-advanced',
+    requiredContext: { itemId: true, organizationId: true },
+    // Requires item context to compare against
+    availableInPages: ['item_detail', 'review'],
   },
 ];
 

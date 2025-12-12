@@ -6,11 +6,11 @@ import { ChatToolDependencies, getToolContext } from './index';
 // Schemas
 // ============================================================================
 
-const GetItemSnapshotSchema = z.object({
+export const GetItemSnapshotSchema = z.object({
   itemId: z.string().describe('The item ID to get snapshot for'),
 });
 
-const GetItemFacetSchema = z.object({
+export const GetItemFacetSchema = z.object({
   itemId: z.string().describe('The item ID'),
   facet: z.enum([
     'general',
@@ -30,7 +30,7 @@ const GetItemFacetSchema = z.object({
 - marketplace: Marketplace-specific data and listings`),
 });
 
-const UpdateItemFieldSchema = z.object({
+export const UpdateItemFieldSchema = z.object({
   itemId: z.string().describe('The item ID to update'),
   field: z.enum([
     'title',

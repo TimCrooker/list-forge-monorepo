@@ -6,14 +6,14 @@ import { ChatToolDependencies, getToolContext } from './index';
 // Schemas
 // ============================================================================
 
-const GetResearchDataSchema = z.object({
+export const GetResearchDataSchema = z.object({
   itemId: z.string()
     .min(1, 'Item ID cannot be empty')
     .regex(/^[a-zA-Z0-9\-_]+$/, 'Item ID must be alphanumeric with hyphens/underscores only')
     .describe('The item ID to get research for'),
 });
 
-const SearchCompsSchema = z.object({
+export const SearchCompsSchema = z.object({
   itemId: z.string()
     .min(1, 'Item ID cannot be empty')
     .regex(/^[a-zA-Z0-9\-_]+$/, 'Item ID must be alphanumeric')
@@ -52,7 +52,7 @@ const SearchCompsSchema = z.object({
   { message: 'Either itemId or query must be provided', path: ['query'] },
 );
 
-const TriggerResearchSchema = z.object({
+export const TriggerResearchSchema = z.object({
   itemId: z.string()
     .min(1, 'Item ID cannot be empty')
     .regex(/^[a-zA-Z0-9\-_]+$/, 'Item ID must be alphanumeric')
@@ -63,14 +63,14 @@ const TriggerResearchSchema = z.object({
   priority: z.enum(['low', 'normal', 'high']).default('normal').describe('Job priority'),
 });
 
-const GetPricingAnalysisSchema = z.object({
+export const GetPricingAnalysisSchema = z.object({
   itemId: z.string()
     .min(1, 'Item ID cannot be empty')
     .regex(/^[a-zA-Z0-9\-_]+$/, 'Item ID must be alphanumeric')
     .describe('The item ID to analyze pricing for'),
 });
 
-const ResearchFieldSchema = z.object({
+export const ResearchFieldSchema = z.object({
   itemId: z.string()
     .min(1, 'Item ID cannot be empty')
     .regex(/^[a-zA-Z0-9\-_]+$/, 'Item ID must be alphanumeric')

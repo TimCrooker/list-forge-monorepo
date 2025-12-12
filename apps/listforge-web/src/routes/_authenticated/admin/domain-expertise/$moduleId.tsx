@@ -17,6 +17,8 @@ import {
   useDeleteAuthenticityMarkerMutation,
   useDeleteLookupTableMutation,
   useTestDecodePipelineMutation,
+  useTestValueDriversMutation,
+  useTestAuthenticityMutation,
   useCreateDecoderMutation,
   useCreateValueDriverMutation,
   useCreateAuthenticityMarkerMutation,
@@ -35,6 +37,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Checkbox,
   Input,
   Label,
   Tabs,
@@ -72,6 +75,7 @@ import {
   RotateCcw,
   Pencil,
   Settings,
+  ExternalLink,
 } from 'lucide-react';
 import { showSuccess, showError } from '@/utils/toast';
 import type {
@@ -80,13 +84,14 @@ import type {
   ValueDriverDefinitionDto,
   AuthenticityMarkerDefinitionDto,
   LookupTableDto,
+  TestDecoderResponse,
 } from '@listforge/api-types';
 
 export const Route = createFileRoute('/_authenticated/admin/domain-expertise/$moduleId')({
   component: ModuleEditorPage,
 });
 
-const STATUS_COLORS: Record<DomainExpertiseModuleStatus, string> = {
+const STATUS_COLORS: Record<DomainExpertiseModuleStatus, 'secondary' | 'default' | 'outline'> = {
   draft: 'secondary',
   published: 'default',
   archived: 'outline',
@@ -120,6 +125,8 @@ function ModuleEditorPage() {
   const [deleteAuthenticityMarker, { isLoading: isDeletingMarker }] = useDeleteAuthenticityMarkerMutation();
   const [deleteLookupTable, { isLoading: isDeletingTable }] = useDeleteLookupTableMutation();
   const [testDecodePipeline, { isLoading: isTesting }] = useTestDecodePipelineMutation();
+  const [testValueDrivers, { isLoading: isTestingDrivers }] = useTestValueDriversMutation();
+  const [testAuthenticity, { isLoading: isTestingAuth }] = useTestAuthenticityMutation();
   const [createDecoder, { isLoading: isCreatingDecoder }] = useCreateDecoderMutation();
   const [createValueDriver, { isLoading: isCreatingDriver }] = useCreateValueDriverMutation();
   const [createAuthenticityMarker, { isLoading: isCreatingMarker }] = useCreateAuthenticityMarkerMutation();
@@ -136,7 +143,11 @@ function ModuleEditorPage() {
   const [selectedVersionId, setSelectedVersionId] = useState('');
   const [rollbackReason, setRollbackReason] = useState('');
   const [testInput, setTestInput] = useState('');
-  const [testResult, setTestResult] = useState<any>(null);
+  const [testResult, setTestResult] = useState<(TestDecoderResponse & { type: string; decoderName?: string }) | null>(null);
+  const [driverTestInput, setDriverTestInput] = useState('');
+  const [driverTestResult, setDriverTestResult] = useState<{ combinedMultiplier: number; matches: { driver: string; multiplier: number; reasoning: string }[] } | null>(null);
+  const [authTestInput, setAuthTestInput] = useState('');
+  const [authTestResult, setAuthTestResult] = useState<{ assessment: string; markersChecked: { marker: string; passed: boolean; details: string }[] } | null>(null);
 
   // Add dialogs state
   const [isAddDecoderOpen, setIsAddDecoderOpen] = useState(false);
@@ -156,7 +167,7 @@ function ModuleEditorPage() {
 
   // Add form state
   const [newDecoder, setNewDecoder] = useState({ name: '', identifierType: '', inputPattern: '', description: '' });
-  const [newDriver, setNewDriver] = useState<{ name: string; attribute: string; conditionType: 'contains' | 'equals' | 'regex'; conditionValue: string; priceMultiplier: number }>({ name: '', attribute: '', conditionType: 'contains', conditionValue: '', priceMultiplier: 1.0 });
+  const [newDriver, setNewDriver] = useState<{ name: string; attribute: string; conditionType: 'contains' | 'equals' | 'regex' | 'range' | 'custom'; conditionValue: string; priceMultiplier: number }>({ name: '', attribute: '', conditionType: 'contains', conditionValue: '', priceMultiplier: 1.0 });
   const [newMarker, setNewMarker] = useState<{ name: string; checkDescription: string; pattern: string; importance: 'critical' | 'important' | 'helpful' }>({ name: '', checkDescription: '', pattern: '', importance: 'important' });
   const [newTable, setNewTable] = useState({ name: '', description: '', keyField: '' });
 
@@ -258,6 +269,53 @@ function ModuleEditorPage() {
     } catch (err) {
       console.error('Test failed:', err);
       showError('Test failed');
+    }
+  };
+
+  const handleTestValueDrivers = async () => {
+    if (!driverTestInput.trim()) {
+      showError('Please enter fields JSON to test');
+      return;
+    }
+    try {
+      const fields = JSON.parse(driverTestInput);
+      const result = await testValueDrivers({
+        moduleId,
+        data: { fields },
+      }).unwrap();
+      setDriverTestResult(result);
+    } catch (err) {
+      console.error('Value driver test failed:', err);
+      if (err instanceof SyntaxError) {
+        showError('Invalid JSON format');
+      } else {
+        showError('Value driver test failed');
+      }
+    }
+  };
+
+  const handleTestAuthenticity = async () => {
+    if (!authTestInput.trim()) {
+      showError('Please enter test data JSON');
+      return;
+    }
+    try {
+      const data = JSON.parse(authTestInput);
+      const result = await testAuthenticity({
+        moduleId,
+        data: {
+          identifiers: data.identifiers || [],
+          extractedText: data.extractedText || [],
+        },
+      }).unwrap();
+      setAuthTestResult(result);
+    } catch (err) {
+      console.error('Authenticity test failed:', err);
+      if (err instanceof SyntaxError) {
+        showError('Invalid JSON format');
+      } else {
+        showError('Authenticity test failed');
+      }
     }
   };
 
@@ -581,7 +639,7 @@ function ModuleEditorPage() {
       ]}
       badges={
         <>
-          <Badge variant={STATUS_COLORS[module.status] as any} className="gap-1">
+          <Badge variant={STATUS_COLORS[module.status]} className="gap-1">
             {STATUS_ICONS[module.status]}
             {module.status}
           </Badge>
@@ -737,6 +795,14 @@ function ModuleEditorPage() {
                         <Badge variant={table.isActive ? 'default' : 'secondary'}>
                           {table.isActive ? 'Active' : 'Inactive'}
                         </Badge>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.location.href = `/admin/domain-expertise/lookup-tables/${table.id}`}
+                        >
+                          <ExternalLink className="mr-1 h-3 w-3" />
+                          Manage Entries
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -894,35 +960,143 @@ function ModuleEditorPage() {
 
         {/* Testing Tab */}
         <TabsContent value="testing" className="space-y-4">
+          {/* Decode Test */}
           <Card>
             <CardHeader>
-              <CardTitle>Test Console</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Code className="h-5 w-5" />
+                Test Decode Pipeline
+              </CardTitle>
               <CardDescription>
-                Test decoders, value drivers, and authenticity checks
+                Test identifier parsing and field extraction
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>Test Input</Label>
+                <Label>Identifier Input</Label>
                 <Input
-                  placeholder="Enter identifier or value to test..."
+                  placeholder="Enter identifier to decode (e.g., serial number, model code)..."
                   value={testInput}
                   onChange={(e) => setTestInput(e.target.value)}
                 />
               </div>
-              <div className="flex gap-2">
-                <Button onClick={handleTestDecode} disabled={isTesting}>
-                  {isTesting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Test Decode
-                </Button>
-              </div>
-
+              <Button onClick={handleTestDecode} disabled={isTesting}>
+                {isTesting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Play className="mr-2 h-4 w-4" />
+                Test Decode
+              </Button>
               {testResult && (
                 <div className="mt-4">
-                  <Label>Result</Label>
+                  <Label>Decode Result</Label>
                   <ScrollArea className="h-48 rounded-md border p-4 mt-2">
                     <pre className="text-sm">{JSON.stringify(testResult, null, 2)}</pre>
                   </ScrollArea>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Value Drivers Test */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5" />
+                Test Value Drivers
+              </CardTitle>
+              <CardDescription>
+                Test price multiplier calculation based on item attributes
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Attributes (JSON)</Label>
+                <Textarea
+                  placeholder='{"brand": "Louis Vuitton", "condition": "excellent", "year": "2023"}'
+                  value={driverTestInput}
+                  onChange={(e) => setDriverTestInput(e.target.value)}
+                  rows={3}
+                  className="font-mono text-sm"
+                />
+              </div>
+              <Button onClick={handleTestValueDrivers} disabled={isTestingDrivers}>
+                {isTestingDrivers && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Play className="mr-2 h-4 w-4" />
+                Test Value Drivers
+              </Button>
+              {driverTestResult && (
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center gap-4">
+                    <Label>Combined Multiplier:</Label>
+                    <Badge variant="default" className="text-lg">
+                      {driverTestResult.combinedMultiplier.toFixed(2)}x
+                    </Badge>
+                  </div>
+                  <div>
+                    <Label>Matched Drivers:</Label>
+                    <div className="space-y-2 mt-2">
+                      {driverTestResult.matches.map((match, i) => (
+                        <div key={i} className="flex items-center gap-2 text-sm">
+                          <Badge variant="outline">{match.multiplier.toFixed(2)}x</Badge>
+                          <span className="font-medium">{match.driver}</span>
+                          <span className="text-muted-foreground">{match.reasoning}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Authenticity Test */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Shield className="h-5 w-5" />
+                Test Authenticity Markers
+              </CardTitle>
+              <CardDescription>
+                Test authenticity verification based on item attributes
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Test Data (JSON)</Label>
+                <Textarea
+                  placeholder='{"identifiers": [{"type": "serial", "value": "AA1234"}], "extractedText": ["Made in France"]}'
+                  value={authTestInput}
+                  onChange={(e) => setAuthTestInput(e.target.value)}
+                  rows={3}
+                  className="font-mono text-sm"
+                />
+              </div>
+              <Button onClick={handleTestAuthenticity} disabled={isTestingAuth}>
+                {isTestingAuth && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Play className="mr-2 h-4 w-4" />
+                Test Authenticity
+              </Button>
+              {authTestResult && (
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center gap-4">
+                    <Label>Assessment:</Label>
+                    <Badge variant={authTestResult.assessment === 'likely_authentic' ? 'default' : 'destructive'}>
+                      {authTestResult.assessment.replace(/_/g, ' ')}
+                    </Badge>
+                  </div>
+                  <div>
+                    <Label>Markers Checked:</Label>
+                    <div className="space-y-1 mt-2">
+                      {authTestResult.markersChecked.map((marker, i) => (
+                        <div key={i} className="flex items-center gap-2 text-sm">
+                          <span className={marker.passed ? 'text-green-600' : 'text-red-600'}>
+                            {marker.passed ? '✓' : '✗'}
+                          </span>
+                          <span className="font-medium">{marker.marker}</span>
+                          <span className="text-muted-foreground">{marker.details}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -1104,7 +1278,7 @@ function ModuleEditorPage() {
               <Label>Condition Type</Label>
               <Select
                 value={newDriver.conditionType}
-                onValueChange={(value: 'contains' | 'equals' | 'regex') => setNewDriver({ ...newDriver, conditionType: value })}
+                onValueChange={(value: 'contains' | 'equals' | 'regex' | 'range' | 'custom') => setNewDriver({ ...newDriver, conditionType: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -1113,6 +1287,8 @@ function ModuleEditorPage() {
                   <SelectItem value="contains">Contains</SelectItem>
                   <SelectItem value="equals">Equals</SelectItem>
                   <SelectItem value="regex">Regex</SelectItem>
+                  <SelectItem value="range">Range</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1363,12 +1539,10 @@ function ModuleEditorPage() {
               />
             </div>
             <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
+              <Checkbox
                 id="edit-decoder-active"
                 checked={editDecoder.isActive}
-                onChange={(e) => setEditDecoder({ ...editDecoder, isActive: e.target.checked })}
-                className="h-4 w-4"
+                onCheckedChange={(checked) => setEditDecoder({ ...editDecoder, isActive: !!checked })}
               />
               <Label htmlFor="edit-decoder-active">Active</Label>
             </div>
@@ -1469,12 +1643,10 @@ function ModuleEditorPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
+              <Checkbox
                 id="edit-driver-active"
                 checked={editDriver.isActive}
-                onChange={(e) => setEditDriver({ ...editDriver, isActive: e.target.checked })}
-                className="h-4 w-4"
+                onCheckedChange={(checked) => setEditDriver({ ...editDriver, isActive: !!checked })}
               />
               <Label htmlFor="edit-driver-active">Active</Label>
             </div>
@@ -1544,22 +1716,18 @@ function ModuleEditorPage() {
             </div>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
+                <Checkbox
                   id="edit-marker-authentic"
                   checked={editMarker.indicatesAuthentic}
-                  onChange={(e) => setEditMarker({ ...editMarker, indicatesAuthentic: e.target.checked })}
-                  className="h-4 w-4"
+                  onCheckedChange={(checked) => setEditMarker({ ...editMarker, indicatesAuthentic: !!checked })}
                 />
                 <Label htmlFor="edit-marker-authentic">Indicates Authentic</Label>
               </div>
               <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
+                <Checkbox
                   id="edit-marker-active"
                   checked={editMarker.isActive}
-                  onChange={(e) => setEditMarker({ ...editMarker, isActive: e.target.checked })}
-                  className="h-4 w-4"
+                  onCheckedChange={(checked) => setEditMarker({ ...editMarker, isActive: !!checked })}
                 />
                 <Label htmlFor="edit-marker-active">Active</Label>
               </div>
@@ -1614,12 +1782,10 @@ function ModuleEditorPage() {
               <p className="text-xs text-muted-foreground">Key field cannot be changed after creation</p>
             </div>
             <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
+              <Checkbox
                 id="edit-table-active"
                 checked={editTable.isActive}
-                onChange={(e) => setEditTable({ ...editTable, isActive: e.target.checked })}
-                className="h-4 w-4"
+                onCheckedChange={(checked) => setEditTable({ ...editTable, isActive: !!checked })}
               />
               <Label htmlFor="edit-table-active">Active</Label>
             </div>

@@ -16,6 +16,8 @@ export * from './research.tools';
 export * from './action.tools';
 export * from './search.tools';
 export * from './aggregate.tools';
+export * from './domain.tools';
+export * from './research-advanced.tools';
 
 // Re-export tool registry for context-aware tool selection
 export * from './tool-registry';
@@ -38,6 +40,21 @@ import {
 import { suggestActionTool } from './action.tools';
 import { searchItemsTool, searchResearchTool, searchEvidenceTool } from './search.tools';
 import { getDashboardStatsTool, getReviewQueueSummaryTool } from './aggregate.tools';
+import {
+  decodeIdentifierTool,
+  checkAuthenticityTool,
+  getValueDriversTool,
+  explainPricingTool,
+  validateCompTool,
+} from './domain.tools';
+import {
+  lookupUpcTool,
+  webSearchProductTool,
+  reverseImageSearchTool,
+  detectCategoryTool,
+  extractTextFromImageTool,
+  compareImagesTool,
+} from './research-advanced.tools';
 
 import { AsyncLocalStorage } from 'async_hooks';
 
@@ -127,6 +144,21 @@ export function getChatTools(deps: ChatToolDependencies): StructuredTool[] {
     // Aggregate tools (for app-wide queries)
     getDashboardStatsTool(deps),
     getReviewQueueSummaryTool(deps),
+
+    // Domain knowledge tools (Slice 1)
+    decodeIdentifierTool(deps),
+    checkAuthenticityTool(deps),
+    getValueDriversTool(deps),
+    explainPricingTool(deps),
+    validateCompTool(deps),
+
+    // Advanced research tools (Slice 2)
+    lookupUpcTool(deps),
+    webSearchProductTool(deps),
+    reverseImageSearchTool(deps),
+    detectCategoryTool(deps),
+    extractTextFromImageTool(deps),
+    compareImagesTool(deps),
   ];
 }
 
@@ -295,6 +327,244 @@ export interface ChatToolDependencies {
     source?: string;
     costUsd?: number;
   }>;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Domain Knowledge Tools (Slice 1)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** Decode product identifiers (date codes, style numbers, etc.) */
+  decodeIdentifier?: (params: {
+    type: string;
+    value: string;
+    brand?: string;
+    category?: string;
+  }) => Promise<{
+    success: boolean;
+    identifierType?: string;
+    decoded?: Record<string, unknown>;
+    confidence?: number;
+    details?: string;
+  } | null>;
+
+  /** Check authenticity markers for an item */
+  checkAuthenticity?: (
+    itemId: string,
+    orgId: string,
+  ) => Promise<{
+    assessment: 'likely_authentic' | 'likely_fake' | 'uncertain' | 'insufficient_data';
+    confidence: number;
+    markersChecked: Array<{
+      name: string;
+      passed: boolean;
+      confidence: number;
+      details?: string;
+    }>;
+    summary: string;
+    warnings: string[];
+  } | null>;
+
+  /** Get value drivers that affect pricing for an item */
+  getValueDrivers?: (
+    itemId: string,
+    orgId: string,
+  ) => Promise<
+    Array<{
+      driverId: string;
+      name: string;
+      matchedValue: string;
+      priceMultiplier: number;
+      confidence: number;
+      reasoning: string;
+    }>
+  >;
+
+  /** Explain how pricing was calculated for an item */
+  explainPricing?: (
+    itemId: string,
+    orgId: string,
+  ) => Promise<{
+    hasResearch: boolean;
+    priceBands?: Array<{
+      label: string;
+      amount: number;
+      currency: string;
+      confidence: number;
+      reasoning: string;
+    }>;
+    compsUsed?: number;
+    validComps?: number;
+    outlierFiltering?: {
+      removed: number;
+      q1: number;
+      q3: number;
+    };
+    valueDriversApplied?: Array<{
+      name: string;
+      multiplier: number;
+    }>;
+    marketConditions?: {
+      sellThroughRate?: number;
+      competition?: number;
+      priceTrend?: string;
+    };
+    summary: string;
+  } | null>;
+
+  /** Validate a comparable listing against an item */
+  validateComp?: (
+    itemId: string,
+    compId: string,
+    orgId: string,
+    compData?: {
+      title?: string;
+      price?: number;
+      condition?: string;
+      soldDate?: string;
+      brand?: string;
+      model?: string;
+    },
+  ) => Promise<{
+    isValid: boolean;
+    overallScore: number;
+    criteria: {
+      brandMatch: { matches: boolean; confidence: number; itemBrand?: string; compBrand?: string };
+      modelMatch: { matches: boolean; confidence: number; itemModel?: string; compModel?: string };
+      conditionMatch: { matches: boolean; withinGrade: number; itemCondition?: string; compCondition?: string };
+      variantMatch: { matches: boolean; confidence: number; details?: string };
+      recency: { valid: boolean; daysSinceSold?: number | null; threshold: number };
+      priceOutlier: { isOutlier: boolean; zScore?: number };
+    };
+    reasoning: string;
+  } | null>;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Advanced Research Tools (Slice 2)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** Look up product info from UPC/EAN barcode */
+  lookupUpc?: (code: string) => Promise<{
+    found: boolean;
+    upc: string;
+    brand?: string;
+    name?: string;
+    description?: string;
+    category?: string;
+    imageUrl?: string;
+    cached?: boolean;
+  }>;
+
+  /** Search the web for product information */
+  webSearchProduct?: (params: {
+    brand?: string;
+    model?: string;
+    category?: string;
+    upc?: string;
+    extractedText?: string;
+    attributes?: Record<string, string>;
+    color?: string;
+    size?: string;
+    mpn?: string;
+  }) => Promise<{
+    results: Array<{
+      query: string;
+      content: string;
+      sources: string[];
+      timestamp: string;
+      error?: string;
+    }>;
+    successCount: number;
+    failedCount: number;
+  }>;
+
+  /** Synthesize product data from search results */
+  synthesizeProductData?: (
+    searchResults: Array<{ query: string; content: string; sources: string[] }>,
+    existingData: { brand?: string; model?: string; category?: string; attributes?: Record<string, string> },
+  ) => Promise<{
+    confidence: number;
+    brand: string | null;
+    model: string | null;
+    mpn: string | null;
+    upc: string | null;
+    title: string | null;
+    description: string | null;
+    category: string[];
+    condition: string | null;
+    specifications: Record<string, string | number | boolean>;
+    sources: string[];
+  }>;
+
+  /** Perform reverse image search */
+  reverseImageSearch?: (imageUrl: string) => Promise<{
+    provider: string;
+    searchedImageUrl: string;
+    matches: Array<{
+      title: string;
+      brand?: string;
+      model?: string;
+      category?: string;
+      price?: number;
+      currency?: string;
+      sourceUrl: string;
+      sourceDomain?: string;
+      matchingImageUrl?: string;
+      confidence: number;
+      attributes?: Record<string, string>;
+    }>;
+    bestMatch?: {
+      title: string;
+      brand?: string;
+      model?: string;
+      confidence: number;
+    };
+    confidence: number;
+    success: boolean;
+    error?: string;
+    cached?: boolean;
+  }>;
+
+  /** Detect product category */
+  detectCategory?: (context: {
+    imageUrls: string[];
+    title?: string;
+    description?: string;
+    brand?: string;
+    category?: string;
+    userHints?: string;
+  }) => Promise<{
+    categoryId: string;
+    confidence: number;
+    reasoning: string;
+    alternatives?: Array<{ categoryId: string; confidence: number }>;
+  }>;
+
+  /** Extract text from images using OCR */
+  extractTextFromImage?: (imageUrls: string[]) => Promise<{
+    upc?: string;
+    ean?: string;
+    modelNumber?: string;
+    serialNumber?: string;
+    mpn?: string;
+    rawText: string[];
+    labels: Record<string, string>;
+    confidence: number;
+    textChunks?: Array<{
+      text: string;
+      isLikelyIdentifier: boolean;
+      suggestedType?: string;
+    }>;
+  }>;
+
+  /** Compare images for visual similarity */
+  compareImages?: (
+    itemImages: string[],
+    compImages: string[],
+  ) => Promise<{
+    similarityScore: number;
+    isSameProduct: boolean;
+    reasoning: string;
+    cached: boolean;
+  }>;
 }
 
 /**
@@ -383,6 +653,85 @@ export const toolDisplayInfo: Record<string, { displayName: string; icon?: strin
     progressMessages: {
       starting: 'Loading review queue...',
       completed: 'Review queue loaded',
+    },
+  },
+  // Domain knowledge tools (Slice 1)
+  decode_identifier: {
+    displayName: 'Decode Identifier',
+    progressMessages: {
+      starting: 'Decoding identifier...',
+      completed: 'Identifier decoded',
+    },
+  },
+  check_authenticity: {
+    displayName: 'Authenticity Check',
+    progressMessages: {
+      starting: 'Checking authenticity markers...',
+      completed: 'Authenticity check complete',
+    },
+  },
+  get_value_drivers: {
+    displayName: 'Value Drivers',
+    progressMessages: {
+      starting: 'Detecting value drivers...',
+      completed: 'Value drivers detected',
+    },
+  },
+  explain_pricing: {
+    displayName: 'Pricing Explanation',
+    progressMessages: {
+      starting: 'Analyzing pricing methodology...',
+      completed: 'Pricing explained',
+    },
+  },
+  validate_comp: {
+    displayName: 'Comp Validation',
+    progressMessages: {
+      starting: 'Validating comparable...',
+      completed: 'Comparable validated',
+    },
+  },
+  // Advanced research tools (Slice 2)
+  lookup_upc: {
+    displayName: 'UPC Lookup',
+    progressMessages: {
+      starting: 'Looking up barcode...',
+      completed: 'Barcode lookup complete',
+    },
+  },
+  web_search_product: {
+    displayName: 'Web Search',
+    progressMessages: {
+      starting: 'Searching the web...',
+      completed: 'Web search complete',
+    },
+  },
+  reverse_image_search: {
+    displayName: 'Image Search',
+    progressMessages: {
+      starting: 'Searching by image...',
+      completed: 'Image search complete',
+    },
+  },
+  detect_category: {
+    displayName: 'Category Detection',
+    progressMessages: {
+      starting: 'Detecting category...',
+      completed: 'Category detected',
+    },
+  },
+  extract_text_from_image: {
+    displayName: 'OCR Extraction',
+    progressMessages: {
+      starting: 'Extracting text from images...',
+      completed: 'Text extracted',
+    },
+  },
+  compare_images: {
+    displayName: 'Image Comparison',
+    progressMessages: {
+      starting: 'Comparing images...',
+      completed: 'Images compared',
     },
   },
 };

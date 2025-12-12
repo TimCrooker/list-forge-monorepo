@@ -24,6 +24,7 @@ import { Route as AuthenticatedSettingsMarketplacesRouteImport } from './routes/
 import { Route as AuthenticatedSettingsHistoryRouteImport } from './routes/_authenticated/settings/history'
 import { Route as AuthenticatedItemsNewRouteImport } from './routes/_authenticated/items/new'
 import { Route as AuthenticatedCaptureIdRouteImport } from './routes/_authenticated/capture/$id'
+import { Route as AuthenticatedAdminToolDebuggerRouteImport } from './routes/_authenticated/admin/tool-debugger'
 import { Route as AuthenticatedAdminSettingsAuditRouteImport } from './routes/_authenticated/admin/settings-audit'
 import { Route as AuthenticatedAdminMarketplaceAccountsRouteImport } from './routes/_authenticated/admin/marketplace-accounts'
 import { Route as AuthenticatedAdminLearningRouteImport } from './routes/_authenticated/admin/learning'
@@ -35,6 +36,7 @@ import { Route as AuthenticatedAdminUsersIdRouteImport } from './routes/_authent
 import { Route as AuthenticatedAdminOrgsIdRouteImport } from './routes/_authenticated/admin/orgs/$id'
 import { Route as AuthenticatedAdminDomainExpertiseModuleIdRouteImport } from './routes/_authenticated/admin/domain-expertise/$moduleId'
 import { Route as AuthenticatedItemsIdResearchRunIdRouteImport } from './routes/_authenticated/items/$id/research/$runId'
+import { Route as AuthenticatedAdminDomainExpertiseLookupTablesTableIdRouteImport } from './routes/_authenticated/admin/domain-expertise/lookup-tables/$tableId'
 
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
@@ -117,6 +119,12 @@ const AuthenticatedCaptureIdRoute = AuthenticatedCaptureIdRouteImport.update({
   path: '/capture/$id',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedAdminToolDebuggerRoute =
+  AuthenticatedAdminToolDebuggerRouteImport.update({
+    id: '/admin/tool-debugger',
+    path: '/admin/tool-debugger',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAdminSettingsAuditRoute =
   AuthenticatedAdminSettingsAuditRouteImport.update({
     id: '/admin/settings-audit',
@@ -183,6 +191,12 @@ const AuthenticatedItemsIdResearchRunIdRoute =
     path: '/items/$id/research/$runId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedAdminDomainExpertiseLookupTablesTableIdRoute =
+  AuthenticatedAdminDomainExpertiseLookupTablesTableIdRouteImport.update({
+    id: '/admin/domain-expertise/lookup-tables/$tableId',
+    path: '/admin/domain-expertise/lookup-tables/$tableId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
@@ -191,6 +205,7 @@ export interface FileRoutesByFullPath {
   '/admin/learning': typeof AuthenticatedAdminLearningRoute
   '/admin/marketplace-accounts': typeof AuthenticatedAdminMarketplaceAccountsRoute
   '/admin/settings-audit': typeof AuthenticatedAdminSettingsAuditRoute
+  '/admin/tool-debugger': typeof AuthenticatedAdminToolDebuggerRoute
   '/capture/$id': typeof AuthenticatedCaptureIdRoute
   '/items/new': typeof AuthenticatedItemsNewRoute
   '/settings/history': typeof AuthenticatedSettingsHistoryRoute
@@ -209,6 +224,7 @@ export interface FileRoutesByFullPath {
   '/admin/orgs': typeof AuthenticatedAdminOrgsIndexRoute
   '/admin/users': typeof AuthenticatedAdminUsersIndexRoute
   '/items/$id': typeof AuthenticatedItemsIdIndexRoute
+  '/admin/domain-expertise/lookup-tables/$tableId': typeof AuthenticatedAdminDomainExpertiseLookupTablesTableIdRoute
   '/items/$id/research/$runId': typeof AuthenticatedItemsIdResearchRunIdRoute
 }
 export interface FileRoutesByTo {
@@ -218,6 +234,7 @@ export interface FileRoutesByTo {
   '/admin/learning': typeof AuthenticatedAdminLearningRoute
   '/admin/marketplace-accounts': typeof AuthenticatedAdminMarketplaceAccountsRoute
   '/admin/settings-audit': typeof AuthenticatedAdminSettingsAuditRoute
+  '/admin/tool-debugger': typeof AuthenticatedAdminToolDebuggerRoute
   '/capture/$id': typeof AuthenticatedCaptureIdRoute
   '/items/new': typeof AuthenticatedItemsNewRoute
   '/settings/history': typeof AuthenticatedSettingsHistoryRoute
@@ -236,6 +253,7 @@ export interface FileRoutesByTo {
   '/admin/orgs': typeof AuthenticatedAdminOrgsIndexRoute
   '/admin/users': typeof AuthenticatedAdminUsersIndexRoute
   '/items/$id': typeof AuthenticatedItemsIdIndexRoute
+  '/admin/domain-expertise/lookup-tables/$tableId': typeof AuthenticatedAdminDomainExpertiseLookupTablesTableIdRoute
   '/items/$id/research/$runId': typeof AuthenticatedItemsIdResearchRunIdRoute
 }
 export interface FileRoutesById {
@@ -247,6 +265,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/learning': typeof AuthenticatedAdminLearningRoute
   '/_authenticated/admin/marketplace-accounts': typeof AuthenticatedAdminMarketplaceAccountsRoute
   '/_authenticated/admin/settings-audit': typeof AuthenticatedAdminSettingsAuditRoute
+  '/_authenticated/admin/tool-debugger': typeof AuthenticatedAdminToolDebuggerRoute
   '/_authenticated/capture/$id': typeof AuthenticatedCaptureIdRoute
   '/_authenticated/items/new': typeof AuthenticatedItemsNewRoute
   '/_authenticated/settings/history': typeof AuthenticatedSettingsHistoryRoute
@@ -265,6 +284,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/orgs/': typeof AuthenticatedAdminOrgsIndexRoute
   '/_authenticated/admin/users/': typeof AuthenticatedAdminUsersIndexRoute
   '/_authenticated/items/$id/': typeof AuthenticatedItemsIdIndexRoute
+  '/_authenticated/admin/domain-expertise/lookup-tables/$tableId': typeof AuthenticatedAdminDomainExpertiseLookupTablesTableIdRoute
   '/_authenticated/items/$id/research/$runId': typeof AuthenticatedItemsIdResearchRunIdRoute
 }
 export interface FileRouteTypes {
@@ -276,6 +296,7 @@ export interface FileRouteTypes {
     | '/admin/learning'
     | '/admin/marketplace-accounts'
     | '/admin/settings-audit'
+    | '/admin/tool-debugger'
     | '/capture/$id'
     | '/items/new'
     | '/settings/history'
@@ -294,6 +315,7 @@ export interface FileRouteTypes {
     | '/admin/orgs'
     | '/admin/users'
     | '/items/$id'
+    | '/admin/domain-expertise/lookup-tables/$tableId'
     | '/items/$id/research/$runId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -303,6 +325,7 @@ export interface FileRouteTypes {
     | '/admin/learning'
     | '/admin/marketplace-accounts'
     | '/admin/settings-audit'
+    | '/admin/tool-debugger'
     | '/capture/$id'
     | '/items/new'
     | '/settings/history'
@@ -321,6 +344,7 @@ export interface FileRouteTypes {
     | '/admin/orgs'
     | '/admin/users'
     | '/items/$id'
+    | '/admin/domain-expertise/lookup-tables/$tableId'
     | '/items/$id/research/$runId'
   id:
     | '__root__'
@@ -331,6 +355,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/learning'
     | '/_authenticated/admin/marketplace-accounts'
     | '/_authenticated/admin/settings-audit'
+    | '/_authenticated/admin/tool-debugger'
     | '/_authenticated/capture/$id'
     | '/_authenticated/items/new'
     | '/_authenticated/settings/history'
@@ -349,6 +374,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/orgs/'
     | '/_authenticated/admin/users/'
     | '/_authenticated/items/$id/'
+    | '/_authenticated/admin/domain-expertise/lookup-tables/$tableId'
     | '/_authenticated/items/$id/research/$runId'
   fileRoutesById: FileRoutesById
 }
@@ -465,6 +491,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCaptureIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/admin/tool-debugger': {
+      id: '/_authenticated/admin/tool-debugger'
+      path: '/admin/tool-debugger'
+      fullPath: '/admin/tool-debugger'
+      preLoaderRoute: typeof AuthenticatedAdminToolDebuggerRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/admin/settings-audit': {
       id: '/_authenticated/admin/settings-audit'
       path: '/admin/settings-audit'
@@ -542,6 +575,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedItemsIdResearchRunIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/admin/domain-expertise/lookup-tables/$tableId': {
+      id: '/_authenticated/admin/domain-expertise/lookup-tables/$tableId'
+      path: '/admin/domain-expertise/lookup-tables/$tableId'
+      fullPath: '/admin/domain-expertise/lookup-tables/$tableId'
+      preLoaderRoute: typeof AuthenticatedAdminDomainExpertiseLookupTablesTableIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
@@ -550,6 +590,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAdminLearningRoute: typeof AuthenticatedAdminLearningRoute
   AuthenticatedAdminMarketplaceAccountsRoute: typeof AuthenticatedAdminMarketplaceAccountsRoute
   AuthenticatedAdminSettingsAuditRoute: typeof AuthenticatedAdminSettingsAuditRoute
+  AuthenticatedAdminToolDebuggerRoute: typeof AuthenticatedAdminToolDebuggerRoute
   AuthenticatedCaptureIdRoute: typeof AuthenticatedCaptureIdRoute
   AuthenticatedItemsNewRoute: typeof AuthenticatedItemsNewRoute
   AuthenticatedSettingsHistoryRoute: typeof AuthenticatedSettingsHistoryRoute
@@ -568,6 +609,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAdminOrgsIndexRoute: typeof AuthenticatedAdminOrgsIndexRoute
   AuthenticatedAdminUsersIndexRoute: typeof AuthenticatedAdminUsersIndexRoute
   AuthenticatedItemsIdIndexRoute: typeof AuthenticatedItemsIdIndexRoute
+  AuthenticatedAdminDomainExpertiseLookupTablesTableIdRoute: typeof AuthenticatedAdminDomainExpertiseLookupTablesTableIdRoute
   AuthenticatedItemsIdResearchRunIdRoute: typeof AuthenticatedItemsIdResearchRunIdRoute
 }
 
@@ -577,6 +619,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAdminMarketplaceAccountsRoute:
     AuthenticatedAdminMarketplaceAccountsRoute,
   AuthenticatedAdminSettingsAuditRoute: AuthenticatedAdminSettingsAuditRoute,
+  AuthenticatedAdminToolDebuggerRoute: AuthenticatedAdminToolDebuggerRoute,
   AuthenticatedCaptureIdRoute: AuthenticatedCaptureIdRoute,
   AuthenticatedItemsNewRoute: AuthenticatedItemsNewRoute,
   AuthenticatedSettingsHistoryRoute: AuthenticatedSettingsHistoryRoute,
@@ -599,6 +642,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAdminOrgsIndexRoute: AuthenticatedAdminOrgsIndexRoute,
   AuthenticatedAdminUsersIndexRoute: AuthenticatedAdminUsersIndexRoute,
   AuthenticatedItemsIdIndexRoute: AuthenticatedItemsIdIndexRoute,
+  AuthenticatedAdminDomainExpertiseLookupTablesTableIdRoute:
+    AuthenticatedAdminDomainExpertiseLookupTablesTableIdRoute,
   AuthenticatedItemsIdResearchRunIdRoute:
     AuthenticatedItemsIdResearchRunIdRoute,
 }

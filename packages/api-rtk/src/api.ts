@@ -175,6 +175,11 @@ import {
   GetCalibrationHistoryResponse,
   LearningDashboardQuery,
   GetLearningDashboardResponse,
+  // Tool Debugger types
+  ListToolsResponseDto,
+  ExecuteToolRequestDto,
+  ExecuteToolResponseDto,
+  SearchDebuggerItemsResponseDto,
 } from '@listforge/api-types';
 import { baseQueryWithErrorHandling } from './baseQueryWithErrorHandling';
 
@@ -1348,7 +1353,7 @@ export const api = createApi({
       { tableId: string; data: BulkLookupEntriesDto }
     >({
       query: ({ tableId, data }) => ({
-        url: `/admin/domain-expertise/lookup-tables/${tableId}/bulk`,
+        url: `/admin/domain-expertise/lookup-tables/${tableId}/entries/bulk`,
         method: 'POST',
         body: data,
       }),
@@ -1706,6 +1711,38 @@ export const api = createApi({
       }),
       providesTags: ['ResearchAnomaly'],
     }),
+
+    // ============================================================================
+    // Tool Debugger Endpoints
+    // ============================================================================
+
+    listDebuggerTools: builder.query<ListToolsResponseDto, void>({
+      query: () => '/admin/tool-debugger/tools',
+    }),
+
+    searchDebuggerItems: builder.query<
+      SearchDebuggerItemsResponseDto,
+      { query?: string; limit?: number }
+    >({
+      query: (params) => ({
+        url: '/admin/tool-debugger/items',
+        params: {
+          ...(params.query ? { query: params.query } : {}),
+          ...(params.limit ? { limit: String(params.limit) } : {}),
+        },
+      }),
+    }),
+
+    executeDebuggerTool: builder.mutation<
+      ExecuteToolResponseDto,
+      ExecuteToolRequestDto
+    >({
+      query: (body) => ({
+        url: '/admin/tool-debugger/execute',
+        method: 'POST',
+        body,
+      }),
+    }),
   }),
 });
 
@@ -1875,5 +1912,10 @@ export const {
   useGetLearningDashboardQuery,
   useGetGlobalToolEffectivenessQuery,
   useGetAllAnomaliesQuery,
+  // Tool Debugger hooks
+  useListDebuggerToolsQuery,
+  useSearchDebuggerItemsQuery,
+  useLazySearchDebuggerItemsQuery,
+  useExecuteDebuggerToolMutation,
 } = api;
 

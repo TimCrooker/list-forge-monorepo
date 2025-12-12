@@ -31,6 +31,15 @@ import {
 	TabsContent,
 	type MediaItem,
 	AppContent,
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+	AlertDialogTrigger,
 } from '@listforge/ui'
 import {
 	Loader2,
@@ -46,17 +55,21 @@ import {
 	ExternalLink,
 	Zap,
 	RotateCcw,
+	Pencil,
+	Trash2,
 } from 'lucide-react'
-import { showSuccess } from '@/utils/toast'
-import type { MarketplaceAccountDto } from '@listforge/api-types'
+import { showSuccess, showError } from '@/utils/toast'
+import type { MarketplaceAccountDto, ItemResearchRunSummaryDto, EvidenceItemDto } from '@listforge/api-types'
 import { ResearchPanel } from '@/components/research/ResearchPanel'
+import { ResearchHistoryCard } from '@/components/research/ResearchHistoryCard'
+import { ItemEditTab } from '@/components/items/ItemEditTab'
 
 export const Route = createFileRoute('/_authenticated/items/$id/')({
 	component: ItemDetailPage,
 	validateSearch: (
 		search?: Record<string, unknown>
-	): { tab?: 'details' | 'research' } => ({
-		tab: (search?.tab as 'details' | 'research' | undefined) || 'details',
+	): { tab?: 'details' | 'edit' | 'research' } => ({
+		tab: (search?.tab as 'details' | 'edit' | 'research' | undefined) || 'details',
 	}),
 })
 
@@ -113,7 +126,6 @@ function ItemDetailPage() {
 	}
 
 	const handleDelete = async () => {
-		if (!confirm('Delete this item?')) return
 		await deleteItem(id).unwrap()
 		navigate({ to: '/items' })
 	}
@@ -151,8 +163,9 @@ function ItemDetailPage() {
 			await retryPublish({ itemId: id, listingId }).unwrap()
 			showSuccess('Publish retry queued')
 			refetchListings()
-		} catch (err: any) {
+		} catch (err) {
 			console.error('Failed to retry publish:', err)
+			showError('Failed to retry publish')
 		}
 	}
 
@@ -215,7 +228,7 @@ function ItemDetailPage() {
 		navigate({
 			to: '/items/$id',
 			params: { id },
-			search: { tab: value as 'details' | 'research' },
+			search: { tab: value as 'details' | 'edit' | 'research' },
 		})
 	}
 
@@ -249,9 +262,32 @@ function ItemDetailPage() {
 			<AppContent
 				title={item.title || item.userTitleHint || 'Untitled Item'}
 				actions={
-					<Button variant="destructive" onClick={handleDelete}>
-						Delete
-					</Button>
+					<AlertDialog>
+						<AlertDialogTrigger asChild>
+							<Button variant="destructive">
+								<Trash2 className="mr-2 h-4 w-4" />
+								Delete
+							</Button>
+						</AlertDialogTrigger>
+						<AlertDialogContent>
+							<AlertDialogHeader>
+								<AlertDialogTitle>Delete Item?</AlertDialogTitle>
+								<AlertDialogDescription>
+									Are you sure you want to delete this item? This action cannot be undone.
+									All associated research runs and marketplace listings will also be deleted.
+								</AlertDialogDescription>
+							</AlertDialogHeader>
+							<AlertDialogFooter>
+								<AlertDialogCancel>Cancel</AlertDialogCancel>
+								<AlertDialogAction
+									onClick={handleDelete}
+									className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+								>
+									Delete Item
+								</AlertDialogAction>
+							</AlertDialogFooter>
+						</AlertDialogContent>
+					</AlertDialog>
 				}
 				statusIndicator={
 					firstImage ? (
@@ -286,10 +322,14 @@ function ItemDetailPage() {
 					},
 				]}
 				headerContent={
-					<TabsList className="grid w-full grid-cols-2">
+					<TabsList className="grid w-full grid-cols-3">
 						<TabsTrigger value="details" className="flex items-center gap-2">
 							<FileText className="h-4 w-4" />
 							Details
+						</TabsTrigger>
+						<TabsTrigger value="edit" className="flex items-center gap-2">
+							<Pencil className="h-4 w-4" />
+							Edit
 						</TabsTrigger>
 						<TabsTrigger value="research" className="flex items-center gap-2">
 							<BarChart3 className="h-4 w-4" />
@@ -439,6 +479,7 @@ function ItemDetailPage() {
 										size="icon"
 										variant="ghost"
 										onClick={() => refetchListings()}
+										aria-label="Refresh marketplace listings"
 									>
 										<RefreshCw className="h-4 w-4" />
 									</Button>
@@ -547,6 +588,7 @@ function ItemDetailPage() {
 										variant="ghost"
 										onClick={() => refetchResearch()}
 										disabled={isResearchLoading}
+										aria-label="Refresh research runs"
 									>
 										<RefreshCw
 											className={`h-4 w-4 ${isResearchLoading ? 'animate-spin' : ''}`}
@@ -588,16 +630,26 @@ function ItemDetailPage() {
 				</TabsContent>
 
 				<TabsContent
-					value="research"
-					className="mt-0 h-full flex flex-col min-h-0 min-w-0 overflow-hidden"
+					value="edit"
+					className="mt-0 h-full overflow-y-auto"
 				>
-					<ResearchPanel
-						itemId={id}
-						onTriggerResearch={handleTriggerResearch}
-						isResearchRunning={isTriggeringResearch || !!runningRun}
-						activeRunId={currentActiveRunId}
-						onResearchComplete={handleResearchComplete}
-					/>
+					<ItemEditTab item={item} />
+				</TabsContent>
+
+				<TabsContent
+					value="research"
+					className="mt-0 h-full flex flex-col min-h-0 min-w-0 overflow-y-auto"
+				>
+					<div className="space-y-6">
+						<ResearchPanel
+							itemId={id}
+							onTriggerResearch={handleTriggerResearch}
+							isResearchRunning={isTriggeringResearch || !!runningRun}
+							activeRunId={currentActiveRunId}
+							onResearchComplete={handleResearchComplete}
+						/>
+						<ResearchHistoryCard itemId={id} />
+					</div>
 				</TabsContent>
 			</AppContent>
 		</Tabs>
@@ -609,7 +661,7 @@ function ResearchRunCard({
 	isExpanded,
 	onToggle,
 }: {
-	run: any
+	run: ItemResearchRunSummaryDto
 	isExpanded: boolean
 	onToggle: () => void
 }) {
@@ -705,27 +757,31 @@ function ResearchRunCard({
 								Evidence ({evidenceData.evidence.items.length} items)
 							</h4>
 							<div className="space-y-2 max-h-64 overflow-y-auto">
-								{evidenceData.evidence.items.map((item: any) => (
-									<div
-										key={item.id}
-										className="text-xs bg-white p-2 rounded border"
-									>
-										<span className="font-medium capitalize">
-											{item.type.replace(/_/g, ' ')}
-										</span>
-										{item.data.title && (
-											<p className="mt-1">{item.data.title}</p>
-										)}
-										{item.data.text && (
-											<p className="mt-1 text-muted-foreground">
-												{item.data.text}
-											</p>
-										)}
-										{item.data.price && (
-											<p className="mt-1">Price: ${item.data.price}</p>
-										)}
-									</div>
-								))}
+								{evidenceData.evidence.items.map((evidenceItem: EvidenceItemDto) => {
+									// Evidence data varies by type - safely access common display fields
+									const data = evidenceItem.data as unknown as { title?: string; text?: string; price?: number };
+									return (
+										<div
+											key={evidenceItem.id}
+											className="text-xs bg-white p-2 rounded border"
+										>
+											<span className="font-medium capitalize">
+												{evidenceItem.type.replace(/_/g, ' ')}
+											</span>
+											{data.title && (
+												<p className="mt-1">{data.title}</p>
+											)}
+											{data.text && (
+												<p className="mt-1 text-muted-foreground">
+													{data.text}
+												</p>
+											)}
+											{data.price && (
+												<p className="mt-1">Price: ${data.price}</p>
+											)}
+										</div>
+									);
+								})}
 							</div>
 						</div>
 					) : (

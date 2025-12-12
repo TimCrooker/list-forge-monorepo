@@ -21,6 +21,7 @@ import { ResearchModule } from './research/research.module';
 import { ChatModule } from './chat/chat.module';
 import { DomainExpertiseModule } from './domain-expertise/domain-expertise.module';
 import { LearningModule } from './learning/learning.module';
+import { ToolDebuggerModule } from './tool-debugger/tool-debugger.module';
 
 const logger = new Logger('AppModule');
 
@@ -138,6 +139,7 @@ function getRedisConfig() {
     ChatModule,
     DomainExpertiseModule,
     LearningModule,
+    ToolDebuggerModule,
   ],
   providers: [
     // Enable rate limiting globally

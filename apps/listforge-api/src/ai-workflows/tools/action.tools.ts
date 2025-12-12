@@ -31,7 +31,7 @@ export interface ChatAction {
 // Schemas
 // ============================================================================
 
-const SuggestActionSchema = z.object({
+export const SuggestActionSchema = z.object({
   type: z.enum([
     'update_field',
     'navigate',
@@ -57,7 +57,8 @@ const SuggestActionSchema = z.object({
 
   autoExecute: z.boolean().default(false).describe(`Whether to execute immediately:
 - true: Use ONLY when user explicitly requests navigation (e.g., "take me to...", "go to...")
-- false: Show as button for user to click (default, use for suggestions)`),
+- false: Show as button for user to click (default, use for suggestions)
+NOTE: This will be forced to false for update_field actions (data modification requires user confirmation)`),
 
   // Type-specific fields
   routeName: z.string().optional().describe('Route name for navigate action (e.g., "items", "review", "capture")'),
@@ -200,6 +201,8 @@ export function suggestActionTool(deps: ChatToolDependencies): StructuredTool {
                 message: 'field and value are required for update_field action',
               });
             }
+            // Never auto-execute field updates - data modification requires user confirmation
+            action.autoExecute = false;
             action.payload = {
               type: 'update_field',
               itemId: input.itemId || ctx.itemId,

@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
-import { useMemo } from 'react'
-import { useListItemsQuery, useOrgRoom, useMeQuery } from '@listforge/api-rtk'
+import { useMemo, useState, useCallback } from 'react'
+import { useListItemsQuery, useOrgRoom, useMeQuery, useDeleteItemMutation } from '@listforge/api-rtk'
 import { itemsToProducts } from '@/utils/transformers'
 import { useItemFilters } from '@/hooks/useItemFilters'
 import { useOrgFeatures } from '@/hooks'
@@ -19,8 +19,20 @@ import {
 	SelectValue,
 	Badge,
 	AppContent,
+	Checkbox,
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+	AlertDialogTrigger,
+	cn,
 } from '@listforge/ui'
-import { Plus, Loader2, Search, Filter, Bot, User } from 'lucide-react'
+import { Plus, Loader2, Search, Filter, Bot, User, Trash2, X, CheckSquare } from 'lucide-react'
+import { showSuccess, showError } from '@/utils/toast'
 
 export const Route = createFileRoute('/_authenticated/items/')({
 	component: ItemsListPage,
@@ -29,6 +41,12 @@ export const Route = createFileRoute('/_authenticated/items/')({
 function ItemsListPage() {
 	const navigate = useNavigate()
 	const { itemsLabel } = useOrgFeatures()
+
+	// Selection state for bulk operations
+	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+	const [isSelectionMode, setIsSelectionMode] = useState(false)
+	const [isBulkDeleting, setIsBulkDeleting] = useState(false)
+	const [deleteItem] = useDeleteItemMutation()
 
 	// Use custom hook for filter management
 	const {
@@ -54,7 +72,7 @@ function ItemsListPage() {
 		sortOption: 'newest',
 	})
 
-	const { data, isLoading, error } = useListItemsQuery({
+	const { data, isLoading, error, refetch } = useListItemsQuery({
 		lifecycleStatus: lifecycleFilter.length > 0 ? lifecycleFilter : undefined,
 		source: sourceFilterArray.length > 0 ? sourceFilterArray : undefined,
 		search: searchQuery || undefined,
@@ -77,8 +95,63 @@ function ItemsListPage() {
 		return itemsToProducts(data.items)
 	}, [data?.items])
 
+	// Selection handlers
+	const toggleSelection = useCallback((productId: string) => {
+		setSelectedIds(prev => {
+			const next = new Set(prev)
+			if (next.has(productId)) {
+				next.delete(productId)
+			} else {
+				next.add(productId)
+			}
+			return next
+		})
+	}, [])
+
+	const selectAll = useCallback(() => {
+		setSelectedIds(new Set(products.map(p => p.id)))
+	}, [products])
+
+	const clearSelection = useCallback(() => {
+		setSelectedIds(new Set())
+		setIsSelectionMode(false)
+	}, [])
+
+	const handleBulkDelete = async () => {
+		if (selectedIds.size === 0) return
+
+		setIsBulkDeleting(true)
+		const idsToDelete = Array.from(selectedIds)
+		let successCount = 0
+		let errorCount = 0
+
+		for (const id of idsToDelete) {
+			try {
+				await deleteItem(id).unwrap()
+				successCount++
+			} catch (error) {
+				errorCount++
+				console.error(`Failed to delete item ${id}:`, error)
+			}
+		}
+
+		setIsBulkDeleting(false)
+		clearSelection()
+		refetch()
+
+		if (errorCount === 0) {
+			showSuccess(`Deleted ${successCount} item${successCount !== 1 ? 's' : ''}`)
+		} else {
+			showError(`Deleted ${successCount} items, ${errorCount} failed`)
+		}
+	}
+
 	const handleQuickView = (product: Product) => {
-		navigate({ to: '/items/$id', params: { id: product.id } })
+		if (isSelectionMode) {
+			toggleSelection(product.id)
+		} else {
+			navigate({ to: '/items/$id', params: { id: product.id } })
+		}
 	}
 
 	if (isLoading) {
@@ -112,12 +185,28 @@ function ItemsListPage() {
 			title={itemsLabel}
 			description={`${data?.total || 0} ${data?.total === 1 ? 'item' : 'items'} ${lifecycleTab !== 'all' && `(${lifecycleTab})`}`}
 			actions={
-				<Link to="/items/new">
-					<Button>
-						<Plus className="mr-2 h-4 w-4" />
-						New Item
+				<div className="flex items-center gap-2">
+					<Button
+						variant={isSelectionMode ? 'secondary' : 'outline'}
+						size="sm"
+						onClick={() => {
+							if (isSelectionMode) {
+								clearSelection()
+							} else {
+								setIsSelectionMode(true)
+							}
+						}}
+					>
+						<CheckSquare className="mr-2 h-4 w-4" />
+						{isSelectionMode ? 'Exit Select' : 'Select'}
 					</Button>
-				</Link>
+					<Link to="/items/new">
+						<Button>
+							<Plus className="mr-2 h-4 w-4" />
+							New Item
+						</Button>
+					</Link>
+				</div>
 			}
 			headerContent={
 				<Tabs value={lifecycleTab} onValueChange={setLifecycleTab}>
@@ -221,6 +310,79 @@ function ItemsListPage() {
 				)}
 			</div>
 
+			{/* Bulk Action Toolbar */}
+			{isSelectionMode && (
+				<div className="flex items-center justify-between p-3 bg-muted rounded-lg border">
+					<div className="flex items-center gap-4">
+						<div className="flex items-center gap-2">
+							<Checkbox
+								checked={selectedIds.size === products.length && products.length > 0}
+								onCheckedChange={(checked) => {
+									if (checked) {
+										selectAll()
+									} else {
+										setSelectedIds(new Set())
+									}
+								}}
+								aria-label="Select all items"
+							/>
+							<span className="text-sm font-medium">
+								{selectedIds.size > 0
+									? `${selectedIds.size} selected`
+									: 'Select items'}
+							</span>
+						</div>
+						{selectedIds.size > 0 && (
+							<Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+								<X className="mr-1 h-3 w-3" />
+								Clear
+							</Button>
+						)}
+					</div>
+					<div className="flex items-center gap-2">
+						<AlertDialog>
+							<AlertDialogTrigger asChild>
+								<Button
+									variant="destructive"
+									size="sm"
+									disabled={selectedIds.size === 0 || isBulkDeleting}
+								>
+									{isBulkDeleting ? (
+										<>
+											<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+											Deleting...
+										</>
+									) : (
+										<>
+											<Trash2 className="mr-2 h-4 w-4" />
+											Delete ({selectedIds.size})
+										</>
+									)}
+								</Button>
+							</AlertDialogTrigger>
+							<AlertDialogContent>
+								<AlertDialogHeader>
+									<AlertDialogTitle>Delete {selectedIds.size} Items?</AlertDialogTitle>
+									<AlertDialogDescription>
+										Are you sure you want to delete {selectedIds.size} item{selectedIds.size !== 1 ? 's' : ''}?
+										This action cannot be undone. All associated research runs and marketplace listings will also be deleted.
+									</AlertDialogDescription>
+								</AlertDialogHeader>
+								<AlertDialogFooter>
+									<AlertDialogCancel>Cancel</AlertDialogCancel>
+									<AlertDialogAction
+										onClick={handleBulkDelete}
+										className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+									>
+										Delete {selectedIds.size} Item{selectedIds.size !== 1 ? 's' : ''}
+									</AlertDialogAction>
+								</AlertDialogFooter>
+							</AlertDialogContent>
+						</AlertDialog>
+					</div>
+				</div>
+			)}
+
 			{/* Content */}
 			{isLoading ? (
 				<div className="flex items-center justify-center py-12">
@@ -243,6 +405,13 @@ function ItemsListPage() {
 						</Link>
 					)}
 				</div>
+			) : isSelectionMode ? (
+				<SelectableProductGrid
+					products={products}
+					selectedIds={selectedIds}
+					onToggleSelection={toggleSelection}
+					onNavigate={(id) => navigate({ to: '/items/$id', params: { id } })}
+				/>
 			) : (
 				<ProductGrid
 					products={products}
@@ -255,5 +424,158 @@ function ItemsListPage() {
 				/>
 			)}
 		</AppContent>
+	)
+}
+
+// Selectable Product Grid for bulk operations
+interface SelectableProductGridProps {
+	products: Product[]
+	selectedIds: Set<string>
+	onToggleSelection: (id: string) => void
+	onNavigate: (id: string) => void
+}
+
+function SelectableProductGrid({
+	products,
+	selectedIds,
+	onToggleSelection,
+	onNavigate,
+}: SelectableProductGridProps) {
+	const [currentPage, setCurrentPage] = useState(1)
+	const itemsPerPage = 12
+	const totalPages = Math.ceil(products.length / itemsPerPage)
+	const paginatedProducts = products.slice(
+		(currentPage - 1) * itemsPerPage,
+		currentPage * itemsPerPage
+	)
+
+	return (
+		<div className="space-y-6">
+			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+				{paginatedProducts.map((product) => (
+					<SelectableProductCard
+						key={product.id}
+						product={product}
+						isSelected={selectedIds.has(product.id)}
+						onToggleSelection={() => onToggleSelection(product.id)}
+						onNavigate={() => onNavigate(product.id)}
+					/>
+				))}
+			</div>
+
+			{/* Pagination */}
+			{totalPages > 1 && (
+				<div className="flex items-center justify-center gap-2">
+					<Button
+						variant="outline"
+						size="icon"
+						disabled={currentPage === 1}
+						onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+					>
+						<span className="sr-only">Previous</span>
+						←
+					</Button>
+					<span className="text-sm text-muted-foreground">
+						Page {currentPage} of {totalPages}
+					</span>
+					<Button
+						variant="outline"
+						size="icon"
+						disabled={currentPage === totalPages}
+						onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+					>
+						<span className="sr-only">Next</span>
+						→
+					</Button>
+				</div>
+			)}
+		</div>
+	)
+}
+
+// Individual Selectable Product Card
+interface SelectableProductCardProps {
+	product: Product
+	isSelected: boolean
+	onToggleSelection: () => void
+	onNavigate: () => void
+}
+
+function SelectableProductCard({
+	product,
+	isSelected,
+	onToggleSelection,
+	onNavigate,
+}: SelectableProductCardProps) {
+	return (
+		<div
+			className={cn(
+				'group relative rounded-lg border bg-card overflow-hidden transition-all',
+				isSelected && 'ring-2 ring-primary border-primary'
+			)}
+		>
+			{/* Selection checkbox overlay */}
+			<button
+				className="absolute top-2 left-2 z-10"
+				onClick={(e) => {
+					e.stopPropagation()
+					onToggleSelection()
+				}}
+				aria-label={isSelected ? 'Deselect item' : 'Select item'}
+			>
+				<div
+					className={cn(
+						'h-5 w-5 rounded border-2 flex items-center justify-center transition-colors',
+						isSelected
+							? 'bg-primary border-primary text-primary-foreground'
+							: 'bg-white/90 border-gray-300 hover:border-primary'
+					)}
+				>
+					{isSelected && (
+						<svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+						</svg>
+					)}
+				</div>
+			</button>
+
+			{/* Product image */}
+			<button
+				className="w-full aspect-square bg-muted overflow-hidden cursor-pointer"
+				onClick={onNavigate}
+			>
+				{product.images?.[0] ? (
+					<img
+						src={product.images[0]}
+						alt={product.name}
+						className="h-full w-full object-cover transition-transform group-hover:scale-105"
+					/>
+				) : (
+					<div className="h-full w-full flex items-center justify-center text-muted-foreground">
+						No image
+					</div>
+				)}
+			</button>
+
+			{/* Product info */}
+			<div className="p-3">
+				<button
+					className="w-full text-left"
+					onClick={onNavigate}
+				>
+					<h3 className="font-medium text-sm truncate hover:text-primary">
+						{product.name || 'Untitled'}
+					</h3>
+					<p className="text-sm text-muted-foreground mt-1">
+						{product.price ? `$${product.price.toFixed(2)}` : 'No price'}
+					</p>
+				</button>
+				{product.category && (
+					<Badge variant="secondary" className="mt-2 text-xs capitalize">
+						{product.category}
+					</Badge>
+				)}
+			</div>
+		</div>
 	)
 }

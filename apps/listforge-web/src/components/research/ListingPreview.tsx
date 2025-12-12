@@ -10,6 +10,15 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Textarea,
+  Label,
   cn,
 } from '@listforge/ui';
 import {
@@ -124,7 +133,35 @@ export function ListingPreview({
   disabled = false,
 }: ListingPreviewProps) {
   const [activeTab, setActiveTab] = useState('preview');
+  const [isEditTitleOpen, setIsEditTitleOpen] = useState(false);
+  const [isEditDescriptionOpen, setIsEditDescriptionOpen] = useState(false);
+  const [editTitleValue, setEditTitleValue] = useState('');
+  const [editDescriptionValue, setEditDescriptionValue] = useState('');
   const { payload, validation, status, statusReason, missingRequired, confidence } = listing;
+
+  const handleOpenEditTitle = () => {
+    setEditTitleValue(payload.title);
+    setIsEditTitleOpen(true);
+  };
+
+  const handleSaveTitle = () => {
+    if (editTitleValue && editTitleValue !== payload.title && onEditTitle) {
+      onEditTitle(editTitleValue);
+    }
+    setIsEditTitleOpen(false);
+  };
+
+  const handleOpenEditDescription = () => {
+    setEditDescriptionValue(payload.description);
+    setIsEditDescriptionOpen(true);
+  };
+
+  const handleSaveDescription = () => {
+    if (editDescriptionValue && editDescriptionValue !== payload.description && onEditDescription) {
+      onEditDescription(editDescriptionValue);
+    }
+    setIsEditDescriptionOpen(false);
+  };
 
   const marketplaceLabel = listing.marketplace === 'ebay' ? 'eBay' : 'Amazon';
 
@@ -173,12 +210,7 @@ export function ListingPreview({
                     variant="ghost"
                     size="sm"
                     className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={() => {
-                      const newTitle = window.prompt('Edit title:', payload.title);
-                      if (newTitle && newTitle !== payload.title) {
-                        onEditTitle(newTitle);
-                      }
-                    }}
+                    onClick={handleOpenEditTitle}
                     disabled={disabled}
                   >
                     <Edit2 className="h-4 w-4" />
@@ -243,12 +275,7 @@ export function ListingPreview({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      const newDesc = window.prompt('Edit description:', payload.description);
-                      if (newDesc && newDesc !== payload.description) {
-                        onEditDescription(newDesc);
-                      }
-                    }}
+                    onClick={handleOpenEditDescription}
                     disabled={disabled}
                   >
                     <Edit2 className="h-3 w-3 mr-1" />
@@ -395,6 +422,70 @@ export function ListingPreview({
             </Button>
           )}
         </div>
+
+        {/* Edit Title Dialog */}
+        <Dialog open={isEditTitleOpen} onOpenChange={setIsEditTitleOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Title</DialogTitle>
+              <DialogDescription>
+                Update the listing title. Maximum 80 characters recommended.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-title">Title</Label>
+                <Input
+                  id="edit-title"
+                  value={editTitleValue}
+                  onChange={(e) => setEditTitleValue(e.target.value)}
+                  maxLength={80}
+                  placeholder="Enter title..."
+                />
+                <p className="text-xs text-muted-foreground text-right">
+                  {editTitleValue.length}/80 characters
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsEditTitleOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveTitle}>Save Changes</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Description Dialog */}
+        <Dialog open={isEditDescriptionOpen} onOpenChange={setIsEditDescriptionOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Edit Description</DialogTitle>
+              <DialogDescription>
+                Update the listing description.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-description">Description</Label>
+                <Textarea
+                  id="edit-description"
+                  value={editDescriptionValue}
+                  onChange={(e) => setEditDescriptionValue(e.target.value)}
+                  rows={10}
+                  placeholder="Enter description..."
+                  className="resize-y"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsEditDescriptionOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveDescription}>Save Changes</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

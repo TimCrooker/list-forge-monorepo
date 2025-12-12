@@ -6,7 +6,7 @@ import { ChatToolDependencies, getToolContext } from './index';
 // Schemas
 // ============================================================================
 
-const SearchItemsSchema = z.object({
+export const SearchItemsSchema = z.object({
   query: z.string().optional().describe('Text search query (searches title, description, attributes)'),
   status: z.enum(['draft', 'ready', 'listed', 'sold', 'archived']).optional().describe('Filter by lifecycle status'),
   aiReviewState: z.enum(['pending', 'approved', 'rejected', 'needs_work']).optional().describe('Filter by AI review state'),
@@ -18,15 +18,15 @@ const SearchItemsSchema = z.object({
   sortOrder: z.enum(['asc', 'desc']).default('desc').describe('Sort order'),
 });
 
-const SearchResearchSchema = z.object({
+export const SearchResearchSchema = z.object({
+  itemId: z.string().describe('Item ID to get research data for (required)'),
   query: z.string().optional().describe('Search query for research data'),
-  itemId: z.string().optional().describe('Filter to specific item'),
   minConfidence: z.number().min(0).max(1).optional().describe('Minimum confidence score'),
   hasPriceBands: z.boolean().optional().describe('Only include items with price recommendations'),
   limit: z.number().min(1).max(50).default(10).describe('Max results to return'),
 });
 
-const SearchEvidenceSchema = z.object({
+export const SearchEvidenceSchema = z.object({
   itemId: z.string().optional().describe('Filter to specific item'),
   type: z.enum(['sold_listing', 'active_listing', 'product_page', 'price_guide', 'ai_analysis']).optional().describe('Evidence type filter'),
   source: z.string().optional().describe('Source filter (e.g., "ebay", "amazon")'),
@@ -134,40 +134,27 @@ export function searchResearchTool(deps: ChatToolDependencies): StructuredTool {
       const ctx = getToolContext();
 
       try {
-        // This would need a dedicated research search endpoint
-        // For now, return a message about the intended functionality
+        const research = await deps.getLatestResearch(input.itemId, ctx.organizationId);
 
-        // If itemId provided, get research for that item
-        if (input.itemId) {
-          const research = await deps.getLatestResearch(input.itemId, ctx.organizationId);
-
-          if (!research) {
-            return JSON.stringify({
-              found: 0,
-              message: `No research found for item ${input.itemId}`,
-            });
-          }
-
+        if (!research) {
           return JSON.stringify({
-            found: 1,
-            results: [{
-              itemId: input.itemId,
-              generatedAt: research.data.generatedAt,
-              priceBands: research.data.priceBands?.length || 0,
-              demandSignals: research.data.demandSignals?.length || 0,
-              missingInfo: research.data.missingInfo?.length || 0,
-              hasMarketplaceCategory: !!research.data.marketplaceCategory,
-              confidence: research.data.productId?.confidence,
-            }],
-          }, null, 2);
+            found: 0,
+            message: `No research found for item ${input.itemId}`,
+          });
         }
 
-        // Without itemId, we'd need to search across all research
-        // This is a placeholder for future implementation
         return JSON.stringify({
-          message: 'Research search across all items requires itemId parameter currently. Future: will support full-text search across research data.',
-          suggestion: 'Use search_items to find items, then get_research_data for specific item research.',
-        });
+          found: 1,
+          results: [{
+            itemId: input.itemId,
+            generatedAt: research.data.generatedAt,
+            priceBands: research.data.priceBands?.length || 0,
+            demandSignals: research.data.demandSignals?.length || 0,
+            missingInfo: research.data.missingInfo?.length || 0,
+            hasMarketplaceCategory: !!research.data.marketplaceCategory,
+            confidence: research.data.productId?.confidence,
+          }],
+        }, null, 2);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return JSON.stringify({
@@ -178,15 +165,17 @@ export function searchResearchTool(deps: ChatToolDependencies): StructuredTool {
     },
     {
       name: 'search_research',
-      description: `Search across research data.
+      description: `Get research data for a specific item.
 
-Filters:
-- itemId: Filter to specific item (recommended)
+Required:
+- itemId: Item ID to get research data for
+
+Optional Filters:
 - query: Text search in research data
 - minConfidence: Minimum confidence score (0-1)
 - hasPriceBands: Only items with price recommendations
 
-Returns research summaries. Use get_research_data for full details.`,
+Returns research summary including price bands, demand signals, and confidence scores. Use get_research_data for full details.`,
       schema: SearchResearchSchema,
     },
   );
