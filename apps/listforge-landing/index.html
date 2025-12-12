@@ -81,6 +81,14 @@
       }
     }
     </script>
+    <!-- Initialize dark mode immediately to prevent flash -->
+    <script>
+      const savedTheme = localStorage.getItem('theme')
+      const theme = savedTheme || 'dark'
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark')
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
