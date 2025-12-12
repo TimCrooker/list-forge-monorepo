@@ -12,7 +12,9 @@ import type {
 import {
   CANONICAL_FIELDS as CanonicalFieldsData,
   UNIVERSAL_REQUIRED_FIELDS as UniversalRequiredFieldsData,
+  SOURCE_TO_GROUP,
 } from '@listforge/core-types';
+import { CrossValidationService, CORROBORATION } from './cross-validation.service';
 
 /**
  * Item data for initializing field states
@@ -39,6 +41,20 @@ export interface ReadinessCheckResult {
 }
 
 /**
+ * Cross-validation info for a field (Slice 7)
+ * Used to emit socket events when field confidence is updated
+ */
+export interface FieldCrossValidationInfo {
+  fieldName: string;
+  baseConfidence: number;
+  crossValidatedConfidence: number;
+  independentSourceCount: number;
+  conflictCount: number;
+  corroborationMultiplier: number;
+  sourceGroups: string[];
+}
+
+/**
  * FieldStateManagerService
  *
  * Central service for managing field-level confidence tracking and state updates.
@@ -61,16 +77,40 @@ export class FieldStateManagerService {
    * Source confidence weights - how much to trust each source type
    */
   private readonly SOURCE_WEIGHTS: Record<FieldDataSourceType, number> = {
+    // Authoritative sources
     upc_lookup: 0.95,
+    user_input: 1.0, // User is always right
+    user_hint: 0.85,
+
+    // Amazon ecosystem
     keepa: 0.90,
     amazon_catalog: 0.88,
+    amazon_sp_api: 0.88,
+
+    // eBay ecosystem
     ebay_api: 0.90,
-    user_input: 1.0,  // User is always right
-    user_hint: 0.85,
+    ebay_sold: 0.88,
+    ebay_active: 0.85,
+
+    // Vision AI
     vision_ai: 0.70,
-    web_search: 0.65,
+    vision_analysis_guided: 0.75, // Slightly higher for guided inspection
+
+    // Text extraction
     ocr: 0.75,
+    ocr_search: 0.70, // Slightly lower - indirect search
+
+    // Web search sources
+    web_search: 0.65,
+    web_search_targeted: 0.68,
+    web_search_general: 0.60,
+    reverse_image_search: 0.72, // Visual similarity is fairly reliable
+    product_page_extraction: 0.80, // Slice 8: Structured data from product pages
   };
+
+  constructor(
+    private readonly crossValidationService: CrossValidationService,
+  ) {}
 
   /**
    * Initialize field states from marketplace requirements and existing item data
@@ -252,7 +292,14 @@ export class FieldStateManagerService {
 
   /**
    * Merge confidence from a new source into existing confidence
-   * Uses weighted averaging based on source type
+   *
+   * Uses weighted averaging based on source type, then applies
+   * cross-validation corroboration multiplier:
+   * - 1 independent source: 0.80x (single source penalty)
+   * - 2 independent sources: 1.00x (baseline)
+   * - 3+ independent sources: up to 1.10x (corroboration bonus)
+   *
+   * Slice 7: Cross-Source Validation
    */
   mergeConfidence(
     existing: FieldConfidenceScore,
@@ -262,36 +309,84 @@ export class FieldStateManagerService {
     const weight = this.SOURCE_WEIGHTS[newSource.type] || 0.5;
     const weightedNewConfidence = newSource.confidence * weight;
 
-    // If no existing sources, just use the new one
+    // All sources including the new one
+    const allSources = [...existing.sources, newSource];
+
+    // If no existing sources, apply single-source penalty
     if (existing.sources.length === 0) {
       return {
-        value: weightedNewConfidence,
+        value: weightedNewConfidence * CORROBORATION.SINGLE_SOURCE_PENALTY,
         sources: [newSource],
         lastUpdated: now,
       };
     }
 
-    // Calculate total weight from all sources
+    // Calculate total weight from all sources (base weighted average)
     let totalWeight = 0;
     let weightedSum = 0;
 
-    for (const source of existing.sources) {
+    for (const source of allSources) {
       const sourceWeight = this.SOURCE_WEIGHTS[source.type] || 0.5;
       totalWeight += sourceWeight;
       weightedSum += source.confidence * sourceWeight;
     }
 
-    // Add new source
-    totalWeight += weight;
-    weightedSum += weightedNewConfidence;
+    // Calculate base weighted average
+    const baseConfidence = Math.min(1, weightedSum / totalWeight);
 
-    // Calculate weighted average
-    const newConfidence = Math.min(1, weightedSum / totalWeight);
+    // Calculate cross-validation corroboration multiplier using CrossValidationService
+    const independentCount = this.crossValidationService.countIndependentGroups(allSources);
+    const corroborationMultiplier = this.crossValidationService.getBaseCorroborationMultiplier(independentCount);
+
+    // Apply corroboration multiplier, capped at MAX_CONFIDENCE
+    const crossValidatedConfidence = Math.min(CORROBORATION.MAX_CONFIDENCE, baseConfidence * corroborationMultiplier);
 
     return {
-      value: newConfidence,
-      sources: [...existing.sources, newSource],
+      value: crossValidatedConfidence,
+      sources: allSources,
       lastUpdated: now,
+    };
+  }
+
+  /**
+   * Get cross-validation info for a field (Slice 7)
+   * Used by graph nodes to emit socket events after field updates
+   */
+  getCrossValidationInfo(
+    states: ItemFieldStates,
+    fieldName: string,
+  ): FieldCrossValidationInfo | null {
+    const field = states.fields[fieldName];
+    if (!field || field.confidence.sources.length === 0) {
+      return null;
+    }
+
+    const sources = field.confidence.sources;
+    const independentCount = this.crossValidationService.countIndependentGroups(sources);
+    const sourceGroups = this.crossValidationService.getRepresentedGroups(sources);
+    const conflicts = this.crossValidationService.detectConflicts(fieldName, sources);
+
+    // Calculate base confidence (without corroboration)
+    let totalWeight = 0;
+    let weightedSum = 0;
+    for (const source of sources) {
+      const sourceWeight = this.SOURCE_WEIGHTS[source.type] || 0.5;
+      totalWeight += sourceWeight;
+      weightedSum += source.confidence * sourceWeight;
+    }
+    const baseConfidence = totalWeight > 0 ? Math.min(1, weightedSum / totalWeight) : 0;
+
+    // Calculate corroboration multiplier using CrossValidationService
+    const corroborationMultiplier = this.crossValidationService.getBaseCorroborationMultiplier(independentCount);
+
+    return {
+      fieldName,
+      baseConfidence,
+      crossValidatedConfidence: field.confidence.value,
+      independentSourceCount: independentCount,
+      conflictCount: conflicts.length,
+      corroborationMultiplier,
+      sourceGroups,
     };
   }
 

@@ -45,6 +45,7 @@ export function WorkflowSettingsCard({ orgId }: WorkflowSettingsCardProps) {
     enableOCR: true,
     enableWebSearch: true,
     maxConcurrentWorkflows: 5,
+    useGoalDrivenGraph: true,
   });
 
   useEffect(() => {

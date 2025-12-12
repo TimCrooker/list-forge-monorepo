@@ -25,6 +25,8 @@ import {
   DEFAULT_BILLING_SETTINGS,
   SecuritySettings,
   DEFAULT_SECURITY_SETTINGS,
+  ResearchSettings,
+  DEFAULT_RESEARCH_SETTINGS,
 } from '@listforge/core-types';
 
 @Entity('organizations')
@@ -134,6 +136,16 @@ export class Organization {
     default: JSON.stringify(DEFAULT_SECURITY_SETTINGS),
   })
   securitySettings: SecuritySettings;
+
+  // ============================================================================
+  // Research Settings (Confidence-Based Review Routing)
+  // ============================================================================
+
+  @Column({
+    type: 'jsonb',
+    default: JSON.stringify(DEFAULT_RESEARCH_SETTINGS),
+  })
+  researchSettings: ResearchSettings;
 
   // ============================================================================
   // Timestamps & Relations

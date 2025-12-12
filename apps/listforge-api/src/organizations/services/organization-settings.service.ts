@@ -17,6 +17,8 @@ import {
   DEFAULT_BILLING_SETTINGS,
   SecuritySettings,
   DEFAULT_SECURITY_SETTINGS,
+  ResearchSettings,
+  DEFAULT_RESEARCH_SETTINGS,
 } from '@listforge/core-types';
 import { SettingsAuditService, AuditContext } from './settings-audit.service';
 
@@ -427,6 +429,56 @@ export class OrganizationSettingsService {
     await this.auditService.recordSettingsChange({
       orgId,
       settingsType: 'security',
+      previousSettings: current as unknown as Record<string, unknown>,
+      newSettings: updated as unknown as Record<string, unknown>,
+      context,
+    });
+
+    return updated;
+  }
+
+  // ============================================================================
+  // Research Settings (Confidence-Based Review Routing)
+  // ============================================================================
+
+  async getResearchSettings(orgId: string): Promise<ResearchSettings> {
+    const org = await this.getOrg(orgId);
+    return org.researchSettings ?? DEFAULT_RESEARCH_SETTINGS;
+  }
+
+  async updateResearchSettings(
+    orgId: string,
+    updates: Partial<ResearchSettings>,
+    context: AuditContext = {},
+  ): Promise<ResearchSettings> {
+    const org = await this.getOrg(orgId);
+    const current = org.researchSettings ?? DEFAULT_RESEARCH_SETTINGS;
+    const updated = { ...current, ...updates };
+
+    // Validation
+    if (updated.autoApproveThreshold < 0 || updated.autoApproveThreshold > 1) {
+      throw new BadRequestException('autoApproveThreshold must be between 0 and 1');
+    }
+    if (updated.spotCheckThreshold < 0 || updated.spotCheckThreshold > 1) {
+      throw new BadRequestException('spotCheckThreshold must be between 0 and 1');
+    }
+    if (updated.spotCheckThreshold >= updated.autoApproveThreshold) {
+      throw new BadRequestException('spotCheckThreshold must be less than autoApproveThreshold');
+    }
+    if (updated.minCompsForAutoApproval < 1 || updated.minCompsForAutoApproval > 20) {
+      throw new BadRequestException('minCompsForAutoApproval must be between 1 and 20');
+    }
+    if (updated.maxAutoApprovalsPerDay < 1 || updated.maxAutoApprovalsPerDay > 10000) {
+      throw new BadRequestException('maxAutoApprovalsPerDay must be between 1 and 10000');
+    }
+
+    org.researchSettings = updated;
+    await this.orgRepo.save(org);
+
+    // Record audit
+    await this.auditService.recordSettingsChange({
+      orgId,
+      settingsType: 'research',
       previousSettings: current as unknown as Record<string, unknown>,
       newSettings: updated as unknown as Record<string, unknown>,
       context,

@@ -3,17 +3,15 @@ import { useSelector } from 'react-redux';
 import { RootState } from '@/store/store';
 import { useGetSystemMetricsQuery } from '@listforge/api-rtk';
 import {
+  AppContent,
   OverviewCards,
+  QuickActions,
   MetricsDashboard,
+  ActivityWidget,
   type MetricData,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Button,
-  Badge,
+  type ActivityWidgetItem,
 } from '@listforge/ui';
-import { Loader2, Users, Building2, Package, ShoppingCart, Activity, AlertCircle, CheckCircle } from 'lucide-react';
+import { Loader2, Users, Building2, Package, ShoppingCart, Activity, BookOpen, History, Brain } from 'lucide-react';
 
 export const Route = createFileRoute('/_authenticated/admin/')({
   component: AdminDashboard,
@@ -61,6 +59,55 @@ function AdminDashboard() {
       ]
     : [];
 
+  const quickActions = [
+    {
+      id: 'view-users',
+      label: 'View Users',
+      icon: <Users className="h-4 w-4" />,
+      onClick: () => navigate({ to: '/admin/users' }),
+    },
+    {
+      id: 'view-orgs',
+      label: 'View Organizations',
+      icon: <Building2 className="h-4 w-4" />,
+      onClick: () => navigate({ to: '/admin/orgs' }),
+    },
+    {
+      id: 'view-marketplace',
+      label: 'Marketplace Accounts',
+      icon: <ShoppingCart className="h-4 w-4" />,
+      onClick: () => navigate({ to: '/admin/marketplace-accounts' }),
+    },
+    {
+      id: 'view-domain',
+      label: 'Domain Expertise',
+      icon: <BookOpen className="h-4 w-4" />,
+      onClick: () => navigate({ to: '/admin/domain-expertise' }),
+    },
+    {
+      id: 'view-logs',
+      label: 'Audit Logs',
+      icon: <History className="h-4 w-4" />,
+      onClick: () => navigate({ to: '/admin/settings-audit' }),
+    },
+    {
+      id: 'view-learning',
+      label: 'Learning Dashboard',
+      icon: <Brain className="h-4 w-4" />,
+      onClick: () => navigate({ to: '/admin/learning' }),
+    },
+  ];
+
+  const activityItems: ActivityWidgetItem[] = metricsData
+    ? metricsData.recentWorkflowRuns.slice(0, 5).map((run) => ({
+        id: run.id,
+        type: run.status === 'completed' ? 'status' : run.status === 'failed' ? 'alert' : 'action',
+        title: run.type,
+        timestamp: run.startedAt || new Date().toISOString(),
+        status: run.status === 'completed' ? 'success' : run.status === 'failed' ? 'error' : 'info',
+      }))
+    : [];
+
   const queueMetrics: MetricData[] = metricsData
     ? [
         {
@@ -106,109 +153,43 @@ function AdminDashboard() {
     : [];
 
   return (
-    <div className="w-full max-w-none space-y-6 py-6 px-6">
-      <div>
-        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        <p className="text-muted-foreground mt-1">
-          System overview and management tools
-        </p>
-      </div>
-
+    <AppContent
+      title="Admin Dashboard"
+      description="System overview and management tools"
+      maxWidth="full"
+      padding="md"
+    >
       {isLoading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       ) : metricsData ? (
-        <>
-          <OverviewCards cards={overviewCards} columns={5} />
+        <div className="space-y-6">
+          <OverviewCards cards={overviewCards} columns={4} />
 
           <MetricsDashboard metrics={queueMetrics} columns={3} />
 
-          {/* Management Links */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardHeader>
-                <CardTitle>Users</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Manage users and permissions
-                </p>
-                <Button variant="outline" onClick={() => navigate({ to: '/admin/users' })}>
-                  View Users →
-                </Button>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Organizations</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Manage organizations and memberships
-                </p>
-                <Button variant="outline" onClick={() => navigate({ to: '/admin/orgs' })}>
-                  View Organizations →
-                </Button>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Marketplace Accounts</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Manage marketplace connections across all organizations
-                </p>
-                <Button variant="outline" onClick={() => navigate({ to: '/admin/marketplace-accounts' })}>
-                  View Accounts →
-                </Button>
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              {activityItems.length > 0 && (
+                <ActivityWidget
+                  title="Recent Workflow Runs"
+                  activities={activityItems}
+                  maxItems={5}
+                />
+              )}
+            </div>
+            <div>
+              <QuickActions
+                title="Quick Actions"
+                layout="list"
+                actions={quickActions}
+              />
+            </div>
           </div>
-
-          {/* Recent Workflow Runs */}
-          {metricsData.recentWorkflowRuns.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Workflow Runs</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {metricsData.recentWorkflowRuns.slice(0, 5).map((run) => (
-                    <div
-                      key={run.id}
-                      className="flex items-center justify-between p-3 border rounded-lg"
-                    >
-                      <div className="flex items-center gap-3">
-                        {run.status === 'completed' ? (
-                          <CheckCircle className="h-4 w-4 text-green-600" />
-                        ) : run.status === 'failed' ? (
-                          <AlertCircle className="h-4 w-4 text-red-600" />
-                        ) : (
-                          <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-                        )}
-                        <div>
-                          <p className="text-sm font-medium">{run.type}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {run.startedAt
-                              ? new Date(run.startedAt).toLocaleString()
-                              : 'Unknown'}
-                          </p>
-                        </div>
-                      </div>
-                      <Badge variant={run.status === 'completed' ? 'default' : run.status === 'failed' ? 'destructive' : 'secondary'}>
-                        {run.status}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </>
+        </div>
       ) : null}
-    </div>
+    </AppContent>
   );
 }
 

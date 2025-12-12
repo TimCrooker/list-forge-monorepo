@@ -125,6 +125,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
 
   // Add admin navigation if user is superadmin or staff
   if (user?.globalRole === 'superadmin' || user?.globalRole === 'staff') {
+    const isAdminRoute = location.pathname.startsWith('/admin');
     navGroups.push({
       id: 'admin',
       label: 'Administration',
@@ -134,8 +135,53 @@ function AppLayoutContent({ children }: AppLayoutProps) {
           label: 'Admin',
           icon: Users,
           href: '/admin',
-          active: location.pathname.startsWith('/admin'),
+          active: isAdminRoute,
+          defaultOpen: isAdminRoute,
           onClick: () => navigate({ to: '/admin' }),
+          children: [
+            {
+              id: 'admin-dashboard',
+              label: 'Dashboard',
+              href: '/admin',
+              onClick: () => navigate({ to: '/admin' }),
+              active: location.pathname === '/admin',
+            },
+            {
+              id: 'admin-users',
+              label: 'Users',
+              href: '/admin/users',
+              onClick: () => navigate({ to: '/admin/users' }),
+              active: location.pathname.startsWith('/admin/users'),
+            },
+            {
+              id: 'admin-orgs',
+              label: 'Organizations',
+              href: '/admin/orgs',
+              onClick: () => navigate({ to: '/admin/orgs' }),
+              active: location.pathname.startsWith('/admin/orgs'),
+            },
+            {
+              id: 'admin-marketplace',
+              label: 'Marketplace Accounts',
+              href: '/admin/marketplace-accounts',
+              onClick: () => navigate({ to: '/admin/marketplace-accounts' }),
+              active: location.pathname.startsWith('/admin/marketplace-accounts'),
+            },
+            {
+              id: 'admin-domain',
+              label: 'Domain Expertise',
+              href: '/admin/domain-expertise',
+              onClick: () => navigate({ to: '/admin/domain-expertise' }),
+              active: location.pathname.startsWith('/admin/domain-expertise'),
+            },
+            {
+              id: 'admin-audit',
+              label: 'Settings Audit',
+              href: '/admin/settings-audit',
+              onClick: () => navigate({ to: '/admin/settings-audit' }),
+              active: location.pathname.startsWith('/admin/settings-audit'),
+            },
+          ],
         },
       ],
     });

@@ -5,6 +5,7 @@ export { InventorySettingsCard } from './InventorySettingsCard';
 export { MarketplaceDefaultsCard } from './MarketplaceDefaultsCard';
 export { BillingSettingsCard } from './BillingSettingsCard';
 export { SecuritySettingsCard } from './SecuritySettingsCard';
+export { ResearchSettingsCard } from './ResearchSettingsCard';
 
 // Organization type management
 export { EnableOrganization } from './EnableOrganization';

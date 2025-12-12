@@ -3,7 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ChatOpenAI } from '@langchain/openai';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { buildFieldDrivenResearchGraph } from '../graphs/research/research-graph.builder';
+import { buildFieldDrivenResearchGraph, buildGoalDrivenResearchGraph } from '../graphs/research/research-graph.builder';
+import { OrganizationSettingsService } from '../../organizations/services/organization-settings.service';
 import { ResearchGraphState, ItemSnapshot } from '../graphs/research/research-graph.state';
 import { FieldStateManagerService } from './field-state-manager.service';
 import { ResearchPlannerService } from './research-planner.service';
@@ -26,6 +27,10 @@ import { PricingStrategyService } from './pricing-strategy.service';
 import { ListingAssemblyService } from './listing-assembly.service';
 import { AmazonCatalogService } from './amazon-catalog.service';
 import { KeepaService } from './keepa.service';
+// Slice 4: Image Cross-Validation
+import { ImageComparisonService } from './image-comparison.service';
+// Slice 6: Identification Validation Checkpoint
+import { IdentificationValidatorService } from './identification-validator.service';
 import { retryWithBackoff } from '../utils/error-handling';
 import { API_LIMITS } from '../config/research.constants';
 import { withSpan, ResearchMetrics, startTiming } from '../utils/telemetry';
@@ -76,6 +81,12 @@ export class ResearchGraphService {
     private readonly fieldStateManager: FieldStateManagerService,
     private readonly researchPlanner: ResearchPlannerService,
     private readonly fieldResearchService: FieldResearchService,
+    // Organization settings for graph selection and routing
+    private readonly orgSettingsService: OrganizationSettingsService,
+    // Slice 4: Image Cross-Validation
+    private readonly imageComparisonService: ImageComparisonService,
+    // Slice 6: Identification Validation Checkpoint
+    private readonly identificationValidatorService: IdentificationValidatorService,
   ) {}
 
   /**
@@ -162,12 +173,21 @@ export class ResearchGraphService {
       const checkpointer = this.checkpointerService.getCheckpointer();
       this.logger.debug('Checkpointer initialized', { researchRunId });
 
-      // Build field-driven research graph with checkpointer
-      // This replaces the old generic pipeline with adaptive field-driven research
-      const graph = buildFieldDrivenResearchGraph(checkpointer);
-      this.logger.debug('Field-driven research graph built with checkpointer', { researchRunId });
+      // Load organization workflow settings to determine which graph to use
+      const workflowSettings = await this.orgSettingsService.getWorkflowSettings(orgId);
+      const useGoalDriven = workflowSettings.useGoalDrivenGraph ?? true;
+
+      // Build research graph based on org settings
+      const graph = useGoalDriven
+        ? buildGoalDrivenResearchGraph(checkpointer)
+        : buildFieldDrivenResearchGraph(checkpointer);
+      this.logger.debug('Research graph built with checkpointer', {
+        researchRunId,
+        graphType: useGoalDriven ? 'goal-driven' : 'field-driven',
+      });
 
       // Initial state (or resume from checkpoint)
+      // Use org settings for confidence threshold and max retries
       const initialState: Partial<ResearchGraphState> = isResume
         ? {} // Will be loaded from checkpoint
         : {
@@ -175,8 +195,8 @@ export class ResearchGraphService {
             researchRunId,
             organizationId: orgId,
             iteration: 0,
-            maxIterations: 3,
-            confidenceThreshold: 0.7,
+            maxIterations: workflowSettings.maxResearchRetries || 3,
+            confidenceThreshold: workflowSettings.confidenceThreshold || 0.7,
             done: false,
             error: null,
           };
@@ -187,34 +207,70 @@ export class ResearchGraphService {
         isResume,
         iteration: initialState.iteration,
         maxIterations: initialState.maxIterations,
+        confidenceThreshold: initialState.confidenceThreshold,
+        graphType: useGoalDriven ? 'goal-driven' : 'field-driven',
       });
 
       // Track node execution for event emission and step history
       let finalResult: ResearchGraphState | null = null;
       let previousNode: string | null = null;
-      // Field-driven research graph node order (must include ALL nodes in the graph)
-      const nodeOrder = [
-        // Phase 0: Setup
-        'load_context',
-        'detect_marketplace_schema',
-        'initialize_field_states',
-        // Phase 1: Fast Extraction
-        'extract_from_images',
-        'quick_lookups',
-        // Phase 2: Adaptive Research Loop
-        'evaluate_fields',
-        'plan_next_research',
-        'execute_research',
-        // Phase 3: Validation
-        'validate_readiness',
-        // Phase 4: Core Market Research Operations
-        'search_comps',
-        'analyze_comps',
-        'calculate_price',
-        'assemble_listing',
-        // Phase 5: Persistence
-        'persist_results',
-      ];
+
+      // Node order depends on which graph is being used
+      const nodeOrder = useGoalDriven
+        ? [
+            // Phase 0: Setup, Goal Initialization & Planning
+            'initialize_goals',
+            'load_context',
+            'analyze_media',
+            'plan_research',
+            'detect_marketplace_schema',
+            'initialize_field_states',
+            // Phase 1: Identification
+            'extract_identifiers',
+            'deep_identify',
+            'update_item',
+            'complete_identification_goal',
+            // Phase 2: Parallel Goals - Metadata
+            'extract_from_images',
+            'quick_lookups',
+            'evaluate_fields',
+            'plan_next_research',
+            'execute_research',
+            'complete_metadata_goal',
+            // Phase 2: Parallel Goals - Market Research
+            'search_comps',
+            'analyze_comps',
+            'complete_market_goal',
+            // Phase 3: Assembly
+            'calculate_price',
+            'assemble_listing',
+            'complete_assembly_goal',
+            // Phase 4: Persistence
+            'persist_results',
+          ]
+        : [
+            // Field-driven research graph node order
+            // Phase 0: Setup
+            'load_context',
+            'detect_marketplace_schema',
+            'initialize_field_states',
+            // Phase 1: Fast Extraction
+            'extract_from_images',
+            'quick_lookups',
+            // Phase 2: Adaptive Research Loop
+            'evaluate_fields',
+            'plan_next_research',
+            'execute_research',
+            // Phase 3: Validation
+            'validate_readiness',
+            // Phase 4: Core Market Research Operations
+            'search_comps',
+            'analyze_comps',
+            'calculate_price',
+            'assemble_listing',
+            // Phase 5: Persistence
+            'persist_results',
+          ];
 
       // Execute graph with streaming and checkpointing
       // Use researchRunId as thread_id for checkpointing
@@ -233,6 +289,10 @@ export class ResearchGraphService {
             marketplaceSchema: this.marketplaceSchemaService,
             keepaService: this.keepaService,
             upcLookupService: this.upcLookupService,
+            // Slice 4: Image Cross-Validation for keyword comp validation
+            compareImages: this.imageComparisonService.compareImages.bind(this.imageComparisonService),
+            // Slice 7: Cross-Source Validation event emitter
+            eventsService: this.eventsService,
           },
           llm,
           activityLogger: this.activityLogger,
@@ -245,6 +305,8 @@ export class ResearchGraphService {
           // Amazon/Keepa Integration
           amazonCatalogService: this.amazonCatalogService,
           keepaService: this.keepaService,
+          // Slice 6: Identification Validation Checkpoint
+          identificationValidator: this.identificationValidatorService,
         },
       });
 
@@ -365,58 +427,114 @@ export class ResearchGraphService {
       researchRun.summary = `Research completed. Found ${compsCount} comps. Confidence: ${(confidence * 100).toFixed(0)}%`;
       await this.researchRunRepo.save(researchRun);
 
-      // Slice 1: Update item aiReviewState from 'researching' to 'pending' when research completes
-      const item = await this.itemRepo.findOne({
+      // ========================================================================
+      // Confidence-Based Review Routing
+      // Determines whether item should be auto-approved, spot-checked, or full-reviewed
+      // ========================================================================
+      const itemForRouting = await this.itemRepo.findOne({
         where: { id: itemId },
       });
-      if (item && item.aiReviewState === 'researching') {
-        item.aiReviewState = 'pending';
-        await this.itemRepo.save(item);
+      if (itemForRouting && itemForRouting.aiReviewState === 'researching') {
+        // Load research settings for routing thresholds
+        const researchSettings = await this.orgSettingsService.getResearchSettings(orgId);
+
+        // Extract confidence and validated comp count from results
+        const overallConfidence = finalResult.overallConfidence ?? 0;
+        const validatedCompCount = finalResult.tieredPricing?.validatedCompCount ??
+          finalResult.comps?.filter((c: any) => c.validation?.isValid).length ?? 0;
+
+        // Determine routing decision
+        let reviewRoute: 'auto_approve' | 'spot_check' | 'full_review';
+
+        if (
+          researchSettings.enableAutoApproval &&
+          overallConfidence >= researchSettings.autoApproveThreshold &&
+          validatedCompCount >= researchSettings.minCompsForAutoApproval
+        ) {
+          // Auto-approve: Skip review queue
+          reviewRoute = 'auto_approve';
+          itemForRouting.aiReviewState = 'approved';
+          itemForRouting.lifecycleStatus = 'ready';
+          itemForRouting.reviewedAt = new Date();
+          itemForRouting.reviewedByUserId = null; // System approval
+          itemForRouting.reviewComment = `Auto-approved: ${(overallConfidence * 100).toFixed(0)}% confidence, ${validatedCompCount} validated comps`;
+          itemForRouting.reviewRecommendation = null; // Clear any recommendation since auto-approved
+
+          this.logger.log(
+            `Item ${itemId} auto-approved: confidence=${(overallConfidence * 100).toFixed(0)}%, ` +
+            `validatedComps=${validatedCompCount}, threshold=${(researchSettings.autoApproveThreshold * 100).toFixed(0)}%`,
+          );
+        } else if (overallConfidence >= researchSettings.spotCheckThreshold) {
+          // Spot-check: Go to review queue with "recommend approve" flag
+          reviewRoute = 'spot_check';
+          itemForRouting.aiReviewState = 'pending';
+          itemForRouting.reviewRecommendation = 'approve';
+
+          this.logger.log(
+            `Item ${itemId} routed to spot-check: confidence=${(overallConfidence * 100).toFixed(0)}%, ` +
+            `threshold=${(researchSettings.spotCheckThreshold * 100).toFixed(0)}%`,
+          );
+        } else {
+          // Full review: Go to review queue with "needs review" flag
+          reviewRoute = 'full_review';
+          itemForRouting.aiReviewState = 'pending';
+          itemForRouting.reviewRecommendation = 'review';
+
+          this.logger.log(
+            `Item ${itemId} routed to full-review: confidence=${(overallConfidence * 100).toFixed(0)}%, ` +
+            `below spotCheck threshold=${(researchSettings.spotCheckThreshold * 100).toFixed(0)}%`,
+          );
+        }
+
+        await this.itemRepo.save(itemForRouting);
+
         // Emit item updated event so frontend refreshes
         this.eventsService.emitItemUpdated({
-          id: item.id,
-          organizationId: item.organizationId,
-          createdByUserId: item.createdByUserId,
-          source: item.source,
-          createdAt: item.createdAt.toISOString(),
-          updatedAt: item.updatedAt.toISOString(),
-          lifecycleStatus: item.lifecycleStatus,
-          aiReviewState: item.aiReviewState,
-          title: item.title,
-          description: item.description,
-          condition: item.condition,
-          categoryPath: item.categoryPath,
-          categoryId: item.categoryId,
-          attributes: item.attributes,
-          media: item.media,
-          quantity: item.quantity,
-          defaultPrice: item.defaultPrice ? Number(item.defaultPrice) : null,
-          currency: item.currency,
-          priceMin: item.priceMin ? Number(item.priceMin) : null,
-          priceMax: item.priceMax ? Number(item.priceMax) : null,
-          pricingStrategy: item.pricingStrategy,
-          shippingType: item.shippingType,
-          flatRateAmount: item.flatRateAmount ? Number(item.flatRateAmount) : null,
-          domesticOnly: item.domesticOnly,
-          weight: item.weight ? Number(item.weight) : null,
-          dimensions: item.dimensions,
-          location: item.location,
-          costBasis: item.costBasis ? Number(item.costBasis) : null,
-          tags: item.tags,
-          aiPipelineVersion: item.aiPipelineVersion,
-          aiLastRunAt: item.aiLastRunAt ? item.aiLastRunAt.toISOString() : null,
-          aiLastRunError: item.aiLastRunError,
-          aiConfidenceScore: item.aiConfidenceScore ? Number(item.aiConfidenceScore) : null,
-          userTitleHint: item.userTitleHint,
-          userDescriptionHint: item.userDescriptionHint,
-          userNotes: item.userNotes,
-          subtitle: item.subtitle,
-          assignedReviewerUserId: item.assignedReviewerUserId,
-          reviewedByUserId: item.reviewedByUserId,
-          reviewedAt: item.reviewedAt ? item.reviewedAt.toISOString() : null,
-          reviewComment: item.reviewComment,
+          id: itemForRouting.id,
+          organizationId: itemForRouting.organizationId,
+          createdByUserId: itemForRouting.createdByUserId,
+          source: itemForRouting.source,
+          createdAt: itemForRouting.createdAt.toISOString(),
+          updatedAt: itemForRouting.updatedAt.toISOString(),
+          lifecycleStatus: itemForRouting.lifecycleStatus,
+          aiReviewState: itemForRouting.aiReviewState,
+          title: itemForRouting.title,
+          description: itemForRouting.description,
+          condition: itemForRouting.condition,
+          categoryPath: itemForRouting.categoryPath,
+          categoryId: itemForRouting.categoryId,
+          attributes: itemForRouting.attributes,
+          media: itemForRouting.media,
+          quantity: itemForRouting.quantity,
+          defaultPrice: itemForRouting.defaultPrice ? Number(itemForRouting.defaultPrice) : null,
+          currency: itemForRouting.currency,
+          priceMin: itemForRouting.priceMin ? Number(itemForRouting.priceMin) : null,
+          priceMax: itemForRouting.priceMax ? Number(itemForRouting.priceMax) : null,
+          pricingStrategy: itemForRouting.pricingStrategy,
+          shippingType: itemForRouting.shippingType,
+          flatRateAmount: itemForRouting.flatRateAmount ? Number(itemForRouting.flatRateAmount) : null,
+          domesticOnly: itemForRouting.domesticOnly,
+          weight: itemForRouting.weight ? Number(itemForRouting.weight) : null,
+          dimensions: itemForRouting.dimensions,
+          location: itemForRouting.location,
+          costBasis: itemForRouting.costBasis ? Number(itemForRouting.costBasis) : null,
+          tags: itemForRouting.tags,
+          aiPipelineVersion: itemForRouting.aiPipelineVersion,
+          aiLastRunAt: itemForRouting.aiLastRunAt ? itemForRouting.aiLastRunAt.toISOString() : null,
+          aiLastRunError: itemForRouting.aiLastRunError,
+          aiConfidenceScore: itemForRouting.aiConfidenceScore ? Number(itemForRouting.aiConfidenceScore) : null,
+          userTitleHint: itemForRouting.userTitleHint,
+          userDescriptionHint: itemForRouting.userDescriptionHint,
+          userNotes: itemForRouting.userNotes,
+          subtitle: itemForRouting.subtitle,
+          assignedReviewerUserId: itemForRouting.assignedReviewerUserId,
+          reviewedByUserId: itemForRouting.reviewedByUserId,
+          reviewedAt: itemForRouting.reviewedAt ? itemForRouting.reviewedAt.toISOString() : null,
+          reviewComment: itemForRouting.reviewComment,
+          reviewRecommendation: itemForRouting.reviewRecommendation,
         });
-        this.logger.log(`Updated item ${itemId} aiReviewState from 'researching' to 'pending'`);
+
+        this.logger.log(`Updated item ${itemId} via ${reviewRoute} routing`);
       }
 
       // Slice 7: Evaluate and trigger auto-publish if eligible
@@ -717,39 +835,67 @@ export class ResearchGraphService {
   ): Promise<void> {
     this.logger.log(`Salvaging partial results for run ${researchRunId}`);
 
+    // ========================================================================
+    // BULLETPROOFING: More robust salvage logic
+    // With the bulletproofing improvements (iteration limits, stuck detection,
+    // task history tracking), we should rarely hit recursion limits.
+    // When we do, we want to salvage as much useful data as possible.
+    // ========================================================================
+
     // Try to load the latest research data from the database
     // (the research service may have already persisted some data during the run)
     const existingResearch = await this.researchService.findLatestResearch(itemId, orgId);
 
+    // Get evidence bundle for this run
+    const evidenceBundle = await this.evidenceService.getBundleForResearchRun(researchRunId);
+    const compCount = evidenceBundle?.items?.length || 0;
+
+    // Log detailed salvage diagnostic info
+    this.logger.log(
+      `Salvage diagnostics for run ${researchRunId}: ` +
+        `existingResearch=${!!existingResearch}, ` +
+        `compCount=${compCount}, ` +
+        `evidenceBundle=${!!evidenceBundle}`,
+    );
+
+    // Minimum comps required for salvage - lower threshold for graceful degradation
+    const MIN_COMPS_FOR_SALVAGE = 1; // Reduced from 3 - any comp data is better than none
+
     if (existingResearch) {
-      // CRITICAL: Validate that salvaged research has minimum quality threshold
-      // Count total evidence (comps)
-      const evidenceBundle = await this.evidenceService.getBundleForResearchRun(researchRunId);
-      const compCount = evidenceBundle?.items?.length || 0;
-
-      const MIN_COMPS_FOR_SALVAGE = 3;
-
-      if (compCount < MIN_COMPS_FOR_SALVAGE) {
-        this.logger.warn(
-          `Salvage rejected: Found existing research but only ${compCount} comps (minimum ${MIN_COMPS_FOR_SALVAGE} required). ` +
-          `Research quality too low to salvage.`,
+      // We have research data
+      if (compCount >= MIN_COMPS_FOR_SALVAGE) {
+        this.logger.log(
+          `Salvage successful: Found existing research data for item ${itemId} with ${compCount} comps`,
         );
-        throw new Error(
-          `Research failed with insufficient data: only ${compCount} comps found (minimum ${MIN_COMPS_FOR_SALVAGE} required for salvage)`,
-        );
+        return;
       }
 
-      this.logger.log(
-        `Found existing research data for item ${itemId} with ${compCount} comps, salvage complete`,
+      // Research exists but no/few comps - still allow salvage but log warning
+      this.logger.warn(
+        `Salvage with low confidence: Found research data but only ${compCount} comps. ` +
+          `Results may be incomplete.`,
       );
       return;
     }
 
-    // If no research was persisted, this is a failed research run
-    // Don't create placeholder - force a proper re-run
+    // No research data persisted yet - check if we have comps in evidence bundle
+    if (evidenceBundle && compCount >= MIN_COMPS_FOR_SALVAGE) {
+      // We have comps but no persisted research - this means persist_results
+      // didn't run before the recursion limit. The evidence bundle still has
+      // the comp data which can be used for manual review or re-research.
+      this.logger.warn(
+        `Salvage partial: No research entity but found ${compCount} comps in evidence bundle. ` +
+          `Evidence bundle ${evidenceBundle.id} is available for manual review or re-research. ` +
+          `Consider running research again for full pricing analysis.`,
+      );
+      // Allow salvage - the evidence data exists even if persist_results didn't complete
+      return;
+    }
+
+    // No research and no comps - truly a failed run
     this.logger.warn(
-      `Salvage rejected: No existing research data found for item ${itemId}. ` +
-      `Research must be re-run to get valid results.`,
+      `Salvage failed: No research data and no evidence found for item ${itemId}. ` +
+        `Research must be re-run.`,
     );
     throw new Error(
       'Research failed without producing any results. Please re-run research.',

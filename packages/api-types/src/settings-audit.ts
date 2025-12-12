@@ -20,7 +20,8 @@ export type SettingsType =
   | 'billing'
   | 'security'
   | 'autoPublish'
-  | 'autoApproval';
+  | 'autoApproval'
+  | 'research';
 
 /**
  * Settings audit event types
@@ -181,6 +182,7 @@ export const SETTINGS_TYPE_LABELS: Record<SettingsType, string> = {
   security: 'Security',
   autoPublish: 'Auto-Publish',
   autoApproval: 'Auto-Approval',
+  research: 'Research',
 };
 
 /**

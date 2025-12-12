@@ -12,6 +12,7 @@ import {
   AmazonDefaultSettings,
   BillingSettings,
   SecuritySettings,
+  ResearchSettings,
 } from '@listforge/core-types';
 import { OrgDto } from './auth';
 
@@ -237,5 +238,25 @@ export interface UpdateSecuritySettingsRequest {
 
 export interface UpdateSecuritySettingsResponse {
   settings: SecuritySettings;
+}
+
+// ============================================================================
+// Research Settings (Confidence-Based Review Routing)
+// ============================================================================
+
+export interface GetResearchSettingsResponse {
+  settings: ResearchSettings;
+}
+
+export interface UpdateResearchSettingsRequest {
+  enableAutoApproval?: boolean;
+  autoApproveThreshold?: number;
+  spotCheckThreshold?: number;
+  minCompsForAutoApproval?: number;
+  maxAutoApprovalsPerDay?: number;
+}
+
+export interface UpdateResearchSettingsResponse {
+  settings: ResearchSettings;
 }
 

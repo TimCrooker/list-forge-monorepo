@@ -81,11 +81,13 @@ export interface ItemDto {
   aiLastRunError: string | null;
   aiConfidenceScore: number | null;
 
-  // Review Tracking
+  // Review Tracking & Confidence-Based Routing
   assignedReviewerUserId: string | null;
   reviewedByUserId: string | null;
   reviewedAt: string | null; // ISO date string
   reviewComment: string | null;
+  /** Review recommendation from confidence-based routing: 'approve' (spot-check) or 'review' (full review) */
+  reviewRecommendation: 'approve' | 'review' | null;
 }
 
 // ============================================================================
@@ -103,6 +105,8 @@ export interface ItemSummaryDto {
   quantity: number;
   primaryImageUrl: string | null; // Computed from media array
   createdAt: string; // ISO date string
+  /** Review recommendation from confidence-based routing: 'approve' (spot-check) or 'review' (full review) */
+  reviewRecommendation?: 'approve' | 'review' | null;
 }
 
 // ============================================================================

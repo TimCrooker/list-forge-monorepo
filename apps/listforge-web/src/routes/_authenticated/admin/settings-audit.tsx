@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import {
   SettingsType,
   SettingsAuditEventType,
@@ -8,20 +8,15 @@ import {
 } from '@listforge/api-types';
 import { useGetAdminSettingsAuditLogsQuery, useListOrgsAdminQuery } from '@listforge/api-rtk';
 import {
+  AppContent,
+  SearchFilters,
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Button,
   Skeleton,
+  EmptyState,
 } from '@listforge/ui';
-import { History, Filter, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
+import { History, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
 import { SettingsAuditLogItem } from '@/components/settings';
 
 export const Route = createFileRoute('/_authenticated/admin/settings-audit')({
@@ -48,18 +43,21 @@ const EVENT_TYPES: SettingsAuditEventType[] = [
 const PAGE_SIZE = 20;
 
 function AdminSettingsAuditPage() {
-  const [orgId, setOrgId] = useState<string | 'all'>('all');
-  const [settingsType, setSettingsType] = useState<SettingsType | 'all'>('all');
-  const [eventType, setEventType] = useState<SettingsAuditEventType | 'all'>('all');
+  const navigate = useNavigate();
+  const [filters, setFilters] = useState<Record<string, any>>({});
   const [page, setPage] = useState(1);
 
   const { data: orgsData } = useListOrgsAdminQuery();
   const orgs = orgsData?.orgs || [];
 
+  const orgId = filters.orgId === 'all' || !filters.orgId ? undefined : filters.orgId;
+  const settingsType = filters.settingsType === 'all' || !filters.settingsType ? undefined : filters.settingsType;
+  const eventType = filters.eventType === 'all' || !filters.eventType ? undefined : filters.eventType;
+
   const { data, isLoading, isFetching } = useGetAdminSettingsAuditLogsQuery({
-    orgId: orgId === 'all' ? undefined : orgId,
-    settingsType: settingsType === 'all' ? undefined : settingsType,
-    eventType: eventType === 'all' ? undefined : eventType,
+    orgId,
+    settingsType,
+    eventType,
     limit: PAGE_SIZE,
     offset: (page - 1) * PAGE_SIZE,
   });
@@ -68,107 +66,84 @@ function AdminSettingsAuditPage() {
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const resetFilters = () => {
-    setOrgId('all');
-    setSettingsType('all');
-    setEventType('all');
+  const handleFilterChange = (newFilters: Record<string, any>) => {
+    setFilters(newFilters);
     setPage(1);
   };
 
-  const hasFilters = orgId !== 'all' || settingsType !== 'all' || eventType !== 'all';
+  const handleExport = () => {
+    const json = JSON.stringify(logs, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'audit-logs.json';
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
 
   return (
-    <div className="container py-8 max-w-6xl mx-auto">
+    <AppContent
+      title="Settings Audit Logs"
+      description="View all settings changes across all organizations"
+      breadcrumbs={[
+        { label: 'Admin', onClick: () => navigate({ to: '/admin' }) },
+        { label: 'Settings Audit' },
+      ]}
+      actions={
+        logs.length > 0 && (
+          <Button variant="outline" onClick={handleExport}>
+            Export Logs
+          </Button>
+        )
+      }
+      headerContent={
+        <SearchFilters
+          variant="inline"
+          showSearch={false}
+          filterGroups={[
+            {
+              id: 'orgId',
+              label: 'Organization',
+              type: 'select',
+              options: [
+                { value: 'all', label: 'All Organizations' },
+                ...orgs.map((org) => ({ value: org.id, label: org.name })),
+              ],
+            },
+            {
+              id: 'settingsType',
+              label: 'Settings Type',
+              type: 'select',
+              options: [
+                { value: 'all', label: 'All Types' },
+                ...SETTINGS_TYPES.map((type) => ({
+                  value: type,
+                  label: SETTINGS_TYPE_LABELS[type],
+                })),
+              ],
+            },
+            {
+              id: 'eventType',
+              label: 'Event Type',
+              type: 'select',
+              options: [
+                { value: 'all', label: 'All Events' },
+                ...EVENT_TYPES.map((type) => ({
+                  value: type,
+                  label: EVENT_TYPE_LABELS[type],
+                })),
+              ],
+            },
+          ]}
+          onFilterChange={handleFilterChange}
+        />
+      }
+      maxWidth="xl"
+      padding="md"
+    >
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <History className="h-5 w-5" />
-                Settings Audit Logs
-              </CardTitle>
-              <CardDescription>
-                View all settings changes across all organizations
-              </CardDescription>
-            </div>
-
-            {hasFilters && (
-              <Button variant="outline" size="sm" onClick={resetFilters}>
-                Clear Filters
-              </Button>
-            )}
-          </div>
-
-          {/* Filters */}
-          <div className="flex flex-wrap items-center gap-3 pt-4 border-t mt-4">
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Filter:</span>
-            </div>
-
-            <Select
-              value={orgId}
-              onValueChange={(value) => {
-                setOrgId(value);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Organization" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Organizations</SelectItem>
-                {orgs.map((org) => (
-                  <SelectItem key={org.id} value={org.id}>
-                    {org.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={settingsType}
-              onValueChange={(value) => {
-                setSettingsType(value as SettingsType | 'all');
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Settings Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                {SETTINGS_TYPES.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {SETTINGS_TYPE_LABELS[type]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={eventType}
-              onValueChange={(value) => {
-                setEventType(value as SettingsAuditEventType | 'all');
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Event Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Events</SelectItem>
-                {EVENT_TYPES.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {EVENT_TYPE_LABELS[type]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
-
-        <CardContent>
+        <CardContent className="pt-6">
           {isLoading ? (
             <div className="space-y-4">
               {[1, 2, 3, 4, 5].map((i) => (
@@ -176,15 +151,15 @@ function AdminSettingsAuditPage() {
               ))}
             </div>
           ) : logs.length === 0 ? (
-            <div className="text-center py-12">
-              <History className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No audit logs found</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                {hasFilters
+            <EmptyState
+              icon={History}
+              title="No audit logs found"
+              description={
+                Object.keys(filters).length > 0
                   ? 'Try adjusting your filters'
-                  : 'Settings changes will appear here'}
-              </p>
-            </div>
+                  : 'Settings changes will appear here'
+              }
+            />
           ) : (
             <>
               <div className="space-y-4">
@@ -238,6 +213,6 @@ function AdminSettingsAuditPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </AppContent>
   );
 }

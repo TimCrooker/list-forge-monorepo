@@ -5,6 +5,7 @@ import {
   KeepaProductData,
   COMP_MATCH_TYPE_WEIGHTS,
   CompMatchType,
+  CategoryId,
 } from '@listforge/core-types';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
@@ -17,6 +18,89 @@ import {
 import { logNodeWarn } from '../../../utils/node-logger';
 import { withSpan, ResearchMetrics, startTiming } from '../../../utils/telemetry';
 import { PRICING_THRESHOLDS, VALIDATION_SCORING } from '../../../config/research.constants';
+import { getMatchBoosts, CATEGORY_ATTRIBUTE_WEIGHTS } from '../../../data/category-attribute-weights';
+
+/**
+ * Derive CategoryId from available state data
+ * Slice 5: Helper to extract category for category-aware scoring
+ *
+ * Tries to map available category info to our internal CategoryId:
+ * 1. Check mediaAnalysis.category if it's a valid CategoryId
+ * 2. Check productIdentification.category array for known keywords
+ * 3. Check item title for category keywords
+ * 4. Falls back to undefined (uses general weights)
+ */
+function deriveCategoryId(state: ResearchGraphState): CategoryId | undefined {
+  const validCategoryIds = Object.keys(CATEGORY_ATTRIBUTE_WEIGHTS) as CategoryId[];
+
+  // 1. Check mediaAnalysis category if it's directly a valid CategoryId
+  const mediaCategory = state.mediaAnalysis?.category?.toLowerCase();
+  if (mediaCategory && validCategoryIds.includes(mediaCategory as CategoryId)) {
+    return mediaCategory as CategoryId;
+  }
+
+  // 2. Check productIdentification.category array for keyword matches
+  const productCategories = state.productIdentification?.category || [];
+  for (const cat of productCategories) {
+    const catLower = cat.toLowerCase();
+    // Direct match
+    if (validCategoryIds.includes(catLower as CategoryId)) {
+      return catLower as CategoryId;
+    }
+    // Keyword mapping
+    if (catLower.includes('sneaker') || catLower.includes('shoe') || catLower.includes('footwear')) {
+      return 'sneakers';
+    }
+    if (catLower.includes('handbag') || catLower.includes('purse') || catLower.includes('luxury bag')) {
+      return 'luxury_handbags';
+    }
+    if (catLower.includes('watch') || catLower.includes('timepiece')) {
+      return 'watches';
+    }
+    if (catLower.includes('phone') || catLower.includes('smartphone') || catLower.includes('iphone')) {
+      return 'electronics_phones';
+    }
+    if (catLower.includes('gaming') || catLower.includes('console') || catLower.includes('playstation') || catLower.includes('xbox')) {
+      return 'electronics_gaming';
+    }
+    if (catLower.includes('trading card') || catLower.includes('pokemon') || catLower.includes('sports card')) {
+      return 'trading_cards';
+    }
+    if (catLower.includes('denim') || catLower.includes('jeans') || catLower.includes('levi')) {
+      return 'vintage_denim';
+    }
+    if (catLower.includes('designer') || catLower.includes('clothing') || catLower.includes('apparel')) {
+      return 'designer_clothing';
+    }
+    if (catLower.includes('audio') || catLower.includes('speaker') || catLower.includes('headphone')) {
+      return 'audio_equipment';
+    }
+  }
+
+  // 3. Check item title for category keywords
+  const title = state.item?.title?.toLowerCase() || '';
+  if (title.includes('jordan') || title.includes('nike') || title.includes('yeezy') || title.includes('sneaker')) {
+    return 'sneakers';
+  }
+  if (title.includes('louis vuitton') || title.includes('gucci') || title.includes('chanel') || title.includes('handbag')) {
+    return 'luxury_handbags';
+  }
+  if (title.includes('rolex') || title.includes('omega') || title.includes('watch')) {
+    return 'watches';
+  }
+  if (title.includes('iphone') || title.includes('samsung') || title.includes('pixel')) {
+    return 'electronics_phones';
+  }
+  if (title.includes('ps5') || title.includes('xbox') || title.includes('nintendo')) {
+    return 'electronics_gaming';
+  }
+  if (title.includes('psa') || title.includes('bgs') || title.includes('pokemon') || title.includes('trading card')) {
+    return 'trading_cards';
+  }
+
+  // 4. No match - return undefined to use general weights
+  return undefined;
+}
 
 /**
  * Image comparison result (from ImageComparisonService)
@@ -47,6 +131,12 @@ export interface CompAnalysisTools {
  * Slice 3 Enhancement: Uses matchType as the base score instead of flat 0.5
  * This ensures comps found via UPC/ASIN have higher inherent confidence than keyword searches.
  *
+ * Slice 5 Enhancement: Uses category-specific boosts from category-attribute-weights.ts
+ * Different categories weight different attributes:
+ * - Sneakers: higher model boost (0.20) for colorway importance
+ * - Watches: higher model boost (0.25) for reference number importance
+ * - Trading cards: higher condition boost (0.30) for grade importance
+ *
  * Match Type Base Scores (from COMP_MATCH_TYPE_WEIGHTS):
  * - UPC_EXACT: 0.95 (nearly certain match)
  * - ASIN_EXACT: 0.90 (very high confidence)
@@ -56,16 +146,25 @@ export interface CompAnalysisTools {
  * - IMAGE_SIMILARITY: 0.65 (visual match, no text verification)
  * - GENERIC_KEYWORD: 0.30 (lowest confidence, broad search)
  *
- * Additional boosts applied for brand/model/condition matches.
+ * Additional category-aware boosts applied for brand/model/condition matches.
+ *
+ * @param comps - Comparable listings to score
+ * @param item - Item being researched
+ * @param productId - Product identification data
+ * @param categoryId - Optional category for category-specific boosts
  */
 function scoreCompRelevanceHeuristic(
   comps: ResearchEvidenceRecord[],
   item: ResearchGraphState['item'],
   productId: ResearchGraphState['productIdentification'],
+  categoryId?: CategoryId,
 ): ResearchEvidenceRecord[] {
   if (comps.length === 0) {
     return [];
   }
+
+  // Slice 5: Get category-specific match boosts
+  const boosts = getMatchBoosts(categoryId);
 
   return comps.map((comp) => {
     // Slice 3: Use matchType as base score (default to GENERIC_KEYWORD if not set)
@@ -82,24 +181,26 @@ function scoreCompRelevanceHeuristic(
       ? 0.5 // Reduced boosts for already-confident matches
       : 1.0; // Full boosts for lower-confidence matches
 
-    // Boost for brand match (+0.15, reduced from 0.2 to prevent exceeding 1.0)
+    // Slice 5: Use category-specific boosts instead of hardcoded values
+    // Boost for brand match (category-specific, e.g., 0.15 for sneakers, 0.20 for designer)
     if (brand && titleLower.includes(brand)) {
-      score += 0.15 * boostMultiplier;
+      score += boosts.brand * boostMultiplier;
     }
 
-    // Boost for model match (+0.10)
+    // Boost for model match (category-specific, e.g., 0.20 for sneakers, 0.25 for watches)
     if (model && titleLower.includes(model)) {
-      score += 0.10 * boostMultiplier;
+      score += boosts.model * boostMultiplier;
     }
 
-    // Boost for condition match (+0.15, reduced from 0.2)
+    // Boost for condition match (category-specific, e.g., 0.10 for sneakers, 0.30 for cards)
     if (item?.condition && comp.condition === item.condition) {
-      score += 0.15 * boostMultiplier;
+      score += boosts.condition * boostMultiplier;
     }
 
-    // Boost for exact brand AND model match (+0.10 bonus)
+    // Boost for variant match (colorway for sneakers, storage for phones, etc.)
+    // Slice 5: Use category-specific variant boost
     if (brand && model && titleLower.includes(brand) && titleLower.includes(model)) {
-      score += 0.10 * boostMultiplier;
+      score += boosts.variant * boostMultiplier;
     }
 
     return {
@@ -195,10 +296,13 @@ export async function analyzeCompsNode(
 
     // Step 1: Score relevance using fast rule-based heuristics
     // PERFORMANCE FIX: Removed LLM call, using heuristic scoring instead
+    // Slice 5: Derive category for category-aware boosts
+    const detectedCategoryId = deriveCategoryId(state);
     const scoredComps = scoreCompRelevanceHeuristic(
       state.comps,
       state.item,
       state.productIdentification,
+      detectedCategoryId,
     );
 
     // Step 2: Enrich Amazon comps with Keepa data
@@ -381,11 +485,14 @@ export async function analyzeCompsNode(
     }
 
     // Step 4: Run structured validation (Slice 3)
+    // Slice 5: Use derived category for category-aware validation weights
     const itemContext = buildItemContext(state);
     const validatedComps = validateAllComps(
       scoredComps,
       itemContext,
       state.productIdentification,
+      {}, // Use default validation config
+      detectedCategoryId,
     );
 
     // Step 5: Calculate validation summary

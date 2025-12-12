@@ -20,6 +20,7 @@
     "db:migrate:generate": "typeorm migration:generate -d src/data-source.ts",
     "db:migrate:revert": "typeorm migration:revert -d src/data-source.ts",
     "db:seed": "ts-node src/seed.ts",
+    "seed:domain-expertise": "ts-node -r tsconfig-paths/register src/domain-expertise/scripts/seed-domain-expertise.ts",
     "cli:rotate-keys": "ts-node -r tsconfig-paths/register src/cli/rotate-encryption-keys.ts"
   },
   "dependencies": {

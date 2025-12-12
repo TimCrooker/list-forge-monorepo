@@ -35,6 +35,11 @@ import {
 } from './nodes/goal-router.node';
 // Planning Phase (Slice 2)
 import { planResearchNode } from './nodes/plan-research.node';
+// Slice 6: Identification Validation Checkpoint
+import {
+  validateIdentificationNode,
+  validationCheckpointRouter,
+} from './nodes/validate-identification.node';
 
 /**
  * Build Research Graph (DEPRECATED)
@@ -307,6 +312,8 @@ export function buildGoalDrivenResearchGraph(checkpointer?: PostgresSaver) {
     // Market research branch
     .addNode('search_comps', searchCompsNode)
     .addNode('analyze_comps', analyzeCompsNode)
+    // Slice 6: Validation checkpoint before completing market research
+    .addNode('validate_identification', validateIdentificationNode)
     .addNode('complete_market_goal', completeMarketGoalNode)
 
     // ========================================================================
@@ -376,7 +383,16 @@ export function buildGoalDrivenResearchGraph(checkpointer?: PostgresSaver) {
 
     // Phase 2b: Market research path
     .addEdge('search_comps', 'analyze_comps')
-    .addEdge('analyze_comps', 'complete_market_goal')
+    // Slice 6: Validation checkpoint after analyzing comps
+    .addEdge('analyze_comps', 'validate_identification')
+    .addConditionalEdges(
+      'validate_identification',
+      validationCheckpointRouter,
+      {
+        complete_market_goal: 'complete_market_goal',  // Valid - proceed to pricing
+        reidentify: 'deep_identify',                   // Re-identification needed
+      },
+    )
 
     // Phase 3: Assembly (after market research completes)
     .addEdge('complete_market_goal', 'calculate_price')

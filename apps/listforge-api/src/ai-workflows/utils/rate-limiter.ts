@@ -75,6 +75,38 @@ export const RATE_LIMITER_CONFIGS = {
     refillInterval: 1000, // 2 per second
     name: 'Amazon-SP-API',
   } as RateLimiterConfig,
+
+  /** SerpApi: 100 searches/month on free tier, higher on paid */
+  serpapi: {
+    maxTokens: 10,
+    refillRate: 1,
+    refillInterval: 1000, // 1 per second, allows bursts of 10
+    name: 'SerpApi',
+  } as RateLimiterConfig,
+
+  /** Google Cloud Vision API: 1800 req/min, configured at ~1000 RPM for safety */
+  googleCloudVision: {
+    maxTokens: 20,
+    refillRate: 15,
+    refillInterval: 1000, // 15 per second = 900 RPM (allows bursts of 20)
+    name: 'GoogleCloudVision',
+  } as RateLimiterConfig,
+
+  /** OCR Search: Combined OCR + web search, conservative to prevent abuse */
+  ocrSearch: {
+    maxTokens: 5,
+    refillRate: 1,
+    refillInterval: 2000, // 1 token every 2 seconds = 30 RPM, burst of 5
+    name: 'OCR-Search',
+  } as RateLimiterConfig,
+
+  /** OCR Extraction: Vision API based, follows OpenAI limits */
+  ocrExtraction: {
+    maxTokens: 10,
+    refillRate: 2,
+    refillInterval: 1000, // 2 per second = 120 RPM
+    name: 'OCR-Extraction',
+  } as RateLimiterConfig,
 } as const;
 
 /**

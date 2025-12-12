@@ -2,7 +2,12 @@ import { ResearchGraphState } from '../research-graph.state';
 import { FieldResearchService, ResearchExecutionContext } from '../../../services/field-research.service';
 import { FieldStateManagerService } from '../../../services/field-state-manager.service';
 import { ResearchActivityLoggerService } from '../../../../research/services/research-activity-logger.service';
-import type { ItemFieldStates } from '@listforge/core-types';
+import { EventsService } from '../../../../events/events.service';
+import type { ItemFieldStates, ResearchTaskHistory, ResearchToolType } from '@listforge/core-types';
+import { Logger } from '@nestjs/common';
+import { ResearchMetrics } from '../../../utils/telemetry';
+
+const logger = new Logger('ExecuteResearchNode');
 
 /**
  * Tools interface for execute_research node
@@ -10,6 +15,7 @@ import type { ItemFieldStates } from '@listforge/core-types';
 export interface ExecuteResearchTools {
   fieldResearchService: FieldResearchService;
   fieldStateManager: FieldStateManagerService;
+  eventsService?: EventsService; // Slice 7: Cross-validation event emitter
 }
 
 /**
@@ -122,6 +128,29 @@ export async function executeResearchNode(
               update.source,
             );
             updatedFields.push(update.fieldName);
+
+            // Slice 7: Emit cross-validation event for UI visibility
+            if (tools.eventsService && state.researchRunId && state.itemId && state.organizationId) {
+              const crossValInfo = tools.fieldStateManager.getCrossValidationInfo(
+                updatedFieldStates,
+                update.fieldName,
+              );
+              if (crossValInfo && crossValInfo.independentSourceCount >= 2) {
+                // Only emit when there are multiple independent sources (interesting for UI)
+                tools.eventsService.emitResearchCrossValidation(
+                  state.researchRunId,
+                  state.itemId,
+                  state.organizationId,
+                  crossValInfo.fieldName,
+                  crossValInfo.baseConfidence,
+                  crossValInfo.crossValidatedConfidence,
+                  crossValInfo.independentSourceCount,
+                  crossValInfo.conflictCount,
+                  crossValInfo.corroborationMultiplier,
+                  crossValInfo.sourceGroups,
+                );
+              }
+            }
           }
         }
       }
@@ -164,10 +193,66 @@ export async function executeResearchNode(
       });
     }
 
+    // ========================================================================
+    // BULLETPROOFING: Update task history to track tool attempts and failures
+    // ========================================================================
+    const toolType = currentTask.tool as ResearchToolType;
+    const existingHistory = state.taskHistory || {
+      attemptsByTool: {},
+      failedTools: [],
+      consecutiveNoProgress: 0,
+      lastFieldStatesHash: null,
+    };
+
+    // Increment attempt count for this tool
+    const newAttemptsByTool: Partial<Record<ResearchToolType, number>> = {
+      ...existingHistory.attemptsByTool,
+      [toolType]: (existingHistory.attemptsByTool[toolType] || 0) + 1,
+    };
+
+    // Track failed tools (tools that produce no field updates)
+    const newFailedTools = [...existingHistory.failedTools];
+    const madeProgress = updatedFields.length > 0;
+
+    if (!madeProgress && !newFailedTools.includes(toolType)) {
+      logger.warn(`Task ${toolType} produced no field updates - marking as failed for this run`);
+      newFailedTools.push(toolType);
+
+      // Record metric for tool failure
+      ResearchMetrics.toolsMarkedFailed({
+        tool: toolType,
+        organization_id: state.organizationId,
+      });
+    }
+
+    // Record metric for task result
+    ResearchMetrics.tasksByTool({
+      tool: toolType,
+      result: madeProgress ? 'success' : 'no_results',
+      organization_id: state.organizationId,
+    });
+
+    // Track consecutive no-progress iterations
+    const newConsecutiveNoProgress = madeProgress
+      ? 0 // Reset counter when progress is made
+      : existingHistory.consecutiveNoProgress + 1;
+
+    if (newConsecutiveNoProgress > 0) {
+      logger.debug(`No progress iteration: ${newConsecutiveNoProgress}`);
+    }
+
+    const updatedTaskHistory: ResearchTaskHistory = {
+      attemptsByTool: newAttemptsByTool,
+      failedTools: newFailedTools,
+      consecutiveNoProgress: newConsecutiveNoProgress,
+      lastFieldStatesHash: existingHistory.lastFieldStatesHash, // Will be updated by evaluate_fields
+    };
+
     return {
       fieldStates: updatedFieldStates,
       currentResearchCost: newTotalCost,
       currentTask: null, // Clear current task
+      taskHistory: updatedTaskHistory,
     };
   } catch (error) {
     if (activityLogger && operationId) {
@@ -185,9 +270,36 @@ export async function executeResearchNode(
     // Don't throw - mark task as failed and continue
     const newTotalCost = (state.currentResearchCost || 0) + currentTask.estimatedCost * 0.5;
 
+    // Update task history for exception case
+    const toolType = currentTask.tool as ResearchToolType;
+    const existingHistory = state.taskHistory || {
+      attemptsByTool: {},
+      failedTools: [],
+      consecutiveNoProgress: 0,
+      lastFieldStatesHash: null,
+    };
+
+    // Mark tool as failed on exception
+    const newFailedTools = [...existingHistory.failedTools];
+    if (!newFailedTools.includes(toolType)) {
+      logger.warn(`Task ${toolType} threw exception - marking as failed for this run`);
+      newFailedTools.push(toolType);
+    }
+
+    const updatedTaskHistory: ResearchTaskHistory = {
+      attemptsByTool: {
+        ...existingHistory.attemptsByTool,
+        [toolType]: (existingHistory.attemptsByTool[toolType] || 0) + 1,
+      },
+      failedTools: newFailedTools,
+      consecutiveNoProgress: existingHistory.consecutiveNoProgress + 1,
+      lastFieldStatesHash: existingHistory.lastFieldStatesHash,
+    };
+
     return {
       currentResearchCost: newTotalCost,
       currentTask: null,
+      taskHistory: updatedTaskHistory,
     };
   }
 }

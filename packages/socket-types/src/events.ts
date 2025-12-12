@@ -31,6 +31,10 @@ export const SocketEvents = {
   RESEARCH_PAUSED: 'research:paused',
   RESEARCH_RESUMED: 'research:resumed',
   RESEARCH_CANCELLED: 'research:cancelled',
+  // Slice 6: Identification Validation Checkpoint
+  RESEARCH_VALIDATION_CHECKPOINT: 'research:validation_checkpoint',
+  // Slice 7: Cross-Source Validation
+  RESEARCH_CROSS_VALIDATION: 'research:cross_validation',
 
   // Chat events (Phase 7 Slice 5)
   CHAT_MESSAGE: 'chat:message',
@@ -47,6 +51,12 @@ export const SocketEvents = {
   CHAT_ACTION_SUGGESTED: 'chat:action_suggested', // New action button available
   CHAT_CONTEXT_UPDATE: 'chat:context_update',     // Frontend sends page context
   CHAT_PROACTIVE_SUGGESTION: 'chat:proactive_suggestion', // Proactive assistant suggestion
+
+  // Marketplace events
+  MARKETPLACE_TOKEN_EXPIRING: 'marketplace:token:expiring',
+  MARKETPLACE_TOKEN_EXPIRED: 'marketplace:token:expired',
+  MARKETPLACE_TOKEN_REFRESHED: 'marketplace:token:refreshed',
+  MARKETPLACE_WEBHOOK_RECEIVED: 'marketplace:webhook:received',
 } as const;
 
 /**

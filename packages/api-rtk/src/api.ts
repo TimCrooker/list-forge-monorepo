@@ -105,6 +105,10 @@ import {
   GetSecuritySettingsResponse,
   UpdateSecuritySettingsRequest,
   UpdateSecuritySettingsResponse,
+  // Research Settings types
+  GetResearchSettingsResponse,
+  UpdateResearchSettingsRequest,
+  UpdateResearchSettingsResponse,
   // Settings Audit types
   SettingsType,
   GetSettingsVersionsResponse,
@@ -114,13 +118,70 @@ import {
   PreviewSettingsRevertResponse,
   RevertSettingsRequest,
   RevertSettingsResponse,
+  // Domain Expertise types (Slice 9.1)
+  ListDomainExpertiseModulesResponse,
+  DomainExpertiseModuleDto,
+  DomainExpertiseModuleWithRelationsDto,
+  CreateDomainExpertiseModuleDto,
+  UpdateDomainExpertiseModuleDto,
+  PublishModuleDto,
+  RollbackModuleDto,
+  ListModulesQuery,
+  ListLookupTablesResponse,
+  LookupTableDto,
+  CreateLookupTableDto,
+  UpdateLookupTableDto,
+  ListLookupEntriesResponse,
+  LookupEntryDto,
+  CreateLookupEntryDto,
+  UpdateLookupEntryDto,
+  BulkLookupEntriesDto,
+  BulkOperationResponse,
+  ImportLookupEntriesDto,
+  ListLookupEntriesQuery,
+  ValueDriverDefinitionDto,
+  CreateValueDriverDefinitionDto,
+  UpdateValueDriverDefinitionDto,
+  ReorderValueDriversDto,
+  TestValueDriversDto,
+  TestValueDriversResponse,
+  DecoderDefinitionDto,
+  CreateDecoderDefinitionDto,
+  UpdateDecoderDefinitionDto,
+  TestDecoderDto,
+  TestDecoderResponse,
+  ValidatePatternDto,
+  ValidatePatternResponse,
+  AuthenticityMarkerDefinitionDto,
+  CreateAuthenticityMarkerDefinitionDto,
+  UpdateAuthenticityMarkerDefinitionDto,
+  TestAuthenticityDto,
+  TestAuthenticityResponse,
+  ListVersionsResponse,
+  DomainExpertiseVersionWithSnapshotDto,
+  // Learning types (Slice 10)
+  ListResearchOutcomesQuery,
+  ListResearchOutcomesResponse,
+  CorrectOutcomeDto,
+  GetResearchOutcomeResponse,
+  ToolEffectivenessQuery,
+  GetToolEffectivenessResponse,
+  GetToolEffectivenessTrendResponse,
+  ListAnomaliesQuery,
+  ListAnomaliesResponse,
+  ResolveAnomalyDto,
+  TriggerCalibrationResponse,
+  GetCalibrationHistoryQuery,
+  GetCalibrationHistoryResponse,
+  LearningDashboardQuery,
+  GetLearningDashboardResponse,
 } from '@listforge/api-types';
 import { baseQueryWithErrorHandling } from './baseQueryWithErrorHandling';
 
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithErrorHandling,
-  tagTypes: ['User', 'Org', 'OrgMember', 'MarketplaceAccount', 'MarketplaceListing', 'Item', 'ResearchRun', 'ChatSession', 'SettingsVersion', 'SettingsAuditLog'],
+  tagTypes: ['User', 'Org', 'OrgMember', 'MarketplaceAccount', 'MarketplaceListing', 'Item', 'ResearchRun', 'ChatSession', 'SettingsVersion', 'SettingsAuditLog', 'DomainExpertiseModule', 'LookupTable', 'LookupEntry', 'ValueDriver', 'Decoder', 'AuthenticityMarker', 'DomainExpertiseVersion', 'ResearchOutcome', 'ToolEffectiveness', 'ResearchAnomaly', 'CalibrationHistory'],
   endpoints: (builder) => ({
     // Auth endpoints
     login: builder.mutation<LoginResponse, LoginRequest>({
@@ -910,6 +971,27 @@ export const api = createApi({
       ],
     }),
 
+    // Research Settings
+    getResearchSettings: builder.query<GetResearchSettingsResponse, string>({
+      query: (orgId) => `/orgs/${orgId}/settings/research`,
+      providesTags: (_result, _error, orgId) => [{ type: 'Org', id: orgId }],
+    }),
+    updateResearchSettings: builder.mutation<
+      UpdateResearchSettingsResponse,
+      { orgId: string; data: UpdateResearchSettingsRequest }
+    >({
+      query: ({ orgId, data }) => ({
+        url: `/orgs/${orgId}/settings/research`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { orgId }) => [
+        { type: 'Org', id: orgId },
+        { type: 'SettingsVersion', id: `${orgId}-research` },
+        { type: 'SettingsAuditLog', id: orgId },
+      ],
+    }),
+
     // ============================================================================
     // Settings Audit & Version History Endpoints
     // ============================================================================
@@ -1006,6 +1088,623 @@ export const api = createApi({
         { type: 'Item', id: itemId },
         'MarketplaceListing',
       ],
+    }),
+
+    // ============================================================================
+    // Domain Expertise Endpoints (Slice 9.1)
+    // ============================================================================
+
+    // Module endpoints
+    listDomainExpertiseModules: builder.query<
+      ListDomainExpertiseModulesResponse,
+      ListModulesQuery | void
+    >({
+      query: (params = {}) => ({
+        url: '/admin/domain-expertise/modules',
+        params: params as Record<string, string>,
+      }),
+      providesTags: ['DomainExpertiseModule'],
+    }),
+
+    getDomainExpertiseModule: builder.query<
+      DomainExpertiseModuleWithRelationsDto,
+      string
+    >({
+      query: (id) => `/admin/domain-expertise/modules/${id}`,
+      providesTags: (_result, _error, id) => [
+        { type: 'DomainExpertiseModule', id },
+      ],
+    }),
+
+    createDomainExpertiseModule: builder.mutation<
+      DomainExpertiseModuleDto,
+      CreateDomainExpertiseModuleDto
+    >({
+      query: (body) => ({
+        url: '/admin/domain-expertise/modules',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['DomainExpertiseModule'],
+    }),
+
+    updateDomainExpertiseModule: builder.mutation<
+      DomainExpertiseModuleDto,
+      { id: string; data: UpdateDomainExpertiseModuleDto }
+    >({
+      query: ({ id, data }) => ({
+        url: `/admin/domain-expertise/modules/${id}`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'DomainExpertiseModule', id },
+        'DomainExpertiseModule',
+      ],
+    }),
+
+    deleteDomainExpertiseModule: builder.mutation<{ success: boolean }, string>({
+      query: (id) => ({
+        url: `/admin/domain-expertise/modules/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['DomainExpertiseModule'],
+    }),
+
+    duplicateDomainExpertiseModule: builder.mutation<
+      DomainExpertiseModuleDto,
+      string
+    >({
+      query: (id) => ({
+        url: `/admin/domain-expertise/modules/${id}/duplicate`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['DomainExpertiseModule'],
+    }),
+
+    publishDomainExpertiseModule: builder.mutation<
+      DomainExpertiseModuleDto,
+      { id: string; data: PublishModuleDto }
+    >({
+      query: ({ id, data }) => ({
+        url: `/admin/domain-expertise/modules/${id}/publish`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'DomainExpertiseModule', id },
+        'DomainExpertiseModule',
+        'DomainExpertiseVersion',
+      ],
+    }),
+
+    rollbackDomainExpertiseModule: builder.mutation<
+      DomainExpertiseModuleDto,
+      { id: string; data: RollbackModuleDto }
+    >({
+      query: ({ id, data }) => ({
+        url: `/admin/domain-expertise/modules/${id}/rollback`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'DomainExpertiseModule', id },
+        'DomainExpertiseModule',
+        'DomainExpertiseVersion',
+        'LookupTable',
+        'LookupEntry',
+        'ValueDriver',
+        'Decoder',
+        'AuthenticityMarker',
+      ],
+    }),
+
+    listDomainExpertiseVersions: builder.query<
+      ListVersionsResponse,
+      string
+    >({
+      query: (moduleId) => `/admin/domain-expertise/modules/${moduleId}/versions`,
+      providesTags: (_result, _error, moduleId) => [
+        { type: 'DomainExpertiseVersion', id: moduleId },
+      ],
+    }),
+
+    getDomainExpertiseVersion: builder.query<
+      DomainExpertiseVersionWithSnapshotDto,
+      { moduleId: string; versionId: string }
+    >({
+      query: ({ moduleId, versionId }) =>
+        `/admin/domain-expertise/modules/${moduleId}/versions/${versionId}`,
+      providesTags: (_result, _error, { versionId }) => [
+        { type: 'DomainExpertiseVersion', id: versionId },
+      ],
+    }),
+
+    // Lookup Table endpoints
+    listLookupTables: builder.query<
+      ListLookupTablesResponse,
+      { moduleId?: string } | void
+    >({
+      query: (params = {}) => ({
+        url: '/admin/domain-expertise/lookup-tables',
+        params: params as Record<string, string>,
+      }),
+      providesTags: ['LookupTable'],
+    }),
+
+    getLookupTable: builder.query<LookupTableDto, string>({
+      query: (id) => `/admin/domain-expertise/lookup-tables/${id}`,
+      providesTags: (_result, _error, id) => [{ type: 'LookupTable', id }],
+    }),
+
+    createLookupTable: builder.mutation<
+      LookupTableDto,
+      CreateLookupTableDto
+    >({
+      query: (body) => ({
+        url: '/admin/domain-expertise/lookup-tables',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['LookupTable'],
+    }),
+
+    updateLookupTable: builder.mutation<
+      LookupTableDto,
+      { id: string; data: UpdateLookupTableDto }
+    >({
+      query: ({ id, data }) => ({
+        url: `/admin/domain-expertise/lookup-tables/${id}`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'LookupTable', id },
+        'LookupTable',
+      ],
+    }),
+
+    deleteLookupTable: builder.mutation<{ success: boolean }, string>({
+      query: (id) => ({
+        url: `/admin/domain-expertise/lookup-tables/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['LookupTable', 'LookupEntry'],
+    }),
+
+    importLookupEntries: builder.mutation<
+      BulkOperationResponse,
+      { tableId: string; data: ImportLookupEntriesDto }
+    >({
+      query: ({ tableId, data }) => ({
+        url: `/admin/domain-expertise/lookup-tables/${tableId}/import`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { tableId }) => [
+        { type: 'LookupTable', id: tableId },
+        'LookupEntry',
+      ],
+    }),
+
+    exportLookupEntries: builder.query<
+      { entries: Array<{ key: string; values: Record<string, unknown> }> },
+      string
+    >({
+      query: (tableId) => `/admin/domain-expertise/lookup-tables/${tableId}/export`,
+    }),
+
+    // Lookup Entry endpoints
+    listLookupEntries: builder.query<
+      ListLookupEntriesResponse,
+      { tableId: string; params?: ListLookupEntriesQuery }
+    >({
+      query: ({ tableId, params = {} }) => ({
+        url: `/admin/domain-expertise/lookup-tables/${tableId}/entries`,
+        params: params as Record<string, string>,
+      }),
+      providesTags: (_result, _error, { tableId }) => [
+        { type: 'LookupEntry', id: tableId },
+      ],
+    }),
+
+    createLookupEntry: builder.mutation<
+      LookupEntryDto,
+      { tableId: string; data: CreateLookupEntryDto }
+    >({
+      query: ({ tableId, data }) => ({
+        url: `/admin/domain-expertise/lookup-tables/${tableId}/entries`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { tableId }) => [
+        { type: 'LookupEntry', id: tableId },
+        { type: 'LookupTable', id: tableId },
+      ],
+    }),
+
+    updateLookupEntry: builder.mutation<
+      LookupEntryDto,
+      { entryId: string; data: UpdateLookupEntryDto }
+    >({
+      query: ({ entryId, data }) => ({
+        url: `/admin/domain-expertise/entries/${entryId}`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: ['LookupEntry'],
+    }),
+
+    deleteLookupEntry: builder.mutation<{ success: boolean }, string>({
+      query: (entryId) => ({
+        url: `/admin/domain-expertise/entries/${entryId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['LookupEntry', 'LookupTable'],
+    }),
+
+    bulkLookupEntries: builder.mutation<
+      BulkOperationResponse,
+      { tableId: string; data: BulkLookupEntriesDto }
+    >({
+      query: ({ tableId, data }) => ({
+        url: `/admin/domain-expertise/lookup-tables/${tableId}/bulk`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { tableId }) => [
+        { type: 'LookupEntry', id: tableId },
+        { type: 'LookupTable', id: tableId },
+      ],
+    }),
+
+    // Value Driver endpoints
+    listValueDrivers: builder.query<
+      { valueDrivers: ValueDriverDefinitionDto[] },
+      string
+    >({
+      query: (moduleId) => `/admin/domain-expertise/modules/${moduleId}/value-drivers`,
+      providesTags: (_result, _error, moduleId) => [
+        { type: 'ValueDriver', id: moduleId },
+      ],
+    }),
+
+    createValueDriver: builder.mutation<
+      ValueDriverDefinitionDto,
+      { moduleId: string; data: CreateValueDriverDefinitionDto }
+    >({
+      query: ({ moduleId, data }) => ({
+        url: `/admin/domain-expertise/modules/${moduleId}/value-drivers`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { moduleId }) => [
+        { type: 'ValueDriver', id: moduleId },
+        { type: 'DomainExpertiseModule', id: moduleId },
+      ],
+    }),
+
+    updateValueDriver: builder.mutation<
+      ValueDriverDefinitionDto,
+      { id: string; data: UpdateValueDriverDefinitionDto }
+    >({
+      query: ({ id, data }) => ({
+        url: `/admin/domain-expertise/value-drivers/${id}`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: ['ValueDriver'],
+    }),
+
+    deleteValueDriver: builder.mutation<{ success: boolean }, string>({
+      query: (id) => ({
+        url: `/admin/domain-expertise/value-drivers/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['ValueDriver'],
+    }),
+
+    reorderValueDrivers: builder.mutation<
+      { success: boolean },
+      { moduleId: string; data: ReorderValueDriversDto }
+    >({
+      query: ({ moduleId, data }) => ({
+        url: `/admin/domain-expertise/modules/${moduleId}/value-drivers/reorder`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { moduleId }) => [
+        { type: 'ValueDriver', id: moduleId },
+      ],
+    }),
+
+    // Decoder endpoints
+    listDecoders: builder.query<
+      { decoders: DecoderDefinitionDto[] },
+      string
+    >({
+      query: (moduleId) => `/admin/domain-expertise/modules/${moduleId}/decoders`,
+      providesTags: (_result, _error, moduleId) => [
+        { type: 'Decoder', id: moduleId },
+      ],
+    }),
+
+    createDecoder: builder.mutation<
+      DecoderDefinitionDto,
+      { moduleId: string; data: CreateDecoderDefinitionDto }
+    >({
+      query: ({ moduleId, data }) => ({
+        url: `/admin/domain-expertise/modules/${moduleId}/decoders`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { moduleId }) => [
+        { type: 'Decoder', id: moduleId },
+        { type: 'DomainExpertiseModule', id: moduleId },
+      ],
+    }),
+
+    updateDecoder: builder.mutation<
+      DecoderDefinitionDto,
+      { id: string; data: UpdateDecoderDefinitionDto }
+    >({
+      query: ({ id, data }) => ({
+        url: `/admin/domain-expertise/decoders/${id}`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: ['Decoder'],
+    }),
+
+    deleteDecoder: builder.mutation<{ success: boolean }, string>({
+      query: (id) => ({
+        url: `/admin/domain-expertise/decoders/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Decoder'],
+    }),
+
+    testDecoder: builder.mutation<
+      TestDecoderResponse,
+      { id: string; data: TestDecoderDto }
+    >({
+      query: ({ id, data }) => ({
+        url: `/admin/domain-expertise/decoders/${id}/test`,
+        method: 'POST',
+        body: data,
+      }),
+    }),
+
+    validateDecoderPattern: builder.mutation<
+      ValidatePatternResponse,
+      ValidatePatternDto
+    >({
+      query: (body) => ({
+        url: '/admin/domain-expertise/decoders/validate-pattern',
+        method: 'POST',
+        body,
+      }),
+    }),
+
+    // Authenticity Marker endpoints
+    listAuthenticityMarkers: builder.query<
+      { markers: AuthenticityMarkerDefinitionDto[] },
+      string
+    >({
+      query: (moduleId) => `/admin/domain-expertise/modules/${moduleId}/authenticity-markers`,
+      providesTags: (_result, _error, moduleId) => [
+        { type: 'AuthenticityMarker', id: moduleId },
+      ],
+    }),
+
+    createAuthenticityMarker: builder.mutation<
+      AuthenticityMarkerDefinitionDto,
+      { moduleId: string; data: CreateAuthenticityMarkerDefinitionDto }
+    >({
+      query: ({ moduleId, data }) => ({
+        url: `/admin/domain-expertise/modules/${moduleId}/authenticity-markers`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { moduleId }) => [
+        { type: 'AuthenticityMarker', id: moduleId },
+        { type: 'DomainExpertiseModule', id: moduleId },
+      ],
+    }),
+
+    updateAuthenticityMarker: builder.mutation<
+      AuthenticityMarkerDefinitionDto,
+      { id: string; data: UpdateAuthenticityMarkerDefinitionDto }
+    >({
+      query: ({ id, data }) => ({
+        url: `/admin/domain-expertise/authenticity-markers/${id}`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: ['AuthenticityMarker'],
+    }),
+
+    deleteAuthenticityMarker: builder.mutation<{ success: boolean }, string>({
+      query: (id) => ({
+        url: `/admin/domain-expertise/authenticity-markers/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['AuthenticityMarker'],
+    }),
+
+    // Testing endpoints
+    testDecodePipeline: builder.mutation<
+      TestDecoderResponse,
+      { moduleId: string; data: TestDecoderDto }
+    >({
+      query: ({ moduleId, data }) => ({
+        url: `/admin/domain-expertise/modules/${moduleId}/test-decode`,
+        method: 'POST',
+        body: data,
+      }),
+    }),
+
+    testValueDrivers: builder.mutation<
+      TestValueDriversResponse,
+      { moduleId: string; data: TestValueDriversDto }
+    >({
+      query: ({ moduleId, data }) => ({
+        url: `/admin/domain-expertise/modules/${moduleId}/test-value-drivers`,
+        method: 'POST',
+        body: data,
+      }),
+    }),
+
+    testAuthenticity: builder.mutation<
+      TestAuthenticityResponse,
+      { moduleId: string; data: TestAuthenticityDto }
+    >({
+      query: ({ moduleId, data }) => ({
+        url: `/admin/domain-expertise/modules/${moduleId}/test-authenticity`,
+        method: 'POST',
+        body: data,
+      }),
+    }),
+
+    // ============================================================================
+    // Learning Endpoints (Slice 10)
+    // ============================================================================
+
+    // Research Outcomes
+    listResearchOutcomes: builder.query<
+      ListResearchOutcomesResponse,
+      ListResearchOutcomesQuery | void
+    >({
+      query: (params = {}) => ({
+        url: '/learning/outcomes',
+        params: params as Record<string, string>,
+      }),
+      providesTags: ['ResearchOutcome'],
+    }),
+
+    getResearchOutcome: builder.query<GetResearchOutcomeResponse, string>({
+      query: (id) => `/learning/outcomes/${id}`,
+      providesTags: (_result, _error, id) => [{ type: 'ResearchOutcome', id }],
+    }),
+
+    correctResearchOutcome: builder.mutation<
+      GetResearchOutcomeResponse,
+      { id: string; data: CorrectOutcomeDto }
+    >({
+      query: ({ id, data }) => ({
+        url: `/learning/outcomes/${id}/correct`,
+        method: 'PATCH',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'ResearchOutcome', id },
+        'ResearchOutcome',
+      ],
+    }),
+
+    // Tool Effectiveness
+    getToolEffectiveness: builder.query<
+      GetToolEffectivenessResponse,
+      ToolEffectivenessQuery | void
+    >({
+      query: (params = {}) => ({
+        url: '/learning/tool-effectiveness',
+        params: params as Record<string, string>,
+      }),
+      providesTags: ['ToolEffectiveness'],
+    }),
+
+    getToolEffectivenessTrends: builder.query<
+      GetToolEffectivenessTrendResponse,
+      { periodDays?: number }
+    >({
+      query: ({ periodDays }) => ({
+        url: '/learning/tool-effectiveness/trends',
+        params: periodDays ? { periodDays: String(periodDays) } : {},
+      }),
+      providesTags: ['ToolEffectiveness'],
+    }),
+
+    // Anomalies
+    listAnomalies: builder.query<
+      ListAnomaliesResponse,
+      ListAnomaliesQuery | void
+    >({
+      query: (params = {}) => ({
+        url: '/learning/anomalies',
+        params: params as Record<string, string>,
+      }),
+      providesTags: ['ResearchAnomaly'],
+    }),
+
+    resolveAnomaly: builder.mutation<
+      { anomaly: unknown },
+      { id: string; data: ResolveAnomalyDto }
+    >({
+      query: ({ id, data }) => ({
+        url: `/learning/anomalies/${id}/resolve`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'ResearchAnomaly', id },
+        'ResearchAnomaly',
+      ],
+    }),
+
+    // Calibration
+    triggerCalibration: builder.mutation<TriggerCalibrationResponse, void>({
+      query: () => ({
+        url: '/learning/calibrate',
+        method: 'POST',
+      }),
+      invalidatesTags: ['ToolEffectiveness', 'CalibrationHistory'],
+    }),
+
+    getCalibrationHistory: builder.query<
+      GetCalibrationHistoryResponse,
+      GetCalibrationHistoryQuery | void
+    >({
+      query: (params = {}) => ({
+        url: '/admin/learning/calibration/history',
+        params: params as Record<string, string>,
+      }),
+      providesTags: ['CalibrationHistory'],
+    }),
+
+    // Dashboard
+    getLearningDashboard: builder.query<
+      GetLearningDashboardResponse,
+      LearningDashboardQuery | void
+    >({
+      query: (params = {}) => ({
+        url: '/learning/dashboard',
+        params: params as Record<string, string>,
+      }),
+      providesTags: ['ResearchOutcome', 'ToolEffectiveness', 'ResearchAnomaly'],
+    }),
+
+    // Admin Learning Endpoints
+    getGlobalToolEffectiveness: builder.query<
+      GetToolEffectivenessResponse,
+      ToolEffectivenessQuery | void
+    >({
+      query: (params = {}) => ({
+        url: '/admin/learning/global-effectiveness',
+        params: params as Record<string, string>,
+      }),
+      providesTags: ['ToolEffectiveness'],
+    }),
+
+    getAllAnomalies: builder.query<
+      ListAnomaliesResponse,
+      ListAnomaliesQuery | void
+    >({
+      query: (params = {}) => ({
+        url: '/admin/learning/all-anomalies',
+        params: params as Record<string, string>,
+      }),
+      providesTags: ['ResearchAnomaly'],
     }),
   }),
 });
@@ -1105,6 +1804,9 @@ export const {
   useUpdateBillingSettingsMutation,
   useGetSecuritySettingsQuery,
   useUpdateSecuritySettingsMutation,
+  // Research Settings hooks
+  useGetResearchSettingsQuery,
+  useUpdateResearchSettingsMutation,
   // Settings Audit & Version History hooks
   useGetSettingsVersionsQuery,
   useGetSettingsAuditLogsQuery,
@@ -1112,5 +1814,66 @@ export const {
   useRevertSettingsMutation,
   useGetAdminSettingsAuditLogsQuery,
   useGetAdminSettingsVersionsQuery,
+  // Domain Expertise hooks (Slice 9.1)
+  // Module hooks
+  useListDomainExpertiseModulesQuery,
+  useGetDomainExpertiseModuleQuery,
+  useCreateDomainExpertiseModuleMutation,
+  useUpdateDomainExpertiseModuleMutation,
+  useDeleteDomainExpertiseModuleMutation,
+  useDuplicateDomainExpertiseModuleMutation,
+  usePublishDomainExpertiseModuleMutation,
+  useRollbackDomainExpertiseModuleMutation,
+  useListDomainExpertiseVersionsQuery,
+  useGetDomainExpertiseVersionQuery,
+  // Lookup Table hooks
+  useListLookupTablesQuery,
+  useGetLookupTableQuery,
+  useCreateLookupTableMutation,
+  useUpdateLookupTableMutation,
+  useDeleteLookupTableMutation,
+  useImportLookupEntriesMutation,
+  useLazyExportLookupEntriesQuery,
+  // Lookup Entry hooks
+  useListLookupEntriesQuery,
+  useCreateLookupEntryMutation,
+  useUpdateLookupEntryMutation,
+  useDeleteLookupEntryMutation,
+  useBulkLookupEntriesMutation,
+  // Value Driver hooks
+  useListValueDriversQuery,
+  useCreateValueDriverMutation,
+  useUpdateValueDriverMutation,
+  useDeleteValueDriverMutation,
+  useReorderValueDriversMutation,
+  // Decoder hooks
+  useListDecodersQuery,
+  useCreateDecoderMutation,
+  useUpdateDecoderMutation,
+  useDeleteDecoderMutation,
+  useTestDecoderMutation,
+  useValidateDecoderPatternMutation,
+  // Authenticity Marker hooks
+  useListAuthenticityMarkersQuery,
+  useCreateAuthenticityMarkerMutation,
+  useUpdateAuthenticityMarkerMutation,
+  useDeleteAuthenticityMarkerMutation,
+  // Testing hooks
+  useTestDecodePipelineMutation,
+  useTestValueDriversMutation,
+  useTestAuthenticityMutation,
+  // Learning hooks (Slice 10)
+  useListResearchOutcomesQuery,
+  useGetResearchOutcomeQuery,
+  useCorrectResearchOutcomeMutation,
+  useGetToolEffectivenessQuery,
+  useGetToolEffectivenessTrendsQuery,
+  useListAnomaliesQuery,
+  useResolveAnomalyMutation,
+  useTriggerCalibrationMutation,
+  useGetCalibrationHistoryQuery,
+  useGetLearningDashboardQuery,
+  useGetGlobalToolEffectivenessQuery,
+  useGetAllAnomaliesQuery,
 } = api;
 

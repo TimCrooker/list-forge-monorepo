@@ -9,3 +9,5 @@ export * from './items';
 export * from './research';
 export * from './chat';
 export * from './settings-audit';
+export * from './domain-expertise';
+export * from './learning';

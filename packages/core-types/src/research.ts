@@ -149,6 +149,34 @@ export interface OCRExtractionResult {
   rawText: string[];
   labels: Record<string, string>; // key-value pairs from labels
   confidence: number; // 0-1
+  // Slice 4: Enhanced text chunks with classification
+  textChunks?: TextChunk[];
+}
+
+/**
+ * Text chunk region type
+ * Slice 4: Where on the product the text was found
+ */
+export type TextChunkRegion = 'label' | 'tag' | 'packaging' | 'product' | 'unknown';
+
+/**
+ * Classified text chunk from OCR
+ * Slice 4: OCR-to-Search Pipeline
+ *
+ * Each text chunk is classified to determine if it's likely a searchable identifier
+ * (model number, SKU, etc.) vs descriptive text or noise.
+ */
+export interface TextChunk {
+  /** The extracted text */
+  text: string;
+  /** Where on the product this was found */
+  region: TextChunkRegion;
+  /** Confidence in the extraction (0-1) */
+  confidence: number;
+  /** Whether this looks like a product identifier (model number, SKU, etc.) */
+  isLikelyIdentifier: boolean;
+  /** Pattern that matched if isLikelyIdentifier is true */
+  matchedPattern?: string;
 }
 
 /**
@@ -537,7 +565,9 @@ export type AgentOperationType =
   | 'evaluate_fields'         // Evaluating field completion
   | 'plan_next_research'      // Planning next research task
   | 'execute_research'        // Executing a research task
-  | 'validate_readiness';     // Validating listing readiness
+  | 'validate_readiness'      // Validating listing readiness
+  // Slice 6: Identification Validation Checkpoint
+  | 'validation_checkpoint';  // Validating identification against market evidence
 
 /**
  * Event lifecycle types within an operation
@@ -738,15 +768,24 @@ export interface AmazonResearchData {
  * Tracks where field values originated from
  */
 export type FieldDataSourceType =
-  | 'upc_lookup'      // UPC Database API
-  | 'vision_ai'       // GPT-4o vision analysis
-  | 'web_search'      // OpenAI web search
-  | 'keepa'           // Keepa Amazon data
-  | 'amazon_catalog'  // Amazon SP-API catalog
-  | 'ebay_api'        // eBay Taxonomy/Browse API
-  | 'user_input'      // User manually entered
-  | 'ocr'             // OCR text extraction
-  | 'user_hint';      // User provided hint during capture
+  | 'upc_lookup'              // UPC Database API
+  | 'vision_ai'               // GPT-4o vision analysis
+  | 'vision_analysis_guided'  // Category-specific guided vision
+  | 'web_search'              // OpenAI web search (generic)
+  | 'web_search_targeted'     // Field-specific web search
+  | 'web_search_general'      // General product web search
+  | 'reverse_image_search'    // Google Lens / visual similarity
+  | 'keepa'                   // Keepa Amazon data
+  | 'amazon_catalog'          // Amazon SP-API catalog
+  | 'amazon_sp_api'           // Amazon SP-API (generic)
+  | 'ebay_api'                // eBay Taxonomy/Browse API
+  | 'ebay_sold'               // eBay sold listings
+  | 'ebay_active'             // eBay active listings
+  | 'user_input'              // User manually entered
+  | 'ocr'                     // OCR text extraction
+  | 'ocr_search'              // Search using OCR-extracted identifiers
+  | 'user_hint'               // User provided hint during capture
+  | 'product_page_extraction';  // Extracted from product page
 
 /**
  * Source of field data with its contribution
@@ -814,14 +853,21 @@ export interface ItemFieldStates {
  */
 export type ResearchToolType =
   | 'vision_analysis'         // GPT-4o vision on images
+  | 'vision_analysis_guided'  // Category-specific guided visual inspection
   | 'ocr_extraction'          // Text extraction from images
+  | 'ocr_search'              // Search with OCR-extracted text that looks like identifiers
   | 'upc_lookup'              // UPC Database API
   | 'web_search_general'      // General product web search
   | 'web_search_targeted'     // Field-specific web search
+  | 'web_search_iterative'    // Multi-strategy web search with query refinement
   | 'keepa_lookup'            // Keepa Amazon data
   | 'amazon_catalog'          // Amazon SP-API catalog
-  | 'ebay_comps'              // eBay sold listings search
-  | 'ebay_taxonomy';          // eBay category/aspects API
+  // NOTE: ebay_comps is handled by search_comps node in Core Operations phase,
+  // not as a field research tool. See buildFieldDrivenResearchGraph().
+  | 'ebay_taxonomy'           // eBay category/aspects API
+  | 'reverse_image_search'    // Google Lens / visual similarity search for identification
+  | 'product_page_extraction' // Extract structured specs from product page URLs
+  | 'domain_knowledge_lookup';  // Decode identifiers, check authenticity, detect value drivers
 
 /**
  * Research tool metadata for planning
@@ -829,6 +875,7 @@ export type ResearchToolType =
 export interface ResearchToolMetadata {
   type: ResearchToolType;
   displayName: string;
+  description?: string;               // Human-readable description of what the tool does
   canProvideFields: string[];         // Fields this tool can help with ('*' = any)
   baseCost: number;                   // Base cost in USD
   baseTimeMs: number;                 // Base time in ms
@@ -889,6 +936,53 @@ export interface ResearchTaskResult {
   cost: number;
   timeMs: number;
   error?: string;
+}
+
+// ============================================================================
+// TASK HISTORY TRACKING (Bulletproofing)
+// Tracks tool attempts and failures to prevent infinite loops
+// ============================================================================
+
+/**
+ * Maximum number of times to attempt a specific tool type per research run.
+ * After this limit, the tool is considered exhausted.
+ */
+export const MAX_ATTEMPTS_PER_TOOL = 2;
+
+/**
+ * Maximum number of consecutive iterations with no field progress.
+ * After this limit, research is considered stuck and should stop.
+ */
+export const MAX_CONSECUTIVE_NO_PROGRESS = 3;
+
+/**
+ * Tracks research task history to prevent infinite loops.
+ * Used by the planner to skip failed/exhausted tools.
+ */
+export interface ResearchTaskHistory {
+  /**
+   * Number of times each tool has been attempted.
+   * Key is tool type (e.g., 'web_search_targeted'), value is attempt count.
+   */
+  attemptsByTool: Partial<Record<ResearchToolType, number>>;
+
+  /**
+   * Tools that have failed to produce results and should be skipped.
+   * A tool is added here if it returns no field updates after execution.
+   */
+  failedTools: ResearchToolType[];
+
+  /**
+   * Number of consecutive iterations without any field state changes.
+   * Used for stuck detection - reset to 0 when progress is made.
+   */
+  consecutiveNoProgress: number;
+
+  /**
+   * Hash of the last field states, used for stuck detection.
+   * If this doesn't change between iterations, we're not making progress.
+   */
+  lastFieldStatesHash: string | null;
 }
 
 // ============================================================================
@@ -1087,6 +1181,17 @@ export const RESEARCH_TOOLS: ResearchToolMetadata[] = [
     priority: 100, // Run first - fast and cheap
   },
   {
+    type: 'ocr_search',
+    displayName: 'OCR Text Search',
+    description: 'Search with OCR-extracted text that looks like product identifiers',
+    canProvideFields: ['brand', 'model', 'title', 'category', 'mpn'],
+    baseCost: 0.03, // Multiple web searches
+    baseTimeMs: 3000,
+    confidenceWeight: 0.72, // 0.85 OCR * 0.85 search indirection
+    requiresFields: [], // Can run if we have images with extractable text
+    priority: 82, // After OCR extraction, before general web search
+  },
+  {
     type: 'vision_analysis',
     displayName: 'Vision AI Analysis',
     canProvideFields: ['brand', 'color', 'material', 'condition', 'size', 'category', 'style', 'pattern', 'vintage'],
@@ -1094,6 +1199,17 @@ export const RESEARCH_TOOLS: ResearchToolMetadata[] = [
     baseTimeMs: 3000,
     confidenceWeight: 0.70,
     priority: 90,
+  },
+  {
+    type: 'vision_analysis_guided',
+    displayName: 'Guided Visual Inspection',
+    description: 'Category-specific visual inspection with expert knowledge of where to look',
+    canProvideFields: ['brand', 'model', 'serial', 'year', 'color', 'size', 'material', 'condition', 'authenticity'],
+    baseCost: 0.03, // Slightly more expensive due to larger prompt
+    baseTimeMs: 4000,
+    confidenceWeight: 0.82, // Higher than generic vision due to targeted inspection
+    requiresFields: [], // Can run on any item with images, detects category automatically
+    priority: 88, // Run after generic vision but before web search
   },
   {
     type: 'upc_lookup',
@@ -1136,14 +1252,20 @@ export const RESEARCH_TOOLS: ResearchToolMetadata[] = [
     priority: 60,
   },
   {
-    type: 'ebay_comps',
-    displayName: 'eBay Sold Listings',
-    canProvideFields: ['price', 'title', 'category'],
-    baseCost: 0.01,
-    baseTimeMs: 2000,
-    confidenceWeight: 0.80,
-    priority: 70,
+    type: 'web_search_iterative',
+    displayName: 'Iterative Web Search',
+    description: 'Multi-strategy web search with query refinement based on partial matches',
+    canProvideFields: ['brand', 'model', 'mpn', 'title', 'description', 'category', 'specifications'],
+    baseCost: 0.08, // Higher cost due to multiple iterations
+    baseTimeMs: 8000, // Longer time due to refinement loops
+    confidenceWeight: 0.78, // Higher than single-shot due to refinement
+    requiresFields: [], // Can run with any data - adapts strategy
+    priority: 75, // Between targeted and general
   },
+  // NOTE: ebay_comps removed from field research tools.
+  // Comp search is handled by search_comps node in Core Operations phase,
+  // which runs AFTER the adaptive field research loop.
+  // See buildFieldDrivenResearchGraph() in research-graph.builder.ts.
   {
     type: 'ebay_taxonomy',
     displayName: 'eBay Category API',
@@ -1162,6 +1284,39 @@ export const RESEARCH_TOOLS: ResearchToolMetadata[] = [
     confidenceWeight: 0.88,
     requiresFields: ['upc'],
     priority: 75,
+  },
+  {
+    type: 'reverse_image_search',
+    displayName: 'Visual Product Search',
+    description: 'Find matching products using image similarity (Google Lens style)',
+    canProvideFields: ['brand', 'model', 'title', 'category', 'price'],
+    baseCost: 0.02,
+    baseTimeMs: 3000,
+    confidenceWeight: 0.85, // High confidence when match found
+    requiresFields: [], // No prerequisites - can run on any item with images
+    priority: 92, // High priority - often most effective for identification
+  },
+  {
+    type: 'product_page_extraction',
+    displayName: 'Product Page Extraction',
+    description: 'Extract structured specifications from product page URLs found in research',
+    canProvideFields: ['brand', 'model', 'mpn', 'upc', 'title', 'description', 'specifications', 'price', 'weight', 'dimensions'],
+    baseCost: 0.03, // Fetch + LLM parsing
+    baseTimeMs: 5000, // Page fetch + extraction
+    confidenceWeight: 0.80, // Good confidence from structured data
+    requiresFields: [], // Needs URLs from prior research (tracked separately)
+    priority: 70, // After web search finds URLs
+  },
+  {
+    type: 'domain_knowledge_lookup',
+    displayName: 'Domain Knowledge Lookup',
+    description: 'Decode date codes, style numbers, and other category-specific identifiers. Detect value drivers and check authenticity markers.',
+    canProvideFields: ['year', 'year_manufactured', 'authenticity', 'value_multiplier'],
+    baseCost: 0.001, // Pure computation, no API calls
+    baseTimeMs: 100, // Very fast local computation
+    confidenceWeight: 0.98, // High confidence - deterministic decoding
+    requiresFields: [], // Can run if extractedIdentifiers exist
+    priority: 96, // High priority - fast and cheap, run early
   },
 ];
 
@@ -1528,6 +1683,75 @@ export interface ResearchSuccessCriteria {
   minimumFields: string[];
 }
 
+// =============================================================================
+// REVERSE IMAGE SEARCH TYPES (Slice 1 - Research Quality Improvement)
+// =============================================================================
+
+/**
+ * Provider types for reverse image search
+ */
+export type ReverseImageSearchProvider =
+  | 'google_cloud_vision'  // Google Cloud Vision Web Detection (primary - official API)
+  | 'serpapi_google_lens'  // SerpApi Google Lens (backup)
+  | 'bing_visual_search'   // Bing Visual Search API (backup)
+  | 'openai_vision_web';   // OpenAI Vision + Web Search (fallback)
+
+/**
+ * A single visual match result from reverse image search
+ */
+export interface VisualSearchMatch {
+  /** Product name/title from the match */
+  title: string;
+  /** Brand if identified */
+  brand?: string;
+  /** Model if identified */
+  model?: string;
+  /** Product category */
+  category?: string;
+  /** How confident the match is (0-1) */
+  confidence: number;
+  /** URL of the source page */
+  sourceUrl: string;
+  /** URL of the matching image */
+  matchingImageUrl?: string;
+  /** Price if found */
+  price?: number;
+  /** Currency for the price */
+  currency?: string;
+  /** Price range if available */
+  priceRange?: { min: number; max: number };
+  /** Source domain (e.g., "amazon.com", "ebay.com") */
+  sourceDomain?: string;
+  /** Additional extracted attributes */
+  attributes?: Record<string, string>;
+}
+
+/**
+ * Result from reverse image search service
+ */
+export interface ReverseImageSearchResult {
+  /** Which provider returned this result */
+  provider: ReverseImageSearchProvider;
+  /** The image URL that was searched */
+  searchedImageUrl: string;
+  /** Visual matches found */
+  matches: VisualSearchMatch[];
+  /** Best match (highest confidence) */
+  bestMatch?: VisualSearchMatch;
+  /** Overall confidence in identification (0-1) */
+  confidence: number;
+  /** Whether the search was successful */
+  success: boolean;
+  /** Error message if failed */
+  error?: string;
+  /** Time taken in milliseconds */
+  durationMs: number;
+  /** Timestamp of the search */
+  timestamp: string;
+  /** Whether result came from cache */
+  cached?: boolean;
+}
+
 /**
  * Complete research plan generated by the planning phase
  * Uses Pre-Act Pattern: plan before acting improves accuracy 20-40%
@@ -1553,4 +1777,855 @@ export interface ResearchPlan {
 
   /** Reasoning summary (~1000 tokens) */
   reasoning?: string;
+}
+
+// =============================================================================
+// CATEGORY INSPECTION GUIDES (Slice 2 - Research Quality Improvement)
+// =============================================================================
+
+/**
+ * Category identifier for inspection guides
+ * Used to match items to appropriate inspection guides
+ */
+export type CategoryId =
+  | 'luxury_handbags'
+  | 'sneakers'
+  | 'vintage_denim'
+  | 'watches'
+  | 'electronics_phones'
+  | 'electronics_computers'
+  | 'electronics_gaming'
+  | 'designer_clothing'
+  | 'vintage_tshirts'
+  | 'trading_cards'
+  | 'vinyl_records'
+  | 'collectible_toys'
+  | 'jewelry'
+  | 'art_prints'
+  | 'camera_equipment'
+  | 'audio_equipment'
+  | 'sporting_goods'
+  | 'musical_instruments'
+  | 'tools_equipment'
+  | 'general';
+
+/**
+ * A specific region on a product to inspect
+ * Tells the AI exactly where to look and what to extract
+ */
+export interface InspectionRegion {
+  /** Name of the region (e.g., "Interior Label", "Case Back") */
+  name: string;
+  /** Human-readable description of where this region is */
+  description: string;
+  /** Specific things to look for in this region */
+  lookFor: string[];
+  /** Example prompt to guide the AI for this region */
+  examplePrompt: string;
+  /** Priority of this region (higher = more important) */
+  priority?: number;
+  /** Fields this region can help identify */
+  canProvideFields?: string[];
+}
+
+/**
+ * A specific identifying feature for a category
+ * Contains decoding information for codes, patterns, etc.
+ */
+export interface IdentifyingFeature {
+  /** Name of the feature (e.g., "Date Code", "Style Number") */
+  feature: string;
+  /** Description of how to decode this feature */
+  description?: string;
+  /** Pattern format explanation */
+  decodingPattern?: string;
+  /** Example values */
+  example?: string;
+  /** Regular expression to match this feature */
+  matchPattern?: string;
+}
+
+/**
+ * Brand-specific identification information
+ */
+export interface BrandGuide {
+  /** Brand name */
+  brand: string;
+  /** Things that identify this brand */
+  identifiers: string[];
+  /** Known model/style patterns */
+  modelPatterns?: string[];
+  /** Common authenticity markers */
+  authenticityMarkers?: string[];
+  /** Typical price range for this brand */
+  priceRange?: { min: number; max: number };
+}
+
+/**
+ * Authenticity marker for luxury/collectible items
+ */
+export interface AuthenticityMarker {
+  /** Name of the marker */
+  name: string;
+  /** What to look for */
+  description: string;
+  /** How important this is for authentication */
+  importance: 'critical' | 'important' | 'helpful';
+  /** Brands this applies to */
+  applicableBrands?: string[];
+}
+
+/**
+ * Complete category inspection guide
+ * Contains everything needed for category-specific visual inspection
+ */
+export interface CategoryInspectionGuide {
+  /** Unique category identifier */
+  categoryId: CategoryId;
+  /** Human-readable category name */
+  categoryName: string;
+  /** Keywords that might indicate this category */
+  categoryKeywords: string[];
+  /** Specific regions to inspect */
+  inspectionRegions: InspectionRegion[];
+  /** Identifying features unique to this category */
+  identifyingFeatures: IdentifyingFeature[];
+  /** Brand-specific guidance for common brands */
+  commonBrands: BrandGuide[];
+  /** Attributes that significantly affect value */
+  valueDrivers: string[];
+  /** Authenticity markers (for luxury/collectible items) */
+  authenticityMarkers?: AuthenticityMarker[];
+  /** System prompt additions for this category */
+  systemPromptAdditions?: string;
+  /** Typical fields this category needs */
+  typicalFields?: string[];
+}
+
+/**
+ * Result from category detection
+ */
+export interface CategoryDetectionResult {
+  /** Detected category ID */
+  categoryId: CategoryId;
+  /** Confidence in detection (0-1) */
+  confidence: number;
+  /** Reasoning for this detection */
+  reasoning?: string;
+  /** Alternative categories considered */
+  alternatives?: Array<{ categoryId: CategoryId; confidence: number }>;
+}
+
+/**
+ * Result from guided vision analysis
+ */
+export interface GuidedVisionAnalysisResult {
+  /** Category used for analysis */
+  categoryId: CategoryId;
+  /** Results from each inspection region */
+  regionResults: RegionAnalysisResult[];
+  /** Extracted identifiers (model numbers, codes, etc.) */
+  extractedIdentifiers: ExtractedIdentifier[];
+  /** Overall confidence in the analysis */
+  confidence: number;
+  /** Summary of findings */
+  summary: string;
+  /** Raw extracted text from all regions */
+  allExtractedText: string[];
+}
+
+/**
+ * Result from analyzing a single region
+ */
+export interface RegionAnalysisResult {
+  /** Region that was analyzed */
+  regionName: string;
+  /** Whether the region was found */
+  found: boolean;
+  /** Extracted text from this region */
+  extractedText: string[];
+  /** Identified values (brand, model, etc.) */
+  identifiedValues: Record<string, string>;
+  /** Confidence in this region's results */
+  confidence: number;
+  /** Notes about this region */
+  notes?: string;
+}
+
+/**
+ * An extracted identifier (model number, serial, code, etc.)
+ */
+export interface ExtractedIdentifier {
+  /** Type of identifier */
+  type: 'model_number' | 'serial_number' | 'date_code' | 'style_number' | 'upc' | 'sku' | 'other';
+  /** The extracted value */
+  value: string;
+  /** Where this was found */
+  source: string;
+  /** Confidence in extraction */
+  confidence: number;
+  /** Decoded meaning (if applicable) */
+  decoded?: Record<string, string>;
+}
+
+// =============================================================================
+// ITERATIVE SEARCH REFINEMENT (Slice 3 - Research Quality Improvement)
+// =============================================================================
+
+/**
+ * Search strategy types for iterative search refinement
+ * Each strategy represents a different approach to finding product information
+ */
+export type IterativeSearchStrategy =
+  | 'exact_identifier'    // Search with extracted model numbers/SKUs (highest precision)
+  | 'brand_model'         // Search with brand + model combination
+  | 'ocr_text'            // Search with raw OCR text chunks
+  | 'descriptive'         // Search with category + attributes (broadest)
+  | 'refined';            // Search with signals from previous iterations
+
+/**
+ * A signal extracted from search results that guides query refinement
+ * These hints help generate better follow-up queries
+ */
+export interface RefinementSignal {
+  /** Type of signal found */
+  type: 'found_brand' | 'found_model' | 'found_variant' | 'found_category' | 'price_cluster' | 'no_results' | 'ambiguous_results';
+  /** The extracted value */
+  value: string;
+  /** Confidence in this signal (0-1) */
+  confidence: number;
+  /** Source URLs where this was found */
+  sourceUrls?: string[];
+  /** Additional context about the signal */
+  context?: string;
+}
+
+/**
+ * A single search iteration with its results and refinement signals
+ */
+export interface SearchIteration {
+  /** Which strategy was used */
+  strategy: IterativeSearchStrategy;
+  /** The query that was executed */
+  query: string;
+  /** Search results */
+  results: WebSearchResult[];
+  /** Signals extracted from results for refinement */
+  refinementSignals: RefinementSignal[];
+  /** Whether this iteration found a strong match */
+  hasStrongMatch: boolean;
+  /** Iteration number (1-based) */
+  iterationNumber: number;
+  /** Time taken in milliseconds */
+  durationMs: number;
+}
+
+/**
+ * Product identification extracted from iterative search
+ */
+export interface IterativeSearchIdentification {
+  /** Brand identified */
+  brand?: string;
+  /** Model identified */
+  model?: string;
+  /** MPN if found */
+  mpn?: string;
+  /** UPC if found */
+  upc?: string;
+  /** Suggested title */
+  title?: string;
+  /** Suggested description */
+  description?: string;
+  /** Category path */
+  category?: string[];
+  /** Additional specifications */
+  specifications?: Record<string, string | number | boolean>;
+  /** Source URLs that contributed to this identification */
+  sourceUrls: string[];
+}
+
+/**
+ * Complete result from iterative search service
+ */
+export interface IterativeSearchResult {
+  /** Product identification if found */
+  identification: IterativeSearchIdentification | null;
+  /** All iterations performed */
+  iterations: SearchIteration[];
+  /** Total number of searches executed */
+  totalSearches: number;
+  /** Overall confidence in the identification (0-1) */
+  confidence: number;
+  /** Best strategy that produced results */
+  bestStrategy?: IterativeSearchStrategy;
+  /** Whether search was successful */
+  success: boolean;
+  /** Error message if failed */
+  error?: string;
+  /** Total time taken in milliseconds */
+  totalDurationMs: number;
+  /** Total cost in USD */
+  totalCost: number;
+}
+
+/**
+ * Context for iterative search
+ * Contains all available data to guide search strategies
+ */
+export interface IterativeSearchContext {
+  /** Item ID for logging */
+  itemId: string;
+  /** Organization ID */
+  organizationId: string;
+  /** Extracted identifiers (model numbers, SKUs) from OCR/vision */
+  extractedIdentifiers: string[];
+  /** Brand if already known */
+  brand?: string;
+  /** Model if already known */
+  model?: string;
+  /** Category if already known */
+  category?: string;
+  /** Color if known */
+  color?: string;
+  /** Size if known */
+  size?: string;
+  /** MPN if known */
+  mpn?: string;
+  /** UPC if known */
+  upc?: string;
+  /** Raw OCR text chunks for search */
+  ocrTextChunks?: string[];
+  /** Visual description from image analysis */
+  visualDescription?: string;
+  /** Current field values for context */
+  currentFields?: Record<string, unknown>;
+}
+
+// =============================================================================
+// SLICE 5: STRUCTURED COMP ATTRIBUTE MATCHING
+// Category-aware attribute weights for more accurate comp scoring
+// =============================================================================
+
+/**
+ * Structured attributes extracted from comps for attribute-level matching.
+ * These are the normalized attributes used for scoring.
+ */
+export interface CompAttributes {
+  brand?: string;
+  model?: string;
+  variant?: string;
+  size?: string;
+  color?: string;
+  year?: number;
+  condition?: string;
+  edition?: string;    // "OG", "Retro", "Limited", etc.
+  gender?: string;
+  material?: string;
+  storage?: string;    // For electronics (e.g., "256GB")
+  colorway?: string;   // For sneakers (e.g., "Infrared")
+  refNumber?: string;  // For watches (e.g., "116500LN")
+  grade?: string;      // For trading cards (e.g., "PSA 10")
+}
+
+/**
+ * Result of matching a single attribute between item and comp.
+ * Provides detailed breakdown of how each attribute contributes to score.
+ */
+export interface AttributeMatchResult {
+  /** Attribute name (e.g., "brand", "colorway") */
+  attribute: string;
+  /** Value from the item being listed */
+  itemValue: string | null;
+  /** Value from the comparable listing */
+  compValue: string | null;
+  /** Type of match achieved */
+  matchType: 'exact' | 'partial' | 'missing' | 'mismatch';
+  /** Importance weight for this attribute (0-1, category-specific) */
+  importance: number;
+  /** Calculated contribution to score (importance * match_score) */
+  scoreImpact: number;
+}
+
+/**
+ * Category-specific weights for comp validation and scoring.
+ * Different categories prioritize different attributes.
+ * E.g., sneakers weight colorway heavily; watches weight reference number.
+ */
+export interface CategoryAttributeWeights {
+  /** Category this weight set applies to */
+  categoryId: CategoryId;
+
+  /**
+   * Weights for main validation criteria.
+   * Used in calculateOverallScore() for comp validation.
+   * Must sum to 1.0 for proper normalization.
+   */
+  validationWeights: {
+    brand: number;       // Brand match importance
+    model: number;       // Model match importance
+    variant: number;     // Variant/colorway match importance
+    condition: number;   // Condition match importance
+    recency: number;     // How recent the sale was
+    priceOutlier: number; // Price deviation penalty
+  };
+
+  /**
+   * Importance weights for variant sub-attributes.
+   * Used when breaking down variant match scoring.
+   * Higher values = more important for this category.
+   */
+  variantImportance: {
+    color: number;       // Color importance
+    size: number;        // Size importance
+    edition: number;     // Edition/release importance
+    material: number;    // Material importance
+    year: number;        // Year/age importance
+    colorway?: number;   // Sneaker colorway (overrides color)
+    storage?: number;    // Electronics storage capacity
+    refNumber?: number;  // Watch reference number
+    grade?: number;      // Trading card grade
+  };
+
+  /**
+   * Score boosts applied when attributes match.
+   * Used in scoreCompRelevanceHeuristic() for quick relevance scoring.
+   */
+  matchBoosts: {
+    brand: number;       // Boost for brand match
+    model: number;       // Boost for model match
+    condition: number;   // Boost for condition match
+    variant: number;     // Boost for variant match
+  };
+}
+
+// =============================================================================
+// SLICE 6: IDENTIFICATION VALIDATION CHECKPOINT
+// Validates identification against market evidence before pricing
+// =============================================================================
+
+/**
+ * Type of validation issue detected during identification checkpoint
+ */
+export type ValidationIssueType =
+  | 'price_mismatch'           // Comp prices don't match expected range
+  | 'no_matching_comps'        // Found comps but none match well
+  | 'attribute_inconsistency'  // Extracted attributes don't make sense together
+  | 'visual_mismatch'          // Item doesn't look like matched comps
+  | 'low_comp_quality'         // Comps are low relevance/confidence
+  | 'category_mismatch';       // Comps suggest different category
+
+/**
+ * Severity of validation issue
+ */
+export type ValidationSeverity = 'info' | 'warning' | 'error';
+
+/**
+ * Individual validation issue found during checkpoint
+ */
+export interface ValidationIssue {
+  /** Type of issue detected */
+  type: ValidationIssueType;
+  /** Severity level */
+  severity: ValidationSeverity;
+  /** Human-readable description of the issue */
+  message: string;
+  /** Evidence supporting the issue */
+  evidence: {
+    /** Expected value or range */
+    expected?: unknown;
+    /** Actual observed value */
+    actual?: unknown;
+    /** Additional details */
+    details?: Record<string, unknown>;
+  };
+}
+
+/**
+ * Hint to guide re-identification when validation fails
+ */
+export interface ReidentificationHint {
+  /** Type of hint */
+  type:
+    | 'exclude_brand'       // Current brand seems wrong
+    | 'exclude_model'       // Current model seems wrong
+    | 'try_category'        // Try a different category
+    | 'use_comp_suggestion' // Use terms from comp titles
+    | 'search_different';   // Try broader/different search
+  /** Value associated with the hint */
+  value: string;
+  /** Reason for this hint */
+  reason: string;
+  /** Confidence in this hint (0-1) */
+  confidence: number;
+}
+
+/**
+ * Result of the identification validation checkpoint.
+ * Determines whether to proceed with pricing or re-identify.
+ */
+export interface ValidationCheckResult {
+  /** Whether identification passed validation */
+  isValid: boolean;
+  /** Overall confidence in the validation (0-1) */
+  confidence: number;
+  /** All issues found during validation */
+  issues: ValidationIssue[];
+  /** Whether we should attempt re-identification */
+  shouldReidentify: boolean;
+  /** Hints for re-identification if needed */
+  reidentificationHints?: ReidentificationHint[];
+  /** Summary statistics */
+  stats: {
+    /** Total number of validation checks run */
+    totalChecks: number;
+    /** Number of checks that passed */
+    passedChecks: number;
+    /** Number of warnings */
+    warningCount: number;
+    /** Number of errors */
+    errorCount: number;
+  };
+}
+
+// =============================================================================
+// Slice 7: Cross-Source Validation Types
+// =============================================================================
+
+/**
+ * Source independence groups
+ * Sources in the same group are NOT independent (derived from same underlying data)
+ *
+ * Used to determine corroboration - two sources in the SAME group don't count
+ * as independent corroboration because they draw from the same data pool.
+ */
+export type SourceIndependenceGroup =
+  | 'amazon'          // amazon_catalog, keepa, amazon_sp_api - All Amazon ecosystem
+  | 'vision'          // vision_ai, vision_analysis_guided - Same vision model
+  | 'text_extraction' // ocr, ocr_search - OCR-based extraction
+  | 'ebay'            // ebay_sold, ebay_active, ebay_api - All eBay ecosystem
+  | 'web'             // web_search_*, reverse_image_search - General web sources
+  | 'user'            // user_input, user_hint - User-provided data
+  | 'upc';            // upc_lookup - Standalone authoritative source
+
+/**
+ * Mapping from FieldDataSourceType to independence group
+ */
+export const SOURCE_TO_GROUP: Record<FieldDataSourceType, SourceIndependenceGroup> = {
+  // Amazon ecosystem
+  amazon_catalog: 'amazon',
+  keepa: 'amazon',
+  amazon_sp_api: 'amazon',
+
+  // Vision AI
+  vision_ai: 'vision',
+  vision_analysis_guided: 'vision',
+
+  // Text extraction
+  ocr: 'text_extraction',
+  ocr_search: 'text_extraction',
+
+  // eBay ecosystem
+  ebay_sold: 'ebay',
+  ebay_active: 'ebay',
+  ebay_api: 'ebay',
+
+  // Web search sources
+  web_search: 'web',
+  web_search_targeted: 'web',
+  web_search_general: 'web',
+  reverse_image_search: 'web',
+
+  // User provided
+  user_input: 'user',
+  user_hint: 'user',
+
+  // Authoritative sources (standalone)
+  upc_lookup: 'upc',
+
+  // Product page extraction (web source)
+  product_page_extraction: 'web',
+};
+
+/**
+ * Conflict between sources for a field value
+ * Indicates that two independent sources disagree on a value
+ */
+export interface FieldConflict {
+  /** Field name where conflict occurred */
+  fieldName: string;
+  /** First conflicting value */
+  value1: unknown;
+  /** Source type of first value */
+  source1: FieldDataSourceType;
+  /** Independence group of first source */
+  group1: SourceIndependenceGroup;
+  /** Second conflicting value */
+  value2: unknown;
+  /** Source type of second value */
+  source2: FieldDataSourceType;
+  /** Independence group of second source */
+  group2: SourceIndependenceGroup;
+  /** Severity of the conflict */
+  severity: 'minor' | 'major';
+  /** When conflict was detected */
+  timestamp: string;
+}
+
+/**
+ * Cross-validated field with corroboration information
+ * Shows how confidence was adjusted based on source agreement
+ */
+export interface CrossValidatedField {
+  /** Field name */
+  fieldName: string;
+  /** Current field value */
+  value: unknown;
+  /** Confidence before cross-validation adjustments */
+  baseConfidence: number;
+  /** Confidence after applying corroboration multiplier */
+  crossValidatedConfidence: number;
+  /** All sources that contributed to this field */
+  sources: FieldDataSource[];
+  /** Number of unique independence groups */
+  independentGroupCount: number;
+  /** Agreement score (0-1, 1 = perfect agreement) */
+  agreementScore: number;
+  /** Detected conflicts between sources */
+  conflicts: FieldConflict[];
+  /** Multiplier applied (0.8 for single source, up to 1.1 for corroboration) */
+  corroborationMultiplier: number;
+}
+
+/**
+ * Cross-validation result for all fields in an item
+ */
+export interface CrossValidationResult {
+  /** Cross-validation details per field */
+  fields: Record<string, CrossValidatedField>;
+  /** Total conflicts detected across all fields */
+  totalConflicts: number;
+  /** Average corroboration multiplier across fields */
+  averageCorroboration: number;
+  /** Count of fields with 2+ independent source groups */
+  fieldsWithMultipleIndependentSources: number;
+}
+
+// =============================================================================
+// Slice 9: Domain Knowledge Database Types
+// Decoders, value drivers, and authenticity checking
+// =============================================================================
+
+/**
+ * Base interface for decoded identifier values
+ * All decoder results extend this base type
+ */
+export interface DecodedValue {
+  /** Original raw value that was decoded */
+  rawValue: string;
+  /** Type of identifier (e.g., 'lv_date_code', 'nike_style_code') */
+  identifierType: string;
+  /** Whether decoding was successful */
+  success: boolean;
+  /** Confidence in the decoded result (0-1) */
+  confidence: number;
+  /** Decoded key-value pairs (supports primitives and string arrays) */
+  decoded: Record<string, string | number | boolean | string[]>;
+  /** Error message if decoding failed */
+  error?: string;
+  /** Name of decoder function used */
+  decoderUsed?: string;
+}
+
+/**
+ * Decoded Louis Vuitton date code
+ * Format: AA#### (e.g., "SD1234" = San Dimas factory, week 12, year 2034)
+ */
+export interface DecodedLVDateCode extends DecodedValue {
+  identifierType: 'lv_date_code';
+  decoded: {
+    /** Two-letter factory code (e.g., "SD") */
+    factoryCode: string;
+    /** Factory location name (e.g., "San Dimas, California") */
+    factoryLocation: string;
+    /** Country where factory is located */
+    factoryCountry: string;
+    /** Week of manufacture (1-52) */
+    week: number;
+    /** Year of manufacture (4-digit) */
+    year: number;
+    /** Era of date code format */
+    era: 'pre-2007' | 'post-2007';
+    /** Whether the format is valid for Louis Vuitton */
+    isValidFormat: boolean;
+  };
+}
+
+/**
+ * Decoded Hermes blindstamp year code
+ * Single letter A-Z indicates year (with cycles)
+ */
+export interface DecodedHermesBlindstamp extends DecodedValue {
+  identifierType: 'hermes_blindstamp';
+  decoded: {
+    /** Single letter year code */
+    yearLetter: string;
+    /** Decoded year */
+    year: number;
+    /** Whether format is valid */
+    isValidFormat: boolean;
+    /** Whether stamp had square bracket (indicates cycle) */
+    hasSquare?: boolean;
+  };
+}
+
+/**
+ * Decoded Nike style code
+ * Format: XXXXXX-XXX (e.g., "CW2288-111")
+ */
+export interface DecodedNikeStyleCode extends DecodedValue {
+  identifierType: 'nike_style_code';
+  decoded: {
+    /** Model code portion (e.g., "CW2288") */
+    modelCode: string;
+    /** Colorway code portion (e.g., "111") */
+    colorwayCode: string;
+    /** Full style code */
+    fullStyleCode: string;
+    /** Whether format is valid */
+    isValidFormat: boolean;
+  };
+}
+
+/**
+ * Decoded Rolex reference number
+ * Reference numbers map to specific model families
+ */
+export interface DecodedRolexReference extends DecodedValue {
+  identifierType: 'rolex_reference';
+  decoded: {
+    /** Reference number */
+    referenceNumber: string;
+    /** Model family (e.g., "Submariner") */
+    modelFamily?: string;
+    /** Specific model name (e.g., "Submariner Date") */
+    modelName?: string;
+    /** Case material (e.g., "Stainless Steel") */
+    material?: string;
+    /** Whether reference is in known database */
+    isValidReference: boolean;
+  };
+}
+
+/**
+ * Vintage denim analysis result
+ * Detects Big E, selvedge, Made in USA indicators
+ */
+export interface VintageDenimAnalysis extends DecodedValue {
+  identifierType: 'vintage_denim';
+  decoded: {
+    /** Whether "LEVI'S" has capital E (pre-1971) */
+    isBigE: boolean;
+    /** Whether selvedge denim is detected */
+    isSelvedge: boolean;
+    /** Whether "Made in USA" is present */
+    isMadeInUSA: boolean;
+    /** Estimated production era */
+    estimatedEra?: string;
+    /** Value indicators found */
+    valueIndicators: string[];
+  };
+}
+
+/**
+ * Value driver definition
+ * Identifies price-affecting attributes for specific categories
+ */
+export interface ValueDriver {
+  /** Unique identifier */
+  id: string;
+  /** Human-readable name */
+  name: string;
+  /** Attribute this driver affects (e.g., "label_type", "material") */
+  attribute: string;
+  /** Category this driver applies to */
+  categoryId: CategoryId;
+  /** Specific brands this applies to (optional) */
+  applicableBrands?: string[];
+  /** Description of what makes this valuable */
+  description: string;
+  /** Condition/pattern to check for this driver */
+  checkCondition: string;
+  /** Price multiplier when detected (e.g., 5.0 = 5x price) */
+  priceMultiplier: number;
+  /** Priority for evaluation (higher = check first) */
+  priority: number;
+}
+
+/**
+ * Result of matching a value driver
+ */
+export interface ValueDriverMatch {
+  /** The matched driver */
+  driver: ValueDriver;
+  /** The value that matched */
+  matchedValue: string;
+  /** Confidence in the match (0-1) */
+  confidence: number;
+  /** Explanation of why this matched */
+  reasoning: string;
+}
+
+/**
+ * Definition of an authenticity marker
+ * Used to validate that items are genuine
+ */
+export interface AuthenticityMarkerDef {
+  /** Unique identifier */
+  id: string;
+  /** Name of the marker */
+  name: string;
+  /** Brands this marker applies to */
+  brands: string[];
+  /** Category this applies to */
+  categoryId: CategoryId;
+  /** Description of what to check */
+  checkDescription: string;
+  /** How important this is for authentication */
+  importance: 'critical' | 'important' | 'helpful';
+  /** Regex pattern to validate format (if applicable) */
+  pattern?: string;
+  /** Whether a match indicates authentic (true) or potential fake (false) */
+  indicatesAuthentic: boolean;
+}
+
+/**
+ * Result of checking a single authenticity marker
+ */
+export interface AuthenticityMarkerCheckResult {
+  /** Marker that was checked */
+  marker: AuthenticityMarkerDef;
+  /** Whether the check passed */
+  passed: boolean;
+  /** Confidence in this check (0-1) */
+  confidence: number;
+  /** Details about what was found */
+  details: string;
+  /** The value that was checked */
+  checkedValue?: string;
+}
+
+/**
+ * Complete authenticity check result
+ */
+export interface AuthenticityCheckResult {
+  /** Overall assessment */
+  assessment: 'likely_authentic' | 'uncertain' | 'likely_fake' | 'insufficient_data';
+  /** Overall confidence (0-1) */
+  confidence: number;
+  /** All markers that were checked */
+  markersChecked: AuthenticityMarkerCheckResult[];
+  /** Human-readable summary */
+  summary: string;
+  /** Warning messages */
+  warnings: string[];
 }

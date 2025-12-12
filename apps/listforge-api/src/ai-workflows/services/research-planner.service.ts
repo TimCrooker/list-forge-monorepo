@@ -11,10 +11,13 @@ import type {
   FieldEvaluationResult,
   RESEARCH_TOOLS,
   RESEARCH_MODE_CONSTRAINTS,
+  ResearchTaskHistory,
 } from '@listforge/core-types';
 import {
   RESEARCH_TOOLS as ResearchToolsData,
   RESEARCH_MODE_CONSTRAINTS as ResearchModeConstraintsData,
+  MAX_ATTEMPTS_PER_TOOL,
+  MAX_CONSECUTIVE_NO_PROGRESS,
 } from '@listforge/core-types';
 
 /**
@@ -199,6 +202,14 @@ export class ResearchPlannerService {
   /**
    * Plan the next research task based on current state
    * Returns null if no more research is needed/possible
+   *
+   * @param fieldStates - Current field states with confidence tracking
+   * @param constraints - Budget, time, and iteration limits
+   * @param context - Available data sources and identifiers
+   * @param currentCost - Cost spent so far
+   * @param existingCompsCount - Number of comps already found (unused, comps handled by Core Operations)
+   * @param currentIteration - Current iteration number for limit checking
+   * @param taskHistory - History of tool attempts and failures to prevent loops
    */
   planNextTask(
     fieldStates: ItemFieldStates,
@@ -206,7 +217,27 @@ export class ResearchPlannerService {
     context: ResearchContext,
     currentCost: number,
     existingCompsCount: number = 0,
+    currentIteration: number = 0,
+    taskHistory?: ResearchTaskHistory,
   ): ResearchTask | null {
+    // ========================================================================
+    // BULLETPROOFING: Hard limits to prevent infinite loops
+    // ========================================================================
+
+    // Check iteration limit
+    if (currentIteration >= constraints.maxIterations) {
+      this.logger.debug(`Max iterations reached (${currentIteration}/${constraints.maxIterations})`);
+      return null;
+    }
+
+    // Check for stuck state (consecutive iterations with no progress)
+    if (taskHistory?.consecutiveNoProgress >= MAX_CONSECUTIVE_NO_PROGRESS) {
+      this.logger.warn(
+        `Stopping: ${taskHistory.consecutiveNoProgress} consecutive iterations without progress`,
+      );
+      return null;
+    }
+
     // Check remaining budget
     const budgetRemaining = constraints.maxCostUsd - currentCost;
     if (budgetRemaining <= 0.001) {
@@ -214,24 +245,8 @@ export class ResearchPlannerService {
       return null;
     }
 
-    // CRITICAL: ALWAYS run comp search if we don't have enough comparables
-    // This is a CORE operation, not field-dependent
-    const MINIMUM_COMPS = 5;
-    if (existingCompsCount < MINIMUM_COMPS) {
-      const compTool = this.tools.get('ebay_comps');
-      if (compTool && compTool.baseCost <= budgetRemaining) {
-        this.logger.log(`Planning eBay comp search (have ${existingCompsCount}/${MINIMUM_COMPS} comps)`);
-        return {
-          id: uuidv4(),
-          targetFields: ['price', 'title', 'category'], // Comps help with these
-          tool: 'ebay_comps',
-          priority: 100, // High priority - core operation
-          estimatedCost: compTool.baseCost,
-          estimatedTimeMs: compTool.baseTimeMs,
-          reasoning: `Searching for comparable sold listings (${existingCompsCount}/${MINIMUM_COMPS} comps found)`,
-        };
-      }
-    }
+    // NOTE: ebay_comps is handled by the search_comps node in Core Operations phase,
+    // NOT in the adaptive field research loop. See buildFieldDrivenResearchGraph().
 
     // Get fields that need research
     const fieldsNeedingWork = this.getResearchableFields(fieldStates, constraints);
@@ -248,6 +263,8 @@ export class ResearchPlannerService {
       fieldStates,
       context,
       budgetRemaining,
+      undefined, // excludeTools
+      taskHistory, // Pass task history for failed/exhausted tool checking
     );
 
     if (!tool) {
@@ -424,6 +441,13 @@ export class ResearchPlannerService {
 
   /**
    * Select best research tool for a specific field
+   *
+   * @param field - The field to research
+   * @param fieldStates - All field states
+   * @param context - Research context
+   * @param budgetRemaining - Remaining budget
+   * @param excludeTools - Tools to exclude from selection
+   * @param taskHistory - Task history for skipping failed/exhausted tools
    */
   private selectBestTool(
     field: FieldState,
@@ -431,6 +455,7 @@ export class ResearchPlannerService {
     context: ResearchContext,
     budgetRemaining: number,
     excludeTools?: Set<ResearchToolType>,
+    taskHistory?: ResearchTaskHistory,
   ): { tool: ResearchToolMetadata | null; score: number; reasoning: string } {
     let bestTool: ResearchToolMetadata | null = null;
     let bestScore = -1;
@@ -439,6 +464,25 @@ export class ResearchPlannerService {
     for (const tool of this.tools.values()) {
       // Skip excluded tools
       if (excludeTools?.has(tool.type)) continue;
+
+      // ========================================================================
+      // BULLETPROOFING: Skip failed and exhausted tools
+      // ========================================================================
+
+      // Skip tools that have previously failed (produced no results)
+      if (taskHistory?.failedTools?.includes(tool.type)) {
+        this.logger.debug(`Skipping failed tool: ${tool.type}`);
+        continue;
+      }
+
+      // Skip tools that have reached max attempts
+      const attempts = taskHistory?.attemptsByTool?.[tool.type] || 0;
+      if (attempts >= MAX_ATTEMPTS_PER_TOOL) {
+        this.logger.debug(
+          `Skipping exhausted tool: ${tool.type} (${attempts}/${MAX_ATTEMPTS_PER_TOOL} attempts)`,
+        );
+        continue;
+      }
 
       // Skip if over budget
       if (tool.baseCost > budgetRemaining) continue;

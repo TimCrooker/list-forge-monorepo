@@ -129,6 +129,49 @@ export class MarketplaceListing {
   })
   errorMessage: string | null;
 
+  // ============================================================================
+  // Sales Outcome Tracking (Slice 10 - Learning Loop)
+  // ============================================================================
+
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    comment: 'Actual price item sold for (may differ from listing price due to offers)',
+  })
+  soldPrice: number | null;
+
+  @Column({
+    type: 'timestamp',
+    nullable: true,
+    comment: 'When item was sold',
+  })
+  soldAt: Date | null;
+
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    comment: 'Original listing price when first published (for price change tracking)',
+  })
+  originalListPrice: number | null;
+
+  @Column({
+    type: 'timestamp',
+    nullable: true,
+    comment: 'When item was returned (if applicable)',
+  })
+  returnedAt: Date | null;
+
+  @Column({
+    type: 'text',
+    nullable: true,
+    comment: 'Reason for return if applicable',
+  })
+  returnReason: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

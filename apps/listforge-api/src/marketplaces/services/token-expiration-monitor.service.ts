@@ -6,6 +6,13 @@ import { MarketplaceAccount } from '../entities/marketplace-account.entity';
 import { MarketplaceAccountService } from './marketplace-account.service';
 import { MarketplaceAuditService } from './marketplace-audit.service';
 import { EventsService } from '../../events/events.service';
+import {
+  SocketEvents,
+  Rooms,
+  MarketplaceTokenExpiringPayload,
+  MarketplaceTokenExpiredPayload,
+  MarketplaceTokenRefreshedPayload,
+} from '@listforge/socket-types';
 
 /**
  * TokenExpirationMonitorService
@@ -176,12 +183,16 @@ export class TokenExpirationMonitorService {
 
       this.logger.log(`Successfully refreshed token for account ${account.id}`);
 
-      // TODO: Add marketplace token events to socket-types
-      // this.eventsService.emit(Rooms.org(account.orgId), 'marketplace:token:refreshed', {
-      //   accountId: account.id,
-      //   marketplace: account.marketplace,
-      //   refreshedAt: new Date().toISOString(),
-      // });
+      const payload: MarketplaceTokenRefreshedPayload = {
+        accountId: account.id,
+        marketplace: account.marketplace,
+        refreshedAt: new Date().toISOString(),
+      };
+      this.eventsService.emit(
+        Rooms.org(account.orgId),
+        SocketEvents.MARKETPLACE_TOKEN_REFRESHED,
+        payload,
+      );
 
       // Audit log: Token auto-refreshed successfully
       await this.auditService.logTokenRefreshed({
@@ -242,25 +253,33 @@ export class TokenExpirationMonitorService {
    * Emit warning event to frontend for token expiring soon
    */
   private emitExpirationWarning(account: MarketplaceAccount, hoursUntilExpiry: number): void {
-    // TODO: Add marketplace token events to socket-types
-    // this.eventsService.emit(Rooms.org(account.orgId), 'marketplace:token:expiring', {
-    //   accountId: account.id,
-    //   marketplace: account.marketplace,
-    //   expiresAt: account.tokenExpiresAt?.toISOString(),
-    //   hoursUntilExpiry: Math.round(hoursUntilExpiry * 10) / 10,
-    // });
+    const payload: MarketplaceTokenExpiringPayload = {
+      accountId: account.id,
+      marketplace: account.marketplace,
+      expiresAt: account.tokenExpiresAt?.toISOString() ?? '',
+      hoursUntilExpiry: Math.round(hoursUntilExpiry * 10) / 10,
+    };
+    this.eventsService.emit(
+      Rooms.org(account.orgId),
+      SocketEvents.MARKETPLACE_TOKEN_EXPIRING,
+      payload,
+    );
   }
 
   /**
    * Emit event to frontend that token has expired
    */
   private emitTokenExpired(account: MarketplaceAccount): void {
-    // TODO: Add marketplace token events to socket-types
-    // this.eventsService.emit(Rooms.org(account.orgId), 'marketplace:token:expired', {
-    //   accountId: account.id,
-    //   marketplace: account.marketplace,
-    //   expiredAt: account.tokenExpiresAt?.toISOString(),
-    // });
+    const payload: MarketplaceTokenExpiredPayload = {
+      accountId: account.id,
+      marketplace: account.marketplace,
+      expiredAt: account.tokenExpiresAt?.toISOString() ?? '',
+    };
+    this.eventsService.emit(
+      Rooms.org(account.orgId),
+      SocketEvents.MARKETPLACE_TOKEN_EXPIRED,
+      payload,
+    );
   }
 
   /**

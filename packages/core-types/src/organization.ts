@@ -72,6 +72,8 @@ export interface WorkflowSettings {
   enableWebSearch: boolean;
   /** Maximum concurrent workflow runs */
   maxConcurrentWorkflows: number;
+  /** Use goal-driven research graph (default: true) */
+  useGoalDrivenGraph: boolean;
 }
 
 export const DEFAULT_WORKFLOW_SETTINGS: WorkflowSettings = {
@@ -84,6 +86,36 @@ export const DEFAULT_WORKFLOW_SETTINGS: WorkflowSettings = {
   enableOCR: true,
   enableWebSearch: true,
   maxConcurrentWorkflows: 5,
+  useGoalDrivenGraph: true,
+};
+
+// ============================================================================
+// Research Settings (Confidence-Based Routing)
+// ============================================================================
+
+/**
+ * Research-specific settings for confidence-based review routing.
+ * Controls auto-approval, spot-check, and full-review thresholds.
+ */
+export interface ResearchSettings {
+  /** Enable auto-approval (if false, all items go to review queue) */
+  enableAutoApproval: boolean;
+  /** Confidence threshold for auto-approval (no human review needed) */
+  autoApproveThreshold: number;
+  /** Confidence threshold for spot-check (quick review, likely approve) */
+  spotCheckThreshold: number;
+  /** Minimum validated comps required for auto-approval */
+  minCompsForAutoApproval: number;
+  /** Maximum items to auto-approve per day (safety limit) */
+  maxAutoApprovalsPerDay: number;
+}
+
+export const DEFAULT_RESEARCH_SETTINGS: ResearchSettings = {
+  enableAutoApproval: false, // Conservative default - require explicit opt-in
+  autoApproveThreshold: 0.90,
+  spotCheckThreshold: 0.70,
+  minCompsForAutoApproval: 5,
+  maxAutoApprovalsPerDay: 100,
 };
 
 // ============================================================================
@@ -377,6 +409,7 @@ export interface Organization {
   marketplaceDefaultSettings: MarketplaceDefaultSettings;
   billingSettings: BillingSettings;
   securitySettings: SecuritySettings;
+  researchSettings: ResearchSettings;
   createdAt: Date;
 }
 

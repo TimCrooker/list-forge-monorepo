@@ -254,6 +254,49 @@ export const ResearchMetrics = {
   /** Gauge: Current queue depth */
   queueDepth: (depth: number) =>
     setGauge('research.queue.depth', depth),
+
+  // ========================================================================
+  // BULLETPROOFING METRICS
+  // Track loop behavior, exit reasons, and tool failures
+  // ========================================================================
+
+  /** Histogram: Number of iterations before research loop exits */
+  loopIterations: (iterations: number, labels: { exit_reason?: string; organization_id?: string } = {}) =>
+    recordHistogram('research.loop.iterations', iterations, labels),
+
+  /** Counter: Research loop exit reasons */
+  loopExitReason: (labels: {
+    reason: 'complete' | 'budget' | 'iterations' | 'stuck' | 'error';
+    organization_id?: string;
+  }) =>
+    recordCounter('research.loop.exit_reason', 1, labels),
+
+  /** Counter: Research tasks by tool and result */
+  tasksByTool: (labels: {
+    tool: string;
+    result: 'success' | 'no_results' | 'error';
+    organization_id?: string;
+  }) =>
+    recordCounter('research.tasks.by_tool', 1, labels),
+
+  /** Counter: Tools marked as failed (no results produced) */
+  toolsMarkedFailed: (labels: { tool: string; organization_id?: string }) =>
+    recordCounter('research.tools.marked_failed', 1, labels),
+
+  /** Counter: Consecutive no-progress iterations detected */
+  consecutiveNoProgress: (count: number, labels: { organization_id?: string } = {}) =>
+    recordHistogram('research.loop.consecutive_no_progress', count, labels),
+
+  /** Counter: Stuck detection triggered */
+  stuckDetected: (labels: { organization_id?: string } = {}) =>
+    recordCounter('research.loop.stuck_detected', 1, labels),
+
+  /** Counter: Recursion limit salvage attempts */
+  salvageAttempted: (labels: {
+    outcome: 'success' | 'partial' | 'failed';
+    organization_id?: string;
+  }) =>
+    recordCounter('research.salvage.attempted', 1, labels),
 };
 
 /**

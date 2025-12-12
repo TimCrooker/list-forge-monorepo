@@ -30,8 +30,8 @@ import { QUEUE_AI_WORKFLOW } from '@listforge/queue-types';
     StorageModule,
     EventsModule,
     EvidenceModule,
-    MarketplacesModule,
-    OrganizationsModule, // For TeamOrgGuard
+    forwardRef(() => MarketplacesModule), // Handle circular dependency chain (MarketplacesModule → LearningModule → ItemsModule)
+    forwardRef(() => OrganizationsModule), // Handle circular dependency chain (OrganizationsModule → MarketplacesModule → LearningModule → ItemsModule)
     forwardRef(() => ChatModule), // Handle circular dependency with ChatModule
     forwardRef(() => AiWorkflowsModule), // Handle circular dependency with AiWorkflowsModule
   ],

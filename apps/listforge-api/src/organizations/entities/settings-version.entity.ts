@@ -24,7 +24,8 @@ export type SettingsType =
   | 'billing'
   | 'security'
   | 'autoPublish'
-  | 'autoApproval';
+  | 'autoApproval'
+  | 'research';
 
 /**
  * SettingsVersion Entity

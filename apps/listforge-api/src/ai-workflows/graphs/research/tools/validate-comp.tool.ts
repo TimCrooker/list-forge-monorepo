@@ -10,7 +10,12 @@ import {
   CompValidationCriteria,
   ResearchEvidenceRecord,
   ProductIdentification,
+  CategoryId,
 } from '@listforge/core-types';
+import {
+  getValidationWeights,
+  getVariantImportance,
+} from '../../../data/category-attribute-weights';
 
 /**
  * Item context for validation
@@ -213,53 +218,110 @@ function validateModel(
 
 /**
  * Validate variant match (color, size, edition)
+ *
+ * Slice 5: Uses category-specific variant importance weights.
+ * Different categories care about different variant attributes:
+ * - Sneakers: colorway is critical (0.45 weight)
+ * - Phones: storage capacity is critical (0.55 weight)
+ * - Trading cards: grade is critical (0.70 weight)
+ *
+ * @param item - Item context with variant info
+ * @param comp - Comparable listing
+ * @param categoryId - Optional category for weight lookup
  */
 function validateVariant(
   item: ItemValidationContext,
   comp: ResearchEvidenceRecord,
+  categoryId?: CategoryId,
 ): CompValidationCriteria['variantMatch'] {
   const details: string[] = [];
-  let totalChecks = 0;
-  let matchCount = 0;
 
-  // Check color
-  if (item.variant?.color) {
-    totalChecks++;
-    const compColor = normalizeString(comp.extractedData?.color as string);
-    const itemColor = normalizeString(item.variant.color);
+  // Slice 5: Get category-specific variant importance weights
+  const variantWeights = getVariantImportance(categoryId);
+
+  // Track weighted scores
+  let totalWeight = 0;
+  let matchedWeight = 0;
+
+  // Helper to check and score a variant attribute
+  const checkAttribute = (
+    attrName: string,
+    itemValue: string | undefined,
+    compValue: string | undefined,
+    weight: number,
+  ): void => {
+    if (!itemValue || weight <= 0) return;
+
+    totalWeight += weight;
     const compTitle = normalizeString(comp.title);
+    const itemNorm = normalizeString(itemValue);
+    const compNorm = normalizeString(compValue);
 
-    if (compColor && stringSimilarity(itemColor, compColor) >= 0.8) {
-      matchCount++;
-      details.push(`Color: ${item.variant.color} matches ${compColor}`);
-    } else if (compTitle.includes(itemColor)) {
-      matchCount++;
-      details.push(`Color: ${item.variant.color} found in title`);
+    if (compNorm && stringSimilarity(itemNorm, compNorm) >= 0.8) {
+      matchedWeight += weight;
+      details.push(`${attrName}: ${itemValue} matches ${compValue}`);
+    } else if (compTitle.includes(itemNorm)) {
+      matchedWeight += weight * 0.8; // Slightly lower confidence for title match
+      details.push(`${attrName}: ${itemValue} found in title`);
     } else {
-      details.push(`Color: ${item.variant.color} not found`);
+      details.push(`${attrName}: ${itemValue} not found`);
     }
-  }
+  };
+
+  // Check color/colorway (use colorway weight for sneakers if available)
+  const colorWeight = variantWeights.colorway && variantWeights.colorway > 0
+    ? variantWeights.colorway
+    : variantWeights.color;
+  checkAttribute(
+    variantWeights.colorway && variantWeights.colorway > 0 ? 'Colorway' : 'Color',
+    item.variant?.color,
+    (comp.extractedData?.colorway as string) || (comp.extractedData?.color as string),
+    colorWeight,
+  );
 
   // Check size
-  if (item.variant?.size) {
-    totalChecks++;
-    const compSize = normalizeString(comp.extractedData?.size as string);
-    const itemSize = normalizeString(item.variant.size);
-    const compTitle = normalizeString(comp.title);
+  checkAttribute(
+    'Size',
+    item.variant?.size,
+    comp.extractedData?.size as string,
+    variantWeights.size,
+  );
 
-    if (compSize && stringSimilarity(itemSize, compSize) >= 0.8) {
-      matchCount++;
-      details.push(`Size: ${item.variant.size} matches ${compSize}`);
-    } else if (compTitle.includes(itemSize)) {
-      matchCount++;
-      details.push(`Size: ${item.variant.size} found in title`);
-    } else {
-      details.push(`Size: ${item.variant.size} not found`);
-    }
+  // Check edition
+  checkAttribute(
+    'Edition',
+    item.variant?.edition,
+    comp.extractedData?.edition as string,
+    variantWeights.edition,
+  );
+
+  // Check material (for luxury goods)
+  if (variantWeights.material > 0 && comp.extractedData?.material) {
+    // Material check if item has it (TODO: add to ItemValidationContext)
+  }
+
+  // Check storage (for electronics)
+  if (variantWeights.storage && variantWeights.storage > 0) {
+    checkAttribute(
+      'Storage',
+      comp.extractedData?.itemStorage as string, // From item context if available
+      comp.extractedData?.storage as string,
+      variantWeights.storage,
+    );
+  }
+
+  // Check grade (for trading cards)
+  if (variantWeights.grade && variantWeights.grade > 0) {
+    checkAttribute(
+      'Grade',
+      comp.extractedData?.itemGrade as string, // From item context if available
+      comp.extractedData?.grade as string,
+      variantWeights.grade,
+    );
   }
 
   // If no variant info to check, pass by default
-  if (totalChecks === 0) {
+  if (totalWeight === 0) {
     return {
       matches: true,
       confidence: 1.0,
@@ -267,9 +329,10 @@ function validateVariant(
     };
   }
 
-  const confidence = matchCount / totalChecks;
+  // Weighted confidence
+  const confidence = matchedWeight / totalWeight;
   return {
-    matches: confidence >= 0.5, // At least half of variants should match
+    matches: confidence >= 0.5, // At least half (weighted) should match
     confidence,
     details: details.join('; '),
   };
@@ -471,23 +534,22 @@ function validatePriceOutlier(
 
 /**
  * Calculate overall validation score from criteria
- * Weights:
- * - Brand match: 25%
- * - Model match: 30%
- * - Variant match: 15%
- * - Condition match: 15%
- * - Recency: 10%
- * - Price outlier: 5% (penalty only)
+ *
+ * Slice 5: Uses category-specific weights from category-attribute-weights.ts
+ * Different categories prioritize different attributes:
+ * - Sneakers: higher weight on variant (colorway)
+ * - Watches: higher weight on model (reference number)
+ * - Trading cards: higher weight on condition (grade)
+ *
+ * @param criteria - Validation criteria results
+ * @param categoryId - Optional category for weight lookup
  */
-function calculateOverallScore(criteria: CompValidationCriteria): number {
-  const weights = {
-    brand: 0.25,
-    model: 0.30,
-    variant: 0.15,
-    condition: 0.15,
-    recency: 0.10,
-    priceOutlier: 0.05,
-  };
+function calculateOverallScore(
+  criteria: CompValidationCriteria,
+  categoryId?: CategoryId,
+): number {
+  // Slice 5: Get category-specific weights instead of hardcoded values
+  const weights = getValidationWeights(categoryId);
 
   let score = 0;
 
@@ -590,11 +652,14 @@ function generateReasoning(
 /**
  * Validate a single comparable listing against the item context
  *
+ * Slice 5: Added categoryId parameter for category-aware weights.
+ *
  * @param comp - The comparable listing to validate
  * @param item - The item context (brand, model, condition, etc.)
  * @param allComps - All comps for outlier detection
  * @param productId - Optional product identification for additional context
  * @param config - Validation configuration
+ * @param categoryId - Optional category for category-specific weights
  * @returns CompValidation result
  */
 export function validateComp(
@@ -603,6 +668,7 @@ export function validateComp(
   allComps: ResearchEvidenceRecord[],
   productId?: ProductIdentification | null,
   config: Partial<ValidationConfig> = {},
+  categoryId?: CategoryId,
 ): CompValidation {
   const fullConfig: ValidationConfig = { ...DEFAULT_CONFIG, ...config };
 
@@ -615,17 +681,19 @@ export function validateComp(
   };
 
   // Run all validation criteria
+  // Slice 5: Pass categoryId to variant validation for category-specific weights
   const criteria: CompValidationCriteria = {
     brandMatch: validateBrand(enrichedItem, comp),
     modelMatch: validateModel(enrichedItem, comp),
-    variantMatch: validateVariant(enrichedItem, comp),
+    variantMatch: validateVariant(enrichedItem, comp, categoryId),
     conditionMatch: validateCondition(enrichedItem, comp),
     recency: validateRecency(comp, fullConfig),
     priceOutlier: validatePriceOutlier(comp, allComps, fullConfig),
   };
 
   // Calculate overall score
-  const overallScore = calculateOverallScore(criteria);
+  // Slice 5: Pass categoryId for category-specific validation weights
+  const overallScore = calculateOverallScore(criteria, categoryId);
 
   // Determine validity
   const isValid = overallScore >= fullConfig.minValidationScore;
@@ -643,16 +711,25 @@ export function validateComp(
 
 /**
  * Validate all comps and return them with validation results attached
+ *
+ * Slice 5: Added categoryId parameter for category-aware weights.
+ *
+ * @param comps - List of comparable listings to validate
+ * @param item - Item context for comparison
+ * @param productId - Optional product identification
+ * @param config - Validation configuration
+ * @param categoryId - Optional category for category-specific weights
  */
 export function validateAllComps(
   comps: ResearchEvidenceRecord[],
   item: ItemValidationContext,
   productId?: ProductIdentification | null,
   config: Partial<ValidationConfig> = {},
+  categoryId?: CategoryId,
 ): ResearchEvidenceRecord[] {
   return comps.map((comp) => ({
     ...comp,
-    validation: validateComp(comp, item, comps, productId, config),
+    validation: validateComp(comp, item, comps, productId, config, categoryId),
   }));
 }
 

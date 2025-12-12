@@ -383,6 +383,7 @@ export class SettingsAuditService {
       security: 'Security',
       autoPublish: 'Auto-Publish',
       autoApproval: 'Auto-Approval',
+      research: 'Research',
     };
     return labels[settingsType] || settingsType;
   }

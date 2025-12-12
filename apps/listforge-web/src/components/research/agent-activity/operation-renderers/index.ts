@@ -22,6 +22,7 @@ import {
   Map,
   Play,
   CheckCircle,
+  ShieldCheck, // Slice 6: Identification validation
 } from 'lucide-react'
 import type { AgentOperationType, GroupedOperation } from '@listforge/core-types'
 import LoadContextRenderer from './load-context-renderer'
@@ -76,6 +77,8 @@ const operationIcons: Record<AgentOperationType, React.ElementType> = {
   plan_next_research: Map,
   execute_research: Play,
   validate_readiness: CheckCircle,
+  // Slice 6: Identification Validation
+  validation_checkpoint: ShieldCheck,
 }
 
 /**
@@ -105,6 +108,8 @@ const operationLabels: Record<AgentOperationType, string> = {
   plan_next_research: 'Planning Research',
   execute_research: 'Executing Research',
   validate_readiness: 'Validating Readiness',
+  // Slice 6: Identification Validation
+  validation_checkpoint: 'Validating Identification',
 }
 
 /**
@@ -180,6 +185,8 @@ export function getOperationRenderer(
       return ValidateReadinessRenderer
     case 'demand_analysis':
       return DemandAnalysisRenderer
+    case 'validation_checkpoint':
+      return DefaultRenderer // Uses default until dedicated renderer created
     default:
       return DefaultRenderer
   }

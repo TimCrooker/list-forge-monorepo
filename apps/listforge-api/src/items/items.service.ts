@@ -566,6 +566,7 @@ export class ItemsService {
       reviewedByUserId: item.reviewedByUserId,
       reviewedAt: item.reviewedAt ? item.reviewedAt.toISOString() : null,
       reviewComment: item.reviewComment,
+      reviewRecommendation: item.reviewRecommendation,
     };
   }
 

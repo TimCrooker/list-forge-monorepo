@@ -29,6 +29,7 @@ import {
   MarketplaceDefaultsCard,
   BillingSettingsCard,
   SecuritySettingsCard,
+  ResearchSettingsCard,
   EnableOrganization,
   DisableOrganization,
 } from '@/components/settings';
@@ -496,6 +497,9 @@ function OrganizationPage() {
           <div className="space-y-6">
             {/* Workflow Settings */}
             <WorkflowSettingsCard orgId={orgId} />
+
+            {/* Research & Review Routing Settings */}
+            <ResearchSettingsCard orgId={orgId} />
 
             {/* Notification Settings */}
             <NotificationSettingsCard orgId={orgId} />

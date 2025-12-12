@@ -81,13 +81,19 @@ export async function planNextResearchNode(
       upcDatabaseConfigured: true,
     };
 
-    // Plan the next task
+    // Get current iteration and task history for bulletproofing
+    const currentIteration = state.iteration || 0;
+    const taskHistory = state.taskHistory;
+
+    // Plan the next task (with iteration limit and task history checking)
     const task = tools.researchPlanner.planNextTask(
       fieldStates,
       constraints,
       researchContext,
       currentCost,
       existingCompsCount,
+      currentIteration,
+      taskHistory,
     );
 
     if (!task) {

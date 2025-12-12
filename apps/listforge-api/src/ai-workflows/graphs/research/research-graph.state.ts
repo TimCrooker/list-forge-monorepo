@@ -32,6 +32,10 @@ import {
   TieredPricingAnalysis,
   // Planning Phase (Slice 2)
   ResearchPlan,
+  // Task History Tracking (Bulletproofing)
+  ResearchTaskHistory,
+  // Slice 6: Identification Validation Checkpoint
+  ValidationCheckResult,
 } from '@listforge/core-types';
 
 // ============================================================================
@@ -463,8 +467,11 @@ export const ResearchGraphAnnotation = Annotation.Root({
     reducer: (existing, update) => update ?? existing,
     default: () => [],
   }),
+  // IMPORTANT: Use explicit undefined check, NOT nullish coalescing (??)
+  // because we need to allow explicit null assignment to clear the current task
+  // when plan_next_research returns { currentTask: null } (no more tools available)
   currentTask: Annotation<ResearchTask | null>({
-    reducer: (existing, update) => update ?? existing,
+    reducer: (existing, update) => update !== undefined ? update : existing,
     default: () => null,
   }),
 
@@ -472,6 +479,37 @@ export const ResearchGraphAnnotation = Annotation.Root({
   fieldEvaluation: Annotation<FieldEvaluationResult | null>({
     reducer: (existing, update) => update ?? existing,
     default: () => null,
+  }),
+
+  // Task history tracking for bulletproofing - prevents infinite loops
+  // Tracks tool attempts, failed tools, and consecutive no-progress iterations
+  taskHistory: Annotation<ResearchTaskHistory>({
+    reducer: (existing, update) => {
+      // Merge task history, combining attemptsByTool maps
+      const merged: ResearchTaskHistory = {
+        attemptsByTool: {
+          ...(existing?.attemptsByTool || {}),
+          ...(update?.attemptsByTool || {}),
+        },
+        failedTools: [
+          ...new Set([
+            ...(existing?.failedTools || []),
+            ...(update?.failedTools || []),
+          ]),
+        ],
+        consecutiveNoProgress:
+          update?.consecutiveNoProgress ?? existing?.consecutiveNoProgress ?? 0,
+        lastFieldStatesHash:
+          update?.lastFieldStatesHash ?? existing?.lastFieldStatesHash ?? null,
+      };
+      return merged;
+    },
+    default: () => ({
+      attemptsByTool: {},
+      failedTools: [],
+      consecutiveNoProgress: 0,
+      lastFieldStatesHash: null,
+    }),
   }),
 
   // Research context (available data sources and identifiers)
@@ -520,6 +558,28 @@ export const ResearchGraphAnnotation = Annotation.Root({
   warnings: Annotation<ResearchWarning[]>({
     reducer: boundedWarningsReducer,
     default: () => [],
+  }),
+
+  // ============================================================================
+  // Slice 6: Identification Validation Checkpoint
+  // ============================================================================
+
+  // Result of the identification validation checkpoint
+  validationResult: Annotation<ValidationCheckResult | null>({
+    reducer: (existing, update) => update ?? existing,
+    default: () => null,
+  }),
+
+  // Number of re-identification attempts made
+  reidentificationAttempts: Annotation<number>({
+    reducer: (existing, update) => update ?? existing,
+    default: () => 0,
+  }),
+
+  // Maximum re-identification attempts allowed (prevents infinite loops)
+  maxReidentificationAttempts: Annotation<number>({
+    reducer: (existing, update) => update ?? existing,
+    default: () => 2,
   }),
 });
 

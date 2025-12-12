@@ -46,6 +46,9 @@ import {
   GetSecuritySettingsResponse,
   UpdateSecuritySettingsRequest,
   UpdateSecuritySettingsResponse,
+  GetResearchSettingsResponse,
+  UpdateResearchSettingsRequest,
+  UpdateResearchSettingsResponse,
   SettingsType,
   GetSettingsVersionsResponse,
   GetSettingsAuditLogsRequest,
@@ -538,6 +541,37 @@ export class OrganizationsController {
     }
     const auditContext = this.getAuditContext(req, ctx);
     const settings = await this.settingsService.updateSecuritySettings(
+      orgId,
+      body,
+      auditContext,
+    );
+    return { settings };
+  }
+
+  // ============================================================================
+  // Research Settings (Confidence-Based Review Routing)
+  // ============================================================================
+
+  @Get(':id/settings/research')
+  async getResearchSettings(
+    @ReqCtx() ctx: RequestContext,
+    @Param('id') orgId: string,
+  ): Promise<GetResearchSettingsResponse> {
+    await this.orgsService.getDetail(orgId, ctx);
+    const settings = await this.settingsService.getResearchSettings(orgId);
+    return { settings };
+  }
+
+  @Patch(':id/settings/research')
+  async updateResearchSettings(
+    @Req() req: Request,
+    @ReqCtx() ctx: RequestContext,
+    @Param('id') orgId: string,
+    @Body() body: UpdateResearchSettingsRequest,
+  ): Promise<UpdateResearchSettingsResponse> {
+    await this.orgsService.getDetail(orgId, ctx);
+    const auditContext = this.getAuditContext(req, ctx);
+    const settings = await this.settingsService.updateResearchSettings(
       orgId,
       body,
       auditContext,

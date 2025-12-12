@@ -221,8 +221,17 @@ export class Item {
   canonicalFields: Record<string, unknown> | null;
 
   // ============================================================================
-  // Review Tracking
+  // Review Tracking & Confidence-Based Routing
   // ============================================================================
+
+  /**
+   * Review recommendation from confidence-based routing.
+   * - 'approve': Spot-check - high confidence, recommend quick approval
+   * - 'review': Full review needed - lower confidence, needs attention
+   * - null: No recommendation yet (research not complete)
+   */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  reviewRecommendation: 'approve' | 'review' | null;
 
   @Column({ nullable: true })
   assignedReviewerUserId: string | null;

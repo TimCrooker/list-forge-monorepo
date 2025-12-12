@@ -186,6 +186,7 @@ export class SettingsVersionService {
       security: org.securitySettings,
       autoPublish: org.autoPublishSettings,
       autoApproval: org.autoApprovalSettings,
+      research: org.researchSettings,
     };
 
     return settingsMap[settingsType] as Record<string, unknown>;
@@ -226,6 +227,9 @@ export class SettingsVersionService {
         break;
       case 'autoApproval':
         org.autoApprovalSettings = settings as any;
+        break;
+      case 'research':
+        org.researchSettings = settings as any;
         break;
     }
   }

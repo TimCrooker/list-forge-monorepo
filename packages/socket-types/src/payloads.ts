@@ -173,6 +173,51 @@ export interface ResearchCancelledPayload {
 }
 
 /**
+ * Payload for research:validation_checkpoint event (Slice 6)
+ * Emitted when the identification validation checkpoint completes
+ */
+export interface ResearchValidationCheckpointPayload {
+  researchRunId: string;
+  itemId: string;
+  isValid: boolean;
+  confidence: number;
+  issueCount: number;
+  shouldReidentify: boolean;
+  reidentificationAttempt: number;
+  maxAttempts: number;
+  issues: Array<{
+    type: string;
+    severity: string;
+    message: string;
+  }>;
+  timestamp: string;
+}
+
+/**
+ * Payload for research:cross_validation event (Slice 7)
+ * Emitted when cross-source validation updates confidence for a field
+ */
+export interface ResearchCrossValidationPayload {
+  researchRunId: string;
+  itemId: string;
+  /** Field that was cross-validated */
+  fieldName: string;
+  /** Confidence before cross-validation */
+  baseConfidence: number;
+  /** Confidence after cross-validation */
+  crossValidatedConfidence: number;
+  /** Number of unique independent source groups */
+  independentSourceCount: number;
+  /** Number of conflicts detected */
+  conflictCount: number;
+  /** Multiplier applied (0.8 for single source, up to 1.1 for corroboration) */
+  corroborationMultiplier: number;
+  /** Which source groups contributed */
+  sourceGroups: string[];
+  timestamp: string;
+}
+
+/**
  * Legacy entry format for research:activity event
  * @deprecated Use AgentOperationEvent format instead
  */
@@ -341,6 +386,51 @@ export interface ChatProactiveSuggestionPayload {
   timestamp: string;
 }
 
+// ============================================================================
+// Marketplace Events
+// ============================================================================
+
+/**
+ * Payload for marketplace:token:expiring event
+ * Warns that a marketplace OAuth token is about to expire
+ */
+export interface MarketplaceTokenExpiringPayload {
+  accountId: string;
+  marketplace: string;
+  expiresAt: string;
+  hoursUntilExpiry: number;
+}
+
+/**
+ * Payload for marketplace:token:expired event
+ * Notifies that a marketplace OAuth token has expired
+ */
+export interface MarketplaceTokenExpiredPayload {
+  accountId: string;
+  marketplace: string;
+  expiredAt: string;
+}
+
+/**
+ * Payload for marketplace:token:refreshed event
+ * Notifies that a marketplace OAuth token was successfully refreshed
+ */
+export interface MarketplaceTokenRefreshedPayload {
+  accountId: string;
+  marketplace: string;
+  refreshedAt: string;
+}
+
+/**
+ * Payload for marketplace:webhook:received event
+ * Notifies that a marketplace webhook was received
+ */
+export interface MarketplaceWebhookReceivedPayload {
+  marketplace: string;
+  eventType: string;
+  timestamp: string;
+}
+
 /**
  * Union type of all payload types
  */
@@ -358,6 +448,8 @@ export type SocketEventPayload =
   | ResearchNodeCompletedPayload
   | ResearchJobCompletedPayload
   | ResearchActivityPayload
+  | ResearchValidationCheckpointPayload
+  | ResearchCrossValidationPayload
   | ChatMessagePayload
   | ChatTokenPayload
   | ChatErrorPayload
@@ -367,7 +459,11 @@ export type SocketEventPayload =
   | ChatToolProgressPayload
   | ChatActionSuggestedPayload
   | ChatContextUpdatePayload
-  | ChatProactiveSuggestionPayload;
+  | ChatProactiveSuggestionPayload
+  | MarketplaceTokenExpiringPayload
+  | MarketplaceTokenExpiredPayload
+  | MarketplaceTokenRefreshedPayload
+  | MarketplaceWebhookReceivedPayload;
 
 /**
  * Type map for event name to payload type
@@ -389,6 +485,8 @@ export interface SocketEventPayloads {
   [SocketEvents.RESEARCH_PAUSED]: ResearchPausedPayload;
   [SocketEvents.RESEARCH_RESUMED]: ResearchResumedPayload;
   [SocketEvents.RESEARCH_CANCELLED]: ResearchCancelledPayload;
+  [SocketEvents.RESEARCH_VALIDATION_CHECKPOINT]: ResearchValidationCheckpointPayload;
+  [SocketEvents.RESEARCH_CROSS_VALIDATION]: ResearchCrossValidationPayload;
   [SocketEvents.CHAT_MESSAGE]: ChatMessagePayload;
   [SocketEvents.CHAT_TOKEN]: ChatTokenPayload;
   [SocketEvents.CHAT_ERROR]: ChatErrorPayload;
@@ -400,4 +498,9 @@ export interface SocketEventPayloads {
   [SocketEvents.CHAT_ACTION_SUGGESTED]: ChatActionSuggestedPayload;
   [SocketEvents.CHAT_CONTEXT_UPDATE]: ChatContextUpdatePayload;
   [SocketEvents.CHAT_PROACTIVE_SUGGESTION]: ChatProactiveSuggestionPayload;
+  // Marketplace events
+  [SocketEvents.MARKETPLACE_TOKEN_EXPIRING]: MarketplaceTokenExpiringPayload;
+  [SocketEvents.MARKETPLACE_TOKEN_EXPIRED]: MarketplaceTokenExpiredPayload;
+  [SocketEvents.MARKETPLACE_TOKEN_REFRESHED]: MarketplaceTokenRefreshedPayload;
+  [SocketEvents.MARKETPLACE_WEBHOOK_RECEIVED]: MarketplaceWebhookReceivedPayload;
 }

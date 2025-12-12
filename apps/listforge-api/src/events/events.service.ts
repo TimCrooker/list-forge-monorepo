@@ -290,4 +290,45 @@ export class EventsService {
     });
     this.logger.debug(`Emitted research cancelled for run ${researchRunId}`);
   }
+
+  /**
+   * Emit research cross-validation event (Slice 7)
+   * Notifies clients when cross-source validation updates field confidence
+   */
+  emitResearchCrossValidation(
+    researchRunId: string,
+    itemId: string,
+    organizationId: string,
+    fieldName: string,
+    baseConfidence: number,
+    crossValidatedConfidence: number,
+    independentSourceCount: number,
+    conflictCount: number,
+    corroborationMultiplier: number,
+    sourceGroups: string[],
+  ): void {
+    const rooms = [
+      Rooms.researchRun(researchRunId),
+      Rooms.item(itemId),
+      Rooms.org(organizationId),
+    ];
+    const payload: SocketEventPayloads[typeof SocketEvents.RESEARCH_CROSS_VALIDATION] = {
+      researchRunId,
+      itemId,
+      fieldName,
+      baseConfidence,
+      crossValidatedConfidence,
+      independentSourceCount,
+      conflictCount,
+      corroborationMultiplier,
+      sourceGroups,
+      timestamp: new Date().toISOString(),
+    };
+    rooms.forEach((room) => {
+      this.gateway.server.to(room).emit(SocketEvents.RESEARCH_CROSS_VALIDATION, payload);
+    });
+    this.logger.debug(
+      `Emitted cross-validation for field ${fieldName}: ${baseConfidence.toFixed(2)} -> ${crossValidatedConfidence.toFixed(2)} (${independentSourceCount} sources)`,
+    );
+  }
 }

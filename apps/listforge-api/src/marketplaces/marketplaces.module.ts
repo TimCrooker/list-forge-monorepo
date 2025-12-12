@@ -1,4 +1,4 @@
-import { Module, OnModuleInit, Logger } from '@nestjs/common';
+import { Module, OnModuleInit, Logger, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
 import { MarketplaceAccount } from './entities/marketplace-account.entity';
@@ -23,6 +23,7 @@ import { EncryptionKeyRotationService } from './services/encryption-key-rotation
 import { PublishProcessor } from './processors/publish.processor';
 import { SyncProcessor } from './processors/sync.processor';
 import { QUEUE_MARKETPLACE_PUBLISH, QUEUE_MARKETPLACE_SYNC } from '@listforge/queue-types';
+import { LearningModule } from '../learning/learning.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { QUEUE_MARKETPLACE_PUBLISH, QUEUE_MARKETPLACE_SYNC } from '@listforge/qu
       name: QUEUE_MARKETPLACE_SYNC,
     }),
     EventsModule,
+    forwardRef(() => LearningModule),
   ],
   controllers: [MarketplaceConnectionController, MarketplaceWebhookController],
   providers: [

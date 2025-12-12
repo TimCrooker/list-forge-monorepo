@@ -1,6 +1,6 @@
 import { cn } from '@listforge/ui';
 import { Badge } from '@listforge/ui';
-import { Clock, CheckCircle, AlertCircle, Sparkles } from 'lucide-react';
+import { Clock, CheckCircle, AlertCircle, Sparkles, ThumbsUp, Eye } from 'lucide-react';
 import type { ItemSummaryDto } from '@listforge/api-types';
 
 interface ReviewQueueProps {
@@ -43,6 +43,26 @@ export function ReviewQueue({ items, selectedId, onSelect }: ReviewQueueProps) {
     );
   };
 
+  const getRecommendationBadge = (recommendation: 'approve' | 'review' | null | undefined) => {
+    if (recommendation === 'approve') {
+      return (
+        <Badge variant="outline" className="gap-1 text-xs border-green-500 text-green-600">
+          <ThumbsUp className="h-3 w-3" />
+          Spot-Check
+        </Badge>
+      );
+    }
+    if (recommendation === 'review') {
+      return (
+        <Badge variant="outline" className="gap-1 text-xs border-amber-500 text-amber-600">
+          <Eye className="h-3 w-3" />
+          Full Review
+        </Badge>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="divide-y">
       {items.map((item) => (
@@ -80,8 +100,9 @@ export function ReviewQueue({ items, selectedId, onSelect }: ReviewQueueProps) {
                   ${item.defaultPrice.toFixed(2)} {item.currency}
                 </p>
               )}
-              <div className="flex items-center gap-2 mt-1.5">
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 {getStatusBadge(item.lifecycleStatus, item.aiReviewState)}
+                {getRecommendationBadge(item.reviewRecommendation)}
               </div>
             </div>
           </div>

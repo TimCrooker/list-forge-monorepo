@@ -7,4 +7,5 @@ export * from './research'; // Must be before evidence (evidence imports from re
 export * from './evidence';
 export * from './item';
 export * from './chat';
+export * from './learning';
 

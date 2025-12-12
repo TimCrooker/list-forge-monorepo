@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -7,6 +7,12 @@ import { MarketplaceListing } from '../entities/marketplace-listing.entity';
 import { MarketplaceAccount } from '../entities/marketplace-account.entity';
 import { MarketplaceAuditService } from './marketplace-audit.service';
 import { EventsService } from '../../events/events.service';
+import { ResearchLearningService } from '../../learning/services/research-learning.service';
+import {
+  SocketEvents,
+  Rooms,
+  MarketplaceWebhookReceivedPayload,
+} from '@listforge/socket-types';
 
 /**
  * Webhook event payload structure
@@ -61,6 +67,8 @@ export class MarketplaceWebhookService {
     private configService: ConfigService,
     private auditService: MarketplaceAuditService,
     private eventsService: EventsService,
+    @Inject(forwardRef(() => ResearchLearningService))
+    private researchLearningService: ResearchLearningService,
   ) {
     // Periodically clean up old webhook IDs from cache
     setInterval(() => this.cleanupWebhookCache(), 10 * 60 * 1000); // Every 10 minutes
@@ -199,18 +207,25 @@ export class MarketplaceWebhookService {
         case 'ITEM_SUSPENDED':
           await this.handleItemSuspended(event);
           break;
+        case 'ITEM_RETURNED':
+          await this.handleItemReturned(event);
+          break;
         default:
           this.logger.log(`Unhandled eBay webhook event type: ${event.eventType}`);
       }
 
-      // TODO: Add marketplace webhook events to socket-types
-      // if (account) {
-      //   this.eventsService.emit(Rooms.org(account.orgId), 'marketplace:webhook:received', {
-      //     marketplace: 'EBAY',
-      //     eventType: event.eventType,
-      //     timestamp: new Date().toISOString(),
-      //   });
-      // }
+      if (account) {
+        const payload: MarketplaceWebhookReceivedPayload = {
+          marketplace: 'EBAY',
+          eventType: event.eventType,
+          timestamp: new Date().toISOString(),
+        };
+        this.eventsService.emit(
+          Rooms.org(account.orgId),
+          SocketEvents.MARKETPLACE_WEBHOOK_RECEIVED,
+          payload,
+        );
+      }
     } catch (error) {
       this.logger.error(
         `Error processing eBay webhook (${event.eventType})`,
@@ -222,8 +237,13 @@ export class MarketplaceWebhookService {
 
   /**
    * Handle ITEM_SOLD event
+   * Enhanced for Slice 10 Learning Loop - captures sale price and records outcome
    */
-  private async handleItemSold(event: { listingId?: string }): Promise<void> {
+  private async handleItemSold(event: {
+    listingId?: string;
+    soldPrice?: number;
+    soldAt?: string;
+  }): Promise<void> {
     if (!event.listingId) {
       this.logger.warn('ITEM_SOLD event missing listingId');
       return;
@@ -234,10 +254,84 @@ export class MarketplaceWebhookService {
     });
 
     if (listing) {
-      listing.status = 'ended'; // Mark as ended (sold is a type of ended)
+      // Mark as sold (distinct from just ended)
+      listing.status = 'sold';
       listing.lastSyncedAt = new Date();
+
+      // Capture sale details for learning loop
+      const soldPrice = event.soldPrice ?? listing.price;
+      const soldAt = event.soldAt ? new Date(event.soldAt) : new Date();
+
+      listing.soldPrice = soldPrice;
+      listing.soldAt = soldAt;
+
+      // Store original list price if not already set
+      if (!listing.originalListPrice) {
+        listing.originalListPrice = listing.price;
+      }
+
       await this.listingRepo.save(listing);
-      this.logger.log(`Marked listing ${listing.id} as sold`);
+      this.logger.log(`Marked listing ${listing.id} as sold for $${soldPrice}`);
+
+      // Record outcome for learning loop (Slice 10)
+      try {
+        await this.researchLearningService.recordSaleOutcome(
+          listing.id,
+          soldPrice,
+          soldAt,
+          'ebay',
+        );
+      } catch (error) {
+        this.logger.error(
+          `Failed to record sale outcome for listing ${listing.id}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+        // Don't throw - sale recording is not critical path
+      }
+    }
+  }
+
+  /**
+   * Handle ITEM_RETURNED event
+   * Slice 10 Learning Loop - records returns for learning
+   */
+  private async handleItemReturned(event: {
+    listingId?: string;
+    returnedAt?: string;
+    returnReason?: string;
+  }): Promise<void> {
+    if (!event.listingId) {
+      this.logger.warn('ITEM_RETURNED event missing listingId');
+      return;
+    }
+
+    const listing = await this.listingRepo.findOne({
+      where: { remoteListingId: event.listingId },
+    });
+
+    if (listing) {
+      const returnedAt = event.returnedAt ? new Date(event.returnedAt) : new Date();
+
+      listing.returnedAt = returnedAt;
+      listing.returnReason = event.returnReason ?? null;
+      listing.lastSyncedAt = new Date();
+
+      await this.listingRepo.save(listing);
+      this.logger.log(`Recorded return for listing ${listing.id}`);
+
+      // Record return for learning loop (Slice 10)
+      try {
+        await this.researchLearningService.recordReturn(
+          listing.id,
+          returnedAt,
+          event.returnReason ?? null,
+        );
+      } catch (error) {
+        this.logger.error(
+          `Failed to record return for listing ${listing.id}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
     }
   }
 

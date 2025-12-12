@@ -28,6 +28,7 @@ import { EvidenceModule } from '../evidence/evidence.module';
 import { EventsModule } from '../events/events.module';
 import { ResearchModule } from '../research/research.module';
 import { ChatModule } from '../chat/chat.module';
+import { OrganizationsModule } from '../organizations/organizations.module';
 import { QUEUE_AI_WORKFLOW } from '@listforge/queue-types';
 import { PromptTemplateService } from './services/prompt-template.service';
 import { GoalOrchestratorService } from './orchestration/goal-orchestrator.service';
@@ -39,6 +40,23 @@ import { ResearchPlannerService } from './services/research-planner.service';
 import { FieldResearchService } from './services/field-research.service';
 // Slice 4: Image Cross-Validation
 import { ImageComparisonService } from './services/image-comparison.service';
+// Slice 1: Reverse Image Search (Google Lens style)
+import { ReverseImageSearchService } from './services/reverse-image-search.service';
+// Slice 2: Category-Specific Visual Inspection
+import { CategoryDetectionService } from './services/category-detection.service';
+import { GuidedVisionAnalysisService } from './services/guided-vision-analysis.service';
+// Slice 3: Iterative Search Refinement
+import { IterativeSearchService } from './services/iterative-search.service';
+// Slice 5: Structured Comp Attribute Matching
+import { CompAttributeService } from './services/comp-attribute.service';
+// Slice 6: Identification Validation Checkpoint
+import { IdentificationValidatorService } from './services/identification-validator.service';
+// Slice 7: Cross-Source Validation
+import { CrossValidationService } from './services/cross-validation.service';
+// Slice 8: Product Page Extraction
+import { ProductPageExtractorService } from './services/product-page-extractor.service';
+// Slice 9: Domain Knowledge Database
+import { DomainKnowledgeService } from './services/domain-knowledge.service';
 
 @Module({
   imports: [
@@ -61,11 +79,12 @@ import { ImageComparisonService } from './services/image-comparison.service';
       },
     }),
     ConfigModule,
-    MarketplacesModule,
+    forwardRef(() => MarketplacesModule), // Handle circular dependency chain (MarketplacesModule → LearningModule → MarketplacesModule)
     EvidenceModule,
     EventsModule,
     ResearchModule,
     forwardRef(() => ChatModule), // Handle circular dependency with ChatModule
+    forwardRef(() => OrganizationsModule), // Handle circular dependency chain (OrganizationsModule → MarketplacesModule → LearningModule → ItemsModule → AiWorkflowsModule)
   ],
   providers: [
     AiWorkflowsProcessor,
@@ -98,12 +117,29 @@ import { ImageComparisonService } from './services/image-comparison.service';
     // Research recovery and health
     RecoveryService,
     ResearchHealthService,
+    // Slice 7: Cross-Source Validation (must be before FieldStateManagerService)
+    CrossValidationService,
     // Field-Driven Research services
     FieldStateManagerService,
     ResearchPlannerService,
     FieldResearchService,
     // Slice 4: Image Cross-Validation
     ImageComparisonService,
+    // Slice 1: Reverse Image Search (Google Lens style)
+    ReverseImageSearchService,
+    // Slice 2: Category-Specific Visual Inspection
+    CategoryDetectionService,
+    GuidedVisionAnalysisService,
+    // Slice 3: Iterative Search Refinement
+    IterativeSearchService,
+    // Slice 5: Structured Comp Attribute Matching
+    CompAttributeService,
+    // Slice 6: Identification Validation Checkpoint
+    IdentificationValidatorService,
+    // Slice 8: Product Page Extraction
+    ProductPageExtractorService,
+    // Slice 9: Domain Knowledge Database
+    DomainKnowledgeService,
   ],
   exports: [
     OpenAIService,
@@ -123,12 +159,29 @@ import { ImageComparisonService } from './services/image-comparison.service';
     GoalOrchestratorService,
     RecoveryService,
     ResearchHealthService,
+    // Slice 7: Cross-Source Validation
+    CrossValidationService,
     // Field-Driven Research services
     FieldStateManagerService,
     ResearchPlannerService,
     FieldResearchService,
     // Slice 4: Image Cross-Validation
     ImageComparisonService,
+    // Slice 1: Reverse Image Search (Google Lens style)
+    ReverseImageSearchService,
+    // Slice 2: Category-Specific Visual Inspection
+    CategoryDetectionService,
+    GuidedVisionAnalysisService,
+    // Slice 3: Iterative Search Refinement
+    IterativeSearchService,
+    // Slice 5: Structured Comp Attribute Matching
+    CompAttributeService,
+    // Slice 6: Identification Validation Checkpoint
+    IdentificationValidatorService,
+    // Slice 8: Product Page Extraction
+    ProductPageExtractorService,
+    // Slice 9: Domain Knowledge Database
+    DomainKnowledgeService,
   ],
 })
 export class AiWorkflowsModule {}

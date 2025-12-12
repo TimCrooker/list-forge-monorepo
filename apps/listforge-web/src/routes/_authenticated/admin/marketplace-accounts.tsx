@@ -1,4 +1,4 @@
-import { createFileRoute, Navigate } from '@tanstack/react-router';
+import { createFileRoute, Navigate, useNavigate } from '@tanstack/react-router';
 import { useMemo, useState, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/store/store';
@@ -7,18 +7,14 @@ import {
   useDisableMarketplaceAccountMutation,
 } from '@listforge/api-rtk';
 import {
+  AppContent,
+  SearchFilters,
   Button,
   Badge,
   DataTable,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Input,
-  Label,
+  EmptyState,
 } from '@listforge/ui';
-import { ShieldOff, Loader2, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { ShieldOff, CheckCircle2, XCircle, AlertCircle, ShoppingCart } from 'lucide-react';
 import { showSuccess } from '@/utils/toast';
 import type { ColumnDef } from '@tanstack/react-table';
 import type {
@@ -32,10 +28,9 @@ export const Route = createFileRoute('/_authenticated/admin/marketplace-accounts
 });
 
 function AdminMarketplaceAccountsPage() {
+  const navigate = useNavigate();
   const user = useSelector((state: RootState) => state.auth.user);
-  const [marketplaceFilter, setMarketplaceFilter] = useState<MarketplaceType | 'all'>('all');
-  const [statusFilter, setStatusFilter] = useState<MarketplaceAccountStatus | 'all'>('all');
-  const [orgIdFilter, setOrgIdFilter] = useState<string>('');
+  const [filters, setFilters] = useState<Record<string, any>>({});
 
   const queryParams = useMemo(() => {
     const params: {
@@ -43,17 +38,17 @@ function AdminMarketplaceAccountsPage() {
       status?: MarketplaceAccountStatus;
       orgId?: string;
     } = {};
-    if (marketplaceFilter !== 'all') {
-      params.marketplace = marketplaceFilter;
+    if (filters.marketplace && filters.marketplace !== 'all') {
+      params.marketplace = filters.marketplace as MarketplaceType;
     }
-    if (statusFilter !== 'all') {
-      params.status = statusFilter;
+    if (filters.status && Array.isArray(filters.status) && filters.status.length > 0) {
+      params.status = filters.status[0] as MarketplaceAccountStatus;
     }
-    if (orgIdFilter) {
-      params.orgId = orgIdFilter;
+    if (filters.orgId) {
+      params.orgId = filters.orgId;
     }
     return params;
-  }, [marketplaceFilter, statusFilter, orgIdFilter]);
+  }, [filters]);
 
   const { data, isLoading, refetch } = useListMarketplaceAccountsAdminQuery(queryParams);
   const [disableAccount] = useDisableMarketplaceAccountMutation();
@@ -187,80 +182,68 @@ function AdminMarketplaceAccountsPage() {
     [handleDisable],
   );
 
+  const accounts = data?.accounts || [];
+
   return (
-    <div className="w-full max-w-none space-y-6 py-6 px-6">
-      <div>
-        <h1 className="text-3xl font-bold">Marketplace Accounts</h1>
-        <p className="text-muted-foreground mt-1">
-          Manage marketplace connections across all organizations
-        </p>
-      </div>
-
-      {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="marketplace-filter">Marketplace</Label>
-          <Select
-            value={marketplaceFilter}
-            onValueChange={(value) =>
-              setMarketplaceFilter(value as MarketplaceType | 'all')
-            }
-          >
-            <SelectTrigger id="marketplace-filter">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="EBAY">eBay</SelectItem>
-              <SelectItem value="AMAZON">Amazon</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="status-filter">Status</Label>
-          <Select
-            value={statusFilter}
-            onValueChange={(value) =>
-              setStatusFilter(value as MarketplaceAccountStatus | 'all')
-            }
-          >
-            <SelectTrigger id="status-filter">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="expired">Expired</SelectItem>
-              <SelectItem value="revoked">Revoked</SelectItem>
-              <SelectItem value="error">Error</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="org-id-filter">Organization ID</Label>
-          <Input
-            id="org-id-filter"
-            placeholder="Filter by org ID"
-            value={orgIdFilter}
-            onChange={(e) => setOrgIdFilter(e.target.value)}
-          />
-        </div>
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
+    <AppContent
+      title="Marketplace Accounts"
+      description="Manage marketplace connections across all organizations"
+      breadcrumbs={[
+        { label: 'Admin', onClick: () => navigate({ to: '/admin' }) },
+        { label: 'Marketplace Accounts' },
+      ]}
+      headerContent={
+        <SearchFilters
+          variant="inline"
+          showSearch={false}
+          filterGroups={[
+            {
+              id: 'marketplace',
+              label: 'Marketplace',
+              type: 'select',
+              options: [
+                { value: 'all', label: 'All' },
+                { value: 'EBAY', label: 'eBay' },
+                { value: 'AMAZON', label: 'Amazon' },
+              ],
+            },
+            {
+              id: 'status',
+              label: 'Status',
+              type: 'multiselect',
+              options: [
+                { value: 'active', label: 'Active' },
+                { value: 'expired', label: 'Expired' },
+                { value: 'revoked', label: 'Revoked' },
+                { value: 'error', label: 'Error' },
+              ],
+            },
+            {
+              id: 'orgId',
+              label: 'Organization ID',
+              type: 'search',
+            },
+          ]}
+          onFilterChange={setFilters}
+        />
+      }
+      maxWidth="full"
+      padding="md"
+    >
+      {accounts.length === 0 && !isLoading ? (
+        <EmptyState
+          icon={ShoppingCart}
+          title="No marketplace accounts found"
+          description="Marketplace accounts will appear here once organizations connect their accounts"
+        />
       ) : (
         <DataTable
           columns={columns}
-          data={data?.accounts || []}
+          data={accounts}
           loading={isLoading}
-          title="All Marketplace Accounts"
-          description="View and manage marketplace connections across organizations"
         />
       )}
-    </div>
+    </AppContent>
   );
 }
 
