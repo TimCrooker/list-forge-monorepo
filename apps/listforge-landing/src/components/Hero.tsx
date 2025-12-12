@@ -42,7 +42,6 @@ export function Hero() {
               text: 'Trusted by 10,000+ resellers',
             }}
             size="large"
-            showScrollIndicator
           />
         </FadeIn>
       </div>
